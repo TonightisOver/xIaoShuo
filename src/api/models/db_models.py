@@ -37,6 +37,8 @@ class Novel(Base):
         onupdate=func.now()
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    custom_style_description: Mapped[str | None] = mapped_column(Text)
+    writing_style_prompt: Mapped[str | None] = mapped_column(Text)
 
     # Relationships
     world_setting: Mapped["WorldSetting | None"] = relationship(

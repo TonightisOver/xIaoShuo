@@ -59,6 +59,22 @@
             @click="form.writing_style = s"
           >{{ s }}</button>
         </div>
+        <div v-if="form.writing_style === '自定义'" class="mt-3 space-y-2">
+          <textarea
+            v-model="form.custom_style_description"
+            class="input min-h-[60px] resize-y text-sm"
+            placeholder="描述你想要的风格，如：江南的文风，带一点灰色幽默..."
+          ></textarea>
+          <div class="flex gap-2 items-start">
+            <button type="button" @click="generateStyle" class="btn-secondary text-xs" :disabled="generatingStyle || !form.custom_style_description">
+              {{ generatingStyle ? '生成中...' : '生成风格指令' }}
+            </button>
+          </div>
+          <div v-if="form.writing_style_prompt" class="p-3 bg-ink-50 rounded-lg text-xs text-ink-700 whitespace-pre-wrap">
+            <p class="text-ink-400 text-[10px] mb-1">生成的风格指令（可编辑）：</p>
+            <textarea v-model="form.writing_style_prompt" class="w-full bg-transparent border-0 text-xs resize-y min-h-[60px] focus:outline-none"></textarea>
+          </div>
+        </div>
       </div>
 
       <div>
@@ -100,7 +116,7 @@ import { useRouter } from 'vue-router'
 const router = useRouter()
 
 const novelTypes = ['玄幻', '仙侠', '都市', '科幻', '历史', '武侠', '言情', '悬疑']
-const writingStyles = ['轻松幽默', '热血燃向', '细腻文艺', '史诗厚重', '悬疑紧张', '古风典雅', '现代白话', '暗黑压抑']
+const writingStyles = ['轻松幽默', '热血燃向', '细腻文艺', '史诗厚重', '悬疑紧张', '古风典雅', '现代白话', '暗黑压抑', '自定义']
 
 const form = ref({
   title: '',
@@ -108,12 +124,33 @@ const form = ref({
   novel_type: '玄幻',
   target_words: 100000,
   writing_style: '现代白话',
+  custom_style_description: '',
+  writing_style_prompt: '',
 })
 
 const submitting = ref(false)
 const error = ref('')
+const generatingStyle = ref(false)
 
 const canSubmit = computed(() => form.value.idea.length >= 10 && form.value.novel_type)
+
+async function generateStyle() {
+  if (!form.value.custom_style_description) return
+  generatingStyle.value = true
+  try {
+    const res = await fetch('/api/v1/style/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: form.value.custom_style_description }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      form.value.writing_style_prompt = data.style_prompt
+    }
+  } finally {
+    generatingStyle.value = false
+  }
+}
 
 async function submit() {
   if (!canSubmit.value) return

@@ -11,6 +11,7 @@ class NovelState(TypedDict, total=False):
     novel_type: str
     target_words: int
     writing_style: str
+    writing_style_prompt: str
 
     # 创作内容
     idea: str

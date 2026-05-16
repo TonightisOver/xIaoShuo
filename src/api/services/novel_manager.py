@@ -19,7 +19,9 @@ class NovelManager:
 
     async def create_novel(self, idea: str, novel_type: str, target_words: int,
                            title: str | None = None,
-                           writing_style: str = "现代白话") -> str:
+                           writing_style: str = "现代白话",
+                           custom_style_description: str | None = None,
+                           writing_style_prompt: str | None = None) -> str:
         novel_id = f"novel-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}"
         async with get_db_session() as session:
             novel = Novel(
@@ -29,6 +31,8 @@ class NovelManager:
                 novel_type=novel_type,
                 target_words=target_words,
                 writing_style=writing_style,
+                custom_style_description=custom_style_description,
+                writing_style_prompt=writing_style_prompt,
                 status="draft",
                 created_at=datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),
@@ -346,6 +350,8 @@ class NovelManager:
             "novel_type": novel.novel_type,
             "target_words": novel.target_words,
             "writing_style": novel.writing_style,
+            "custom_style_description": novel.custom_style_description,
+            "writing_style_prompt": novel.writing_style_prompt,
             "status": novel.status,
             "created_at": novel.created_at,
             "updated_at": novel.updated_at,

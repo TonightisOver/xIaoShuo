@@ -28,6 +28,10 @@ class CreateNovelRequest(BaseModel):
         default="现代白话",
         description="文风风格",
     )
+    writing_style_prompt: str = Field(
+        default="",
+        description="自定义文风指令（writing_style=自定义时使用）",
+    )
 
     model_config = {
         "json_schema_extra": {

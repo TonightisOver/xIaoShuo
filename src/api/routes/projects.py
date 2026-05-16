@@ -24,6 +24,8 @@ class CreateProjectRequest(BaseModel):
     target_words: int = Field(default=100000, ge=10000, le=10000000)
     title: str | None = None
     writing_style: str = Field(default="现代白话")
+    custom_style_description: str | None = None
+    writing_style_prompt: str | None = None
 
 
 class UpdateProjectRequest(BaseModel):
@@ -32,6 +34,8 @@ class UpdateProjectRequest(BaseModel):
     novel_type: str | None = None
     target_words: int | None = None
     writing_style: str | None = None
+    custom_style_description: str | None = None
+    writing_style_prompt: str | None = None
 
 
 class WorldSettingRequest(BaseModel):
@@ -80,6 +84,8 @@ async def create_project(request: CreateProjectRequest):
         target_words=request.target_words,
         title=request.title,
         writing_style=request.writing_style,
+        custom_style_description=request.custom_style_description,
+        writing_style_prompt=request.writing_style_prompt,
     )
     return {"novel_id": novel_id, "status": "draft"}
 
@@ -144,6 +150,7 @@ async def generate_novel(novel_id: str, background_tasks: BackgroundTasks):
         novel_type=novel["novel_type"],
         target_words=novel["target_words"],
         writing_style=novel.get("writing_style", "现代白话"),
+        writing_style_prompt=novel.get("writing_style_prompt", ""),
     )
     background_tasks.add_task(generate_novel_background, task_id, request)
 

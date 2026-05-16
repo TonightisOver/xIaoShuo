@@ -153,8 +153,15 @@ def validate_writing_style(style: str) -> str:
     if not style or not style.strip():
         return "现代白话"
     style = style.strip()
-    if style not in WRITING_STYLES:
+    if style != "自定义" and style not in WRITING_STYLES:
         raise ValidationError(
-            f"不支持的文风: {style}，支持的风格: {', '.join(WRITING_STYLES.keys())}"
+            f"不支持的文风: {style}，支持的风格: {', '.join(WRITING_STYLES.keys())}, 自定义"
         )
     return style
+
+
+def get_style_instruction(writing_style: str, writing_style_prompt: str = "") -> str:
+    """获取风格指令：预设风格用常量，自定义用 writing_style_prompt"""
+    if writing_style == "自定义" and writing_style_prompt:
+        return writing_style_prompt
+    return WRITING_STYLES.get(writing_style, "")

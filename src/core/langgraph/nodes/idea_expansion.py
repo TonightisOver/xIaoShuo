@@ -5,7 +5,7 @@ import logging
 from src.core.langgraph.state import NovelState
 from src.core.llm.client import get_llm_client
 from src.core.llm.prompts import IDEA_EXPANSION_PROMPT
-from src.core.validation import ValidationError, validate_idea, WRITING_STYLES
+from src.core.validation import ValidationError, validate_idea, get_style_instruction
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ async def node(state: NovelState) -> NovelState:
         )
 
         logger.info(f"Expanding idea for project {state['project_id']}")
-        style_instruction = WRITING_STYLES.get(state.get("writing_style", ""), "")
+        style_instruction = get_style_instruction(state.get("writing_style", ""), state.get("writing_style_prompt", ""))
         if style_instruction:
             prompt = f"{style_instruction}\n\n{prompt}"
         expanded_idea = await client.generate(prompt)
