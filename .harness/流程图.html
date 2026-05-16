@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>xIaoShuo 开发流程规范</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; padding: 40px 20px; }
+  h1 { text-align: center; font-size: 1.8rem; font-weight: 700; color: #f8fafc; margin-bottom: 6px; }
+  .subtitle { text-align: center; color: #64748b; font-size: 0.9rem; margin-bottom: 48px; }
+
+  /* ── 批次容器 ── */
+  .batch { border-radius: 16px; padding: 24px 28px; margin-bottom: 20px; position: relative; }
+  .batch-a { background: linear-gradient(135deg, #1e293b 0%, #1a2744 100%); border: 1px solid #334155; }
+  .batch-b { background: linear-gradient(135deg, #1e293b 0%, #1a2d1a 100%); border: 1px solid #334155; }
+  .batch-label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .batch-a .batch-label { color: #60a5fa; }
+  .batch-b .batch-label { color: #4ade80; }
+  .batch-label::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+  .batch-a .batch-label::before { background: #60a5fa; box-shadow: 0 0 8px #60a5fa; }
+  .batch-b .batch-label::before { background: #4ade80; box-shadow: 0 0 8px #4ade80; }
+  .batch-desc { font-size: 0.8rem; color: #94a3b8; margin-bottom: 20px; }
+
+  /* ── 阶段卡片行 ── */
+  .stages-row { display: flex; align-items: center; gap: 0; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .stage-card { flex-shrink: 0; background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px 16px; min-width: 130px; max-width: 150px; position: relative; transition: transform 0.15s, box-shadow 0.15s; cursor: default; }
+  .stage-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .stage-num { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; color: #475569; margin-bottom: 4px; }
+  .stage-name { font-size: 0.88rem; font-weight: 600; color: #f1f5f9; margin-bottom: 8px; }
+  .stage-output { font-size: 0.7rem; color: #64748b; line-height: 1.4; margin-bottom: 8px; }
+  .stage-gate { font-size: 0.68rem; padding: 2px 7px; border-radius: 4px; display: inline-block; }
+  .gate-auto { background: #1e3a2f; color: #4ade80; border: 1px solid #166534; }
+  .gate-optional { background: #2d2a1a; color: #fbbf24; border: 1px solid #92400e; }
+
+  /* ── 箭头 ── */
+  .arrow { flex-shrink: 0; color: #475569; font-size: 1.1rem; padding: 0 4px; align-self: center; }
+
+  /* ── 人工门禁 ── */
+  .human-gate { border-radius: 12px; padding: 20px 24px; margin: 16px 0; display: flex; align-items: flex-start; gap: 16px; }
+  .gate-1 { background: #1e2a3a; border: 1.5px solid #3b82f6; }
+  .gate-2 { background: #1a2d1a; border: 1.5px solid #22c55e; }
+  .gate-icon { font-size: 1.5rem; flex-shrink: 0; margin-top: 2px; }
+  .gate-title { font-size: 0.95rem; font-weight: 700; margin-bottom: 6px; }
+  .gate-1 .gate-title { color: #60a5fa; }
+  .gate-2 .gate-title { color: #4ade80; }
+  .gate-body { font-size: 0.8rem; color: #94a3b8; line-height: 1.6; }
+  .gate-body code { background: #0f172a; color: #e2e8f0; padding: 1px 5px; border-radius: 3px; font-size: 0.75rem; }
+  .gate-options { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .gate-opt { font-size: 0.75rem; padding: 4px 12px; border-radius: 6px; font-weight: 600; }
+  .opt-approve { background: #14532d; color: #4ade80; border: 1px solid #166534; }
+  .opt-revise { background: #1c1917; color: #fb923c; border: 1px solid #7c2d12; }
+
+  /* ── 连接箭头（批次间） ── */
+  .connector { text-align: center; color: #475569; font-size: 1.4rem; margin: 4px 0; line-height: 1; }
+
+  /* ── 自动重试说明 ── */
+  .retry-note { background: #0f172a; border: 1px dashed #334155; border-radius: 8px; padding: 12px 16px; margin-top: 16px; font-size: 0.75rem; color: #64748b; line-height: 1.6; }
+  .retry-note strong { color: #94a3b8; }
+
+  /* ── Hotfix 流程 ── */
+  .hotfix { background: #1e1a2e; border: 1px solid #4c1d95; border-radius: 12px; padding: 20px 24px; margin-top: 32px; }
+  .hotfix-title { font-size: 0.85rem; font-weight: 700; color: #a78bfa; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .hotfix-stages { display: flex; align-items: center; gap: 0; flex-wrap: wrap; }
+  .hotfix-card { background: #2d1f4e; border: 1px solid #4c1d95; border-radius: 8px; padding: 8px 14px; font-size: 0.8rem; color: #c4b5fd; font-weight: 600; flex-shrink: 0; }
+
+  /* ── 版本管理 ── */
+  .version-note { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px 24px; margin-top: 20px; }
+  .version-title { font-size: 0.85rem; font-weight: 700; color: #94a3b8; margin-bottom: 12px; }
+  .version-example { font-family: "Cascadia Code", "Fira Code", monospace; font-size: 0.75rem; color: #64748b; line-height: 1.8; }
+  .version-example .v1 { color: #4ade80; }
+  .version-example .v2 { color: #fbbf24; }
+  .version-example .v3 { color: #f87171; }
+
+  /* ── 页脚 ── */
+  .footer { text-align: center; margin-top: 48px; font-size: 0.72rem; color: #334155; }
+
+  @media (max-width: 600px) {
+    .stages-row { flex-direction: column; align-items: stretch; }
+    .arrow { transform: rotate(90deg); align-self: center; }
+    .stage-card { max-width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<h1>xIaoShuo 开发流程规范</h1>
+<p class="subtitle">10 阶段 · 2 个人工门禁 · Auto Mode 兼容</p>
+
+<!-- ══════════════ 批次 A ══════════════ -->
+<div class="batch batch-a">
+  <div class="batch-label">批次 A &nbsp;·&nbsp; 需求 + 设计</div>
+  <p class="batch-desc">连续自动执行，完成后暂停等待架构确认</p>
+  <div class="stages-row">
+
+    <div class="stage-card">
+      <div class="stage-num">阶段 01</div>
+      <div class="stage-name">需求分析</div>
+      <div class="stage-output">📄 01-需求分析.md</div>
+      <span class="stage-gate gate-auto">自动</span>
+    </div>
+
+    <div class="arrow">→</div>
+
+    <div class="stage-card">
+      <div class="stage-num">阶段 02</div>
+      <div class="stage-name">技术设计</div>
+      <div class="stage-output">📄 02-技术设计.md</div>
+      <span class="stage-gate gate-auto">自动</span>
+    </div>
+
+  </div>
+</div>
+
+<!-- 人工门禁 1 -->
+<div class="human-gate gate-1">
+  <div class="gate-icon">🔒</div>
+  <div>
+    <div class="gate-title">人工门禁 1 — 确认架构方案</div>
+    <div class="gate-body">
+      Agent 呈现：<strong>架构方案概述</strong> · <strong>2-3 个关键设计决策</strong> · 文档路径 <code>02-技术设计.md</code>
+    </div>
+    <div class="gate-options">
+      <span class="gate-opt opt-approve">✅ 确认，进入批次 B</span>
+      <span class="gate-opt opt-revise">🔄 需要修改（重做阶段 2，版本 +1）</span>
+    </div>
+  </div>
+</div>
+
+<div class="connector">↓</div>
+
+<!-- ══════════════ 批次 B ══════════════ -->
+<div class="batch batch-b">
+  <div class="batch-label">批次 B &nbsp;·&nbsp; 实现 + 验证</div>
+  <p class="batch-desc">阶段 3–10 全部连续自动执行，质量门禁失败自动修复重试</p>
+  <div class="stages-row">
+
+    <div class="stage-card">
+      <div class="stage-num">阶段 03</div>
+      <div class="stage-name">编码计划</div>
+      <div class="stage-output">📄 03-编码计划.md</div>
+      <span class="stage-gate gate-auto">自动</span>
+    </div>
+    <div class="arrow">→</div>
+
+    <div class="stage-card">
+      <div class="stage-num">阶段 04</div>
+      <div class="stage-name">编码实现</div>
+      <div class="stage-output">💻 源代码 + 04-编码报告</div>
+      <span class="stage-gate gate-auto">自动</span>
+    </div>
+    <div class="arrow">→</div>
+
+    <div class="stage-card">
+      <div class="stage-num">阶段 05</div>
+      <div class="stage-name">代码检查</div>
+      <div class="stage-output">📄 ruff + mypy 报告</div>
+      <span class="stage-gate gate-auto">自动</span>
+    </div>
+    <div class="arrow">→</div>
+
+    <div class="stage-card">
+      <div class="stage-num">阶段 06</div>
+      <div class="stage-name">专家评审</div>
+      <div class="stage-output">📄 06-专家评审报告</div>
+      <span class="stage-gate gate-optional">⚠ 有 Blocker 时暂停</span>
+    </div>
+    <div class="arrow">→</div>
+
+    <div class="stage-card">
+      <div class="stage-num">阶段 07</div>
+      <div class="stage-name">单元测试</div>
+      <div class="stage-output">🧪 覆盖率 &gt; 80%</div>
+      <span class="stage-gate gate-auto">自动</span>
+    </div>
+    <div class="arrow">→</div>
+
+    <div class="stage-card">
+      <div class="stage-num">阶段 08</div>
+      <div class="stage-name">集成测试</div>
+      <div class="stage-output">🧪 端到端流程</div>
+      <span class="stage-gate gate-auto">自动</span>
+    </div>
+    <div class="arrow">→</div>
+
+    <div class="stage-card">
+      <div class="stage-num">阶段 09</div>
+      <div class="stage-name">CI 验证</div>
+      <div class="stage-output">✅ 全量检查通过</div>
+      <span class="stage-gate gate-auto">自动</span>
+    </div>
+    <div class="arrow">→</div>
+
+    <div class="stage-card">
+      <div class="stage-num">阶段 10</div>
+      <div class="stage-name">部署验证</div>
+      <div class="stage-output">🚀 本地部署 + 功能验证</div>
+      <span class="stage-gate gate-auto">自动</span>
+    </div>
+
+  </div>
+
+  <div class="retry-note">
+    <strong>批次 B 自动重试规则：</strong>某阶段质量门禁不通过 → Agent 自动修复，版本号 +1，重新执行，不打断用户。
+    连续失败 3 次时暂停，向用户报告阻塞原因并等待指示。
+  </div>
+</div>
+
+<!-- 人工门禁 2 -->
+<div class="human-gate gate-2">
+  <div class="gate-icon">🏁</div>
+  <div>
+    <div class="gate-title">人工门禁 2 — 确认交付，关闭变更</div>
+    <div class="gate-body">
+      Agent 呈现：<strong>完成阶段 3–10</strong> · <strong>测试覆盖率</strong> · <strong>CI 状态</strong> · <strong>部署状态</strong>
+    </div>
+    <div class="gate-options">
+      <span class="gate-opt opt-approve">✅ 确认交付，关闭变更</span>
+      <span class="gate-opt opt-revise">🔄 需要修改（回退到对应阶段）</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ Hotfix ══════════════ -->
+<div class="hotfix">
+  <div class="hotfix-title">⚡ 紧急修复（Hotfix）简化流程</div>
+  <div class="hotfix-stages">
+    <div class="hotfix-card">01 需求分析</div>
+    <div class="arrow" style="color:#6d28d9">→</div>
+    <div class="hotfix-card">04 编码实现</div>
+    <div class="arrow" style="color:#6d28d9">→</div>
+    <div class="hotfix-card">05 代码检查</div>
+    <div class="arrow" style="color:#6d28d9">→</div>
+    <div class="hotfix-card">07 单元测试</div>
+    <div class="arrow" style="color:#6d28d9">→</div>
+    <div class="hotfix-card">10 部署验证</div>
+  </div>
+  <div style="margin-top:10px; font-size:0.75rem; color:#7c3aed;">
+    跳过：技术设计 · 编码计划 · 专家评审 · 集成测试 · CI 验证 &nbsp;|&nbsp; 质量门禁仍然保持
+  </div>
+</div>
+
+<!-- ══════════════ 版本管理 ══════════════ -->
+<div class="version-note">
+  <div class="version-title">📦 版本管理规则（阶段 4–10 重做时递增）</div>
+  <div class="version-example">
+    <span class="v1">04-编码报告-v1.md</span>　← 第一次编码<br>
+    <span class="v2">04-编码报告-v2.md</span>　← 修复评审问题后重做<br>
+    <span class="v3">04-编码报告-v3.md</span>　← 修复测试问题后重做
+  </div>
+</div>
+
+<div class="footer">xIaoShuo · 开发流程规范 v1.1 · Auto Mode 兼容版</div>
+
+</body>
+</html>

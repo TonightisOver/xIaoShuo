@@ -24,6 +24,10 @@ class CreateNovelRequest(BaseModel):
         le=10000000,
         description="目标字数",
     )
+    writing_style: str = Field(
+        default="现代白话",
+        description="文风风格",
+    )
 
     model_config = {
         "json_schema_extra": {

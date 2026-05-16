@@ -44,6 +44,24 @@
       </div>
 
       <div>
+        <label class="block text-sm font-medium text-ink-700 mb-2">文风风格</label>
+        <div class="grid grid-cols-4 gap-2">
+          <button
+            v-for="s in writingStyles"
+            :key="s"
+            type="button"
+            :class="[
+              'px-4 py-2 rounded-lg text-sm font-medium border transition-all',
+              form.writing_style === s
+                ? 'border-primary-500 bg-primary-50 text-primary-700'
+                : 'border-ink-200 text-ink-600 hover:border-ink-400'
+            ]"
+            @click="form.writing_style = s"
+          >{{ s }}</button>
+        </div>
+      </div>
+
+      <div>
         <label class="block text-sm font-medium text-ink-700 mb-2">
           目标字数：<span class="text-primary-600">{{ (form.target_words / 10000).toFixed(0) }} 万字</span>
         </label>
@@ -82,12 +100,14 @@ import { useRouter } from 'vue-router'
 const router = useRouter()
 
 const novelTypes = ['玄幻', '仙侠', '都市', '科幻', '历史', '武侠', '言情', '悬疑']
+const writingStyles = ['轻松幽默', '热血燃向', '细腻文艺', '史诗厚重', '悬疑紧张', '古风典雅', '现代白话', '暗黑压抑']
 
 const form = ref({
   title: '',
   idea: '',
   novel_type: '玄幻',
   target_words: 100000,
+  writing_style: '现代白话',
 })
 
 const submitting = ref(false)

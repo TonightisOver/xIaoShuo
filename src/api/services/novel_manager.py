@@ -18,7 +18,8 @@ logger = logging.getLogger(__name__)
 class NovelManager:
 
     async def create_novel(self, idea: str, novel_type: str, target_words: int,
-                           title: str | None = None) -> str:
+                           title: str | None = None,
+                           writing_style: str = "现代白话") -> str:
         novel_id = f"novel-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}"
         async with get_db_session() as session:
             novel = Novel(
@@ -27,6 +28,7 @@ class NovelManager:
                 idea=idea,
                 novel_type=novel_type,
                 target_words=target_words,
+                writing_style=writing_style,
                 status="draft",
                 created_at=datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),
@@ -280,6 +282,7 @@ class NovelManager:
             "idea": novel.idea,
             "novel_type": novel.novel_type,
             "target_words": novel.target_words,
+            "writing_style": novel.writing_style,
             "status": novel.status,
             "created_at": novel.created_at,
             "updated_at": novel.updated_at,

@@ -85,6 +85,7 @@ async def generate_novel_background(
             "idea": request.idea,
             "novel_type": request.novel_type,
             "target_words": request.target_words,
+            "writing_style": request.writing_style,
             "current_stage": "start",
             "chapters": [],
             "errors": [],

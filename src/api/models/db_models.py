@@ -26,6 +26,9 @@ class Novel(Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="draft", index=True
     )
+    writing_style: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="现代白话"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

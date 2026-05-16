@@ -135,3 +135,26 @@ def validate_json_string(json_str: str, max_length: int = 50000) -> str:
         raise ValidationError(f"JSON 字符串长度不能超过 {max_length} 字符")
 
     return json_str
+
+
+WRITING_STYLES = {
+    "轻松幽默": "请使用轻松幽默的文风，多用吐槽、梗和诙谐对话，节奏轻快活泼。",
+    "热血燃向": "请使用热血燃向的文风，短句有力，战斗场面爽快激烈，节奏紧凑。",
+    "细腻文艺": "请使用细腻文艺的文风，注重环境描写和心理刻画，语言优美有意境。",
+    "史诗厚重": "请使用史诗厚重的文风，宏大叙事，气势磅礴，用词正式庄重。",
+    "悬疑紧张": "请使用悬疑紧张的文风，善于营造氛围，短段落制造悬念，多设伏笔。",
+    "古风典雅": "请使用古风典雅的文风，半文言半白话，多用四字词语和诗词典故。",
+    "现代白话": "请使用通俗易懂的现代白话文风，贴近生活，自然流畅。",
+    "暗黑压抑": "请使用暗黑压抑的文风，注重内心独白和环境渲染，氛围阴暗沉重。",
+}
+
+
+def validate_writing_style(style: str) -> str:
+    if not style or not style.strip():
+        return "现代白话"
+    style = style.strip()
+    if style not in WRITING_STYLES:
+        raise ValidationError(
+            f"不支持的文风: {style}，支持的风格: {', '.join(WRITING_STYLES.keys())}"
+        )
+    return style
