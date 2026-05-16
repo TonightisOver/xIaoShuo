@@ -19,7 +19,15 @@
         :class="['p-4 rounded-lg max-w-[85%]', msg.role === 'user' ? 'ml-auto bg-primary-50 text-primary-900' : 'bg-white border border-ink-200']"
       >
         <p class="text-sm whitespace-pre-wrap">{{ msg.content }}</p>
-        <span class="text-[10px] text-ink-400 mt-1 block">{{ formatTime(msg.created_at) }}</span>
+        <div class="flex items-center gap-2 mt-2">
+          <span class="text-[10px] text-ink-400">{{ formatTime(msg.created_at) }}</span>
+          <span v-if="msg.confirmed_as" class="badge-completed text-[10px]">已确定为{{ confirmLabel(msg.confirmed_as) }}</span>
+          <template v-if="msg.role === 'assistant' && !msg.confirmed_as && conversation?.status === 'active'">
+            <button @click="confirmMsg(msg.id, 'world')" class="text-[10px] text-primary-500 hover:text-primary-700">确定为世界观</button>
+            <button @click="confirmMsg(msg.id, 'character')" class="text-[10px] text-emerald-500 hover:text-emerald-700">确定为人物</button>
+            <button @click="confirmMsg(msg.id, 'storyline')" class="text-[10px] text-purple-500 hover:text-purple-700">确定为故事线</button>
+          </template>
+        </div>
       </div>
       <div v-if="sending" class="p-4 rounded-lg bg-white border border-ink-200 max-w-[85%]">
         <p class="text-sm text-ink-400">思考中...</p>
@@ -43,7 +51,11 @@
       <button @click="generateStorylines" class="btn-secondary text-xs mt-3" :disabled="generatingStorylines">
         {{ generatingStorylines ? '生成中...' : '从对话生成故事线' }}
       </button>
+      <button @click="generateOutline" class="btn-primary text-xs mt-3 ml-2" :disabled="generatingOutline">
+        {{ generatingOutline ? '生成中...' : '生成总纲→卷纲' }}
+      </button>
       <p v-if="storylineGenerated" class="text-xs text-emerald-600 mt-1">故事线已生成</p>
+      <p v-if="outlineGenerated" class="text-xs text-emerald-600 mt-1">总纲和卷纲已生成，<router-link :to="`/novels/${novelId}/outlines`" class="text-primary-600 underline">查看大纲</router-link></p>
     </div>
 
     <!-- Input -->
@@ -76,6 +88,8 @@ const suggestions = ref([])
 const messagesContainer = ref(null)
 const generatingStorylines = ref(false)
 const storylineGenerated = ref(false)
+const generatingOutline = ref(false)
+const outlineGenerated = ref(false)
 
 function formatTime(iso) {
   if (!iso) return ''
@@ -146,6 +160,32 @@ async function generateStorylines() {
     storylineGenerated.value = true
   }
   generatingStorylines.value = false
+}
+
+async function generateOutline() {
+  generatingOutline.value = true
+  outlineGenerated.value = false
+  const res = await fetch(`/api/v1/projects/${novelId}/conversations/${convId}/generate-outline`, { method: 'POST' })
+  if (res.ok) {
+    outlineGenerated.value = true
+  }
+  generatingOutline.value = false
+}
+
+async function confirmMsg(msgId, confirmAs) {
+  const res = await fetch(`/api/v1/projects/${novelId}/conversations/${convId}/messages/${msgId}/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirm_as: confirmAs }),
+  })
+  if (res.ok) {
+    const msg = messages.value.find(m => m.id === msgId)
+    if (msg) msg.confirmed_as = confirmAs
+  }
+}
+
+function confirmLabel(type) {
+  return { world: '世界观', character: '人物', storyline: '故事线', outline: '大纲' }[type] || type
 }
 
 function scrollToBottom() {

@@ -108,3 +108,29 @@ async def apply_suggestion(novel_id: str, conv_id: int, request: ApplySuggestion
 
     else:
         return {"status": "noted", "message": "情节建议已记录，请手动应用到大纲"}
+
+
+class ConfirmMessageRequest(BaseModel):
+    confirm_as: str = Field(..., description="world|character|storyline|outline")
+
+
+@router.post("/{novel_id}/conversations/{conv_id}/messages/{msg_id}/confirm")
+async def confirm_message(novel_id: str, conv_id: int, msg_id: int, request: ConfirmMessageRequest):
+    service = get_conversation_service()
+    try:
+        result = await service.confirm_message(conv_id, msg_id, request.confirm_as, novel_id)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/{novel_id}/conversations/{conv_id}/generate-outline")
+async def generate_outline_from_conversation(novel_id: str, conv_id: int):
+    service = get_conversation_service()
+    try:
+        result = await service.generate_outline_from_conv(novel_id, conv_id)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"生成失败: {str(e)}")

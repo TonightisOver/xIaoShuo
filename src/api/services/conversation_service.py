@@ -76,7 +76,7 @@ class ConversationService:
                 "created_at": conv.created_at,
                 "messages": [
                     {"id": m.id, "role": m.role, "content": m.content,
-                     "created_at": m.created_at}
+                     "confirmed_as": m.confirmed_as, "created_at": m.created_at}
                     for m in conv.messages
                 ],
             }
@@ -191,6 +191,80 @@ class ConversationService:
                 conv.concluded_at = datetime.now(timezone.utc)
 
         return {"status": "concluded", "suggestions": suggestions}
+
+    async def confirm_message(self, conv_id: int, msg_id: int,
+                              confirm_as: str, novel_id: str) -> dict:
+        """确认消息为设定，直接写入对应数据"""
+        from src.api.models.db_models import Message as MsgModel
+
+        # Update message confirmed_as
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(MsgModel).where(MsgModel.id == msg_id)
+            )
+            msg = result.scalar_one_or_none()
+            if not msg:
+                raise ValueError("消息不存在")
+            msg.confirmed_as = confirm_as
+            content = msg.content
+
+        # Apply to settings
+        novel_manager = get_novel_manager()
+
+        if confirm_as == "world":
+            await novel_manager.upsert_world_setting(novel_id, background=content)
+            return {"status": "confirmed", "target": "world_settings", "content": content[:100]}
+
+        elif confirm_as == "character":
+            name = content[:20].split("：")[0].split(":")[0].strip()
+            if len(name) > 10:
+                name = name[:10]
+            desc = content[len(name):].lstrip("：:- ") or content
+            char_id = await novel_manager.create_character(novel_id, name=name or "新角色", description=desc)
+            return {"status": "confirmed", "target": "characters", "id": char_id}
+
+        elif confirm_as == "storyline":
+            from src.api.services.storyline_service import get_storyline_service
+            sl_service = get_storyline_service()
+            sl_id = await sl_service.create_storyline(novel_id, name=content[:50], description=content)
+            return {"status": "confirmed", "target": "storylines", "id": sl_id}
+
+        elif confirm_as == "outline":
+            from src.api.services.outline_service import get_outline_service
+            outline_service = get_outline_service()
+            await outline_service.upsert_master_outline(novel_id, {"premise": content})
+            return {"status": "confirmed", "target": "outline"}
+
+        return {"status": "confirmed", "target": confirm_as}
+
+    async def generate_outline_from_conv(self, novel_id: str, conv_id: int) -> dict:
+        """从对话生成总纲并自动生成卷纲"""
+        from src.api.services.outline_service import get_outline_service
+        from src.api.services.novel_manager import get_novel_manager
+
+        outline_service = get_outline_service()
+        novel_manager = get_novel_manager()
+
+        # Generate master outline from conversation
+        master_content = await outline_service.generate_master_from_conversation(novel_id, conv_id)
+
+        # Auto-generate volume outlines
+        novel = await novel_manager.get_novel(novel_id)
+        volumes = []
+        if novel:
+            try:
+                volumes = await outline_service.generate_volume_outlines(
+                    novel_id, novel.get("novel_type", "玄幻"), novel.get("target_words", 100000)
+                )
+            except Exception as e:
+                logger.warning(f"Auto volume generation failed: {e}")
+
+        return {
+            "status": "generated",
+            "master_outline": master_content,
+            "volumes_generated": len(volumes) > 0,
+            "volume_count": len(volumes),
+        }
 
 
 _conversation_service: ConversationService | None = None
