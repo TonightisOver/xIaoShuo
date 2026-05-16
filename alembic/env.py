@@ -9,7 +9,7 @@ from alembic import context
 from src.core.database import Base
 from src.api.models.db_models import (  # noqa: F401 - register with Base
     Novel, WorldSetting, PowerSystem, Character, Chapter, Volume, Task,
-    Conversation, Message
+    Conversation, Message, Outline
 )
 
 # Import settings for dynamic URL

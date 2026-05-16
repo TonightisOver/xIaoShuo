@@ -41,6 +41,14 @@
         </dl>
       </div>
 
+      <div v-if="activeTab === 'outlines'" class="card p-6">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="font-medium text-ink-800">大纲体系</h2>
+          <router-link :to="`/novels/${novelId}/outlines`" class="btn-primary text-sm">编辑大纲</router-link>
+        </div>
+        <p class="text-sm text-ink-500">在大纲编辑器中管理总纲、卷纲、章纲三级结构。</p>
+      </div>
+
       <div v-if="activeTab === 'world'" class="card p-6">
         <div class="flex justify-between items-center mb-4">
           <h2 class="font-medium text-ink-800">世界观设定</h2>
@@ -159,6 +167,7 @@ const unassignedChapters = computed(() =>
 
 const tabs = [
   { id: 'overview', label: '概览' },
+  { id: 'outlines', label: '大纲' },
   { id: 'world', label: '世界观' },
   { id: 'characters', label: '人物' },
   { id: 'chapters', label: '章节' },
