@@ -16,7 +16,10 @@
           </div>
           <p class="text-ink-500 text-sm">创建于 {{ formatTime(task.created_at) }}</p>
         </div>
-        <router-link to="/" class="btn-secondary text-sm">返回列表</router-link>
+        <div class="flex gap-2">
+          <router-link v-if="task.novel_id" :to="`/novels/${task.novel_id}`" class="btn-primary text-sm">查看小说项目</router-link>
+          <router-link to="/" class="btn-secondary text-sm">返回列表</router-link>
+        </div>
       </div>
 
       <!-- Progress Section -->

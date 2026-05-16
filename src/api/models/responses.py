@@ -28,6 +28,7 @@ class TaskDetailResponse(BaseModel):
     """任务详情响应"""
 
     task_id: str = Field(..., description="任务 ID")
+    novel_id: str | None = Field(None, description="关联小说项目 ID")
     status: str = Field(..., description="任务状态: pending/running/completed/failed")
     progress: TaskProgress | None = Field(None, description="任务进度")
     created_at: datetime = Field(..., description="创建时间")

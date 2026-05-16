@@ -96,6 +96,7 @@ async def get_novel_task(task_id: str) -> TaskDetailResponse:
 
     return TaskDetailResponse(
         task_id=task["task_id"],
+        novel_id=task.get("novel_id"),
         status=task["status"],
         progress=progress,
         created_at=task["created_at"],

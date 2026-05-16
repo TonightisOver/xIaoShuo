@@ -13,8 +13,8 @@
           <p class="text-ink-500 text-sm mt-1">{{ novel.novel_type }} · {{ (novel.target_words / 10000).toFixed(0) }}万字</p>
         </div>
         <div class="flex gap-2">
-          <button v-if="novel.status === 'draft'" @click="generate" class="btn-primary text-sm" :disabled="generating">
-            {{ generating ? '启动中...' : '开始生成' }}
+          <button v-if="novel.status === 'draft' || novel.status === 'completed' || novel.status === 'failed'" @click="generate" class="btn-primary text-sm" :disabled="generating">
+            {{ generating ? '启动中...' : (novel.status === 'draft' ? '开始生成' : '重新生成') }}
           </button>
           <router-link to="/" class="btn-secondary text-sm">返回</router-link>
         </div>
