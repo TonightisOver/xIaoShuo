@@ -8,14 +8,23 @@ RUN npm run build
 FROM python:3.14-slim
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i \
+    -e "s|http://deb.debian.org/debian-security|http://mirrors.aliyun.com/debian-security|g" \
+    -e "s|http://deb.debian.org/debian|http://mirrors.aliyun.com/debian|g" \
+    /etc/apt/sources.list.d/debian.sources && \
+    apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev gcc && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip install poetry && poetry config virtualenvs.create false
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
+    pip install poetry && \
+    poetry config virtualenvs.create false && \
+    poetry config installer.max-workers 1 && \
+    (poetry config requests.max-retries 5 || true)
 
 COPY pyproject.toml poetry.lock* ./
-RUN poetry install --only main --no-interaction && pip install asyncpg
+RUN poetry source add --priority=primary tsinghua https://pypi.tuna.tsinghua.edu.cn/simple || true
+RUN poetry lock --no-interaction && poetry install --only main --no-root --no-interaction
 
 COPY src/ ./src/
 COPY alembic/ ./alembic/
