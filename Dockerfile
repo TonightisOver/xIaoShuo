@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install poetry && poetry config virtualenvs.create false
 
 COPY pyproject.toml poetry.lock* ./
-RUN poetry install --no-dev --no-interaction || poetry install --only main --no-interaction
+RUN poetry install --only main --no-interaction && pip install asyncpg
 
 COPY src/ ./src/
 COPY alembic/ ./alembic/
