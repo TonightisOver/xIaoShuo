@@ -118,7 +118,15 @@
         />
       </div>
 
-      <div v-if="activeTab === 'conversations'" class="space-y-3">
+      <div v-if="activeTab === 'storylines'" class="card p-6">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="font-medium text-ink-800">故事线 / 人物弧光 / 场景</h2>
+          <router-link :to="`/novels/${novelId}/storylines`" class="btn-primary text-sm">管理故事线</router-link>
+        </div>
+        <p class="text-sm text-ink-500">在故事线管理器中创建和编辑故事线、人物弧光、场景，以及它们之间的关联关系。</p>
+      </div>
+
+      <div v-if="activeTab === 'conversations'" class="space-y-3">>
         <div class="flex justify-between items-center">
           <h2 class="font-medium text-ink-800">创作对话</h2>
           <button @click="startConversation" class="btn-primary text-sm">新建对话</button>
@@ -171,6 +179,7 @@ const tabs = [
   { id: 'world', label: '世界观' },
   { id: 'characters', label: '人物' },
   { id: 'chapters', label: '章节' },
+  { id: 'storylines', label: '故事线' },
   { id: 'conversations', label: '创作对话' },
 ]
 

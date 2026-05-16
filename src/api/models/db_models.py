@@ -290,3 +290,81 @@ class Outline(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(),
         onupdate=func.now()
     )
+
+
+class Storyline(Base):
+    """故事线"""
+
+    __tablename__ = "storylines"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    type: Mapped[str] = mapped_column(String(20), nullable=False, default="main")
+    description: Mapped[str | None] = mapped_column(Text)
+    key_events: Mapped[list[dict] | None] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now()
+    )
+
+
+class CharacterArc(Base):
+    """人物弧光"""
+
+    __tablename__ = "character_arcs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    character_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("characters.id", ondelete="CASCADE"), nullable=False
+    )
+    arc_type: Mapped[str] = mapped_column(String(30), nullable=False, default="growth")
+    description: Mapped[str | None] = mapped_column(Text)
+    stages: Mapped[list[dict] | None] = mapped_column(JSON, default=list)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now()
+    )
+
+
+class Scene(Base):
+    """场景"""
+
+    __tablename__ = "scenes_table"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    location: Mapped[str | None] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)
+    appearances: Mapped[list[dict] | None] = mapped_column(JSON, default=list)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now()
+    )
+
+
+class StorylineCharacter(Base):
+    """故事线-人物关联"""
+
+    __tablename__ = "storyline_characters"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    storyline_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("storylines.id", ondelete="CASCADE"), nullable=False
+    )
+    character_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("characters.id", ondelete="CASCADE"), nullable=False
+    )
+    role_in_line: Mapped[str | None] = mapped_column(String(50))

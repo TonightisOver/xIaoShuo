@@ -10,6 +10,7 @@ const routes = [
   { path: '/novels/:id/chapters/:num', name: 'chapter-edit', component: () => import('../views/ChapterEdit.vue') },
   { path: '/novels/:id/conversations/:convId', name: 'conversation', component: () => import('../views/Conversation.vue') },
   { path: '/novels/:id/outlines', name: 'outlines', component: () => import('../views/OutlineEditor.vue') },
+  { path: '/novels/:id/storylines', name: 'storylines', component: () => import('../views/StorylineManager.vue') },
 ]
 
 export default createRouter({
