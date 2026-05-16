@@ -217,6 +217,133 @@ class StorylineService:
         return created
 
 
+    async def generate_storylines_ai(self, novel_id: str) -> list[dict]:
+        """基于已有设定 LLM 自动生成故事线"""
+        from src.api.services.novel_manager import get_novel_manager
+        from src.core.llm.client import get_llm_client
+        from src.core.json_utils import safe_json_parse
+
+        manager = get_novel_manager()
+        novel = await manager.get_novel(novel_id)
+        world = await manager.get_world_setting(novel_id)
+        characters = await manager.list_characters(novel_id)
+
+        context = f"小说类型：{novel.get('novel_type', '')}\n创意：{novel.get('idea', '')[:200]}\n"
+        if world and world.get("background"):
+            context += f"世界观：{world['background'][:200]}\n"
+        if characters:
+            context += f"人物：{', '.join(c['name'] for c in characters[:5])}\n"
+
+        prompt = f"""基于以下小说设定，生成 2-4 条故事线（主线+副线+暗线）。
+
+{context}
+
+输出 JSON 数组：
+[{{"name": "线索名称", "type": "main|sub|hidden", "description": "描述", "key_events": [{{"chapter": 1, "event": "事件"}}]}}]
+
+只输出 JSON。"""
+
+        client = get_llm_client()
+        response = await client.generate(prompt, max_tokens=2000)
+        data = safe_json_parse(response, fallback=[], extract_partial=True)
+        if not isinstance(data, list):
+            data = []
+
+        created = []
+        for sl in data:
+            if isinstance(sl, dict) and sl.get("name"):
+                sl_id = await self.create_storyline(
+                    novel_id, name=sl["name"], type=sl.get("type", "main"),
+                    description=sl.get("description", ""), key_events=sl.get("key_events", [])
+                )
+                created.append({"id": sl_id, **sl})
+        return created
+
+    async def generate_arcs_ai(self, novel_id: str) -> list[dict]:
+        """基于已有人物+大纲 LLM 自动生成人物弧光"""
+        from src.api.services.novel_manager import get_novel_manager
+        from src.core.llm.client import get_llm_client
+        from src.core.json_utils import safe_json_parse
+
+        manager = get_novel_manager()
+        characters = await manager.list_characters(novel_id)
+        if not characters:
+            return []
+
+        char_info = "\n".join(f"- {c['name']}({c.get('role', '未知')}): {c.get('description', '')[:50]}" for c in characters[:5])
+
+        prompt = f"""基于以下人物，为每个主要角色生成人物弧光（成长轨迹）。
+
+人物：
+{char_info}
+
+输出 JSON 数组：
+[{{"character_id": 1, "arc_type": "growth|fall|transformation", "description": "弧光描述", "stages": [{{"chapter_range": [1, 10], "state": "状态", "trigger": "触发事件"}}]}}]
+
+只输出 JSON。"""
+
+        client = get_llm_client()
+        response = await client.generate(prompt, max_tokens=2000)
+        data = safe_json_parse(response, fallback=[], extract_partial=True)
+        if not isinstance(data, list):
+            data = []
+
+        created = []
+        for arc in data:
+            if isinstance(arc, dict):
+                char_id = arc.get("character_id")
+                if char_id and any(c["id"] == char_id for c in characters):
+                    arc_id = await self.create_character_arc(
+                        novel_id, character_id=char_id,
+                        arc_type=arc.get("arc_type", "growth"),
+                        description=arc.get("description", ""),
+                        stages=arc.get("stages", [])
+                    )
+                    created.append({"id": arc_id, **arc})
+        return created
+
+    async def generate_scenes_ai(self, novel_id: str) -> list[dict]:
+        """基于世界观+大纲 LLM 自动生成场景"""
+        from src.api.services.novel_manager import get_novel_manager
+        from src.core.llm.client import get_llm_client
+        from src.core.json_utils import safe_json_parse
+
+        manager = get_novel_manager()
+        world = await manager.get_world_setting(novel_id)
+
+        context = ""
+        if world:
+            if world.get("geography"):
+                context += f"地理：{world['geography'][:200]}\n"
+            if world.get("background"):
+                context += f"背景：{world['background'][:200]}\n"
+
+        prompt = f"""基于以下世界观设定，生成 3-6 个重要场景/地点。
+
+{context or '暂无世界观，请生成通用场景'}
+
+输出 JSON 数组：
+[{{"name": "场景名称", "location": "地理位置", "description": "描述", "appearances": [{{"chapter": 1, "event": "发生的事件"}}]}}]
+
+只输出 JSON。"""
+
+        client = get_llm_client()
+        response = await client.generate(prompt, max_tokens=2000)
+        data = safe_json_parse(response, fallback=[], extract_partial=True)
+        if not isinstance(data, list):
+            data = []
+
+        created = []
+        for sc in data:
+            if isinstance(sc, dict) and sc.get("name"):
+                sc_id = await self.create_scene(
+                    novel_id, name=sc["name"], location=sc.get("location", ""),
+                    description=sc.get("description", ""), appearances=sc.get("appearances", [])
+                )
+                created.append({"id": sc_id, **sc})
+        return created
+
+
 _storyline_service: StorylineService | None = None
 
 

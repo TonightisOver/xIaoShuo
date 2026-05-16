@@ -157,3 +157,24 @@ async def generate_storylines_from_conversation(novel_id: str, conv_id: int):
         return {"status": "generated", "storylines": created, "count": len(created)}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{novel_id}/storylines/generate-ai")
+async def generate_storylines_ai(novel_id: str):
+    service = get_storyline_service()
+    created = await service.generate_storylines_ai(novel_id)
+    return {"status": "generated", "storylines": created, "count": len(created)}
+
+
+@router.post("/{novel_id}/character-arcs/generate-ai")
+async def generate_arcs_ai(novel_id: str):
+    service = get_storyline_service()
+    created = await service.generate_arcs_ai(novel_id)
+    return {"status": "generated", "arcs": created, "count": len(created)}
+
+
+@router.post("/{novel_id}/scenes/generate-ai")
+async def generate_scenes_ai(novel_id: str):
+    service = get_storyline_service()
+    created = await service.generate_scenes_ai(novel_id)
+    return {"status": "generated", "scenes": created, "count": len(created)}

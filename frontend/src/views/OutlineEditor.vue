@@ -46,9 +46,14 @@
       <div v-for="vol in volumes" :key="vol.id" class="card p-5">
         <div class="flex items-center justify-between mb-2">
           <h3 class="font-medium text-sm">卷{{ vol.volume_number }}：{{ vol.content?.title || '未命名' }}</h3>
-          <button @click="generateChapters(vol.volume_number)" class="btn-secondary text-xs" :disabled="generatingChs === vol.volume_number">
-            {{ generatingChs === vol.volume_number ? '生成中...' : '生成章纲' }}
-          </button>
+          <div class="flex gap-2">
+            <button @click="generateChapters(vol.volume_number)" class="btn-secondary text-xs" :disabled="generatingChs === vol.volume_number">
+              {{ generatingChs === vol.volume_number ? '生成中...' : '生成章纲' }}
+            </button>
+            <button v-if="chaptersByVolume[vol.volume_number]" @click="generateVolumeContent(vol.volume_number)" class="btn-primary text-xs">
+              生成本卷章节
+            </button>
+          </div>
         </div>
         <p v-if="vol.content?.summary" class="text-sm text-ink-600 mb-2">{{ vol.content.summary }}</p>
         <p v-if="vol.content?.goal" class="text-xs text-ink-500">目标：{{ vol.content.goal }}</p>
@@ -105,20 +110,14 @@ async function load() {
       }
     }
     volumes.value = data.volumes || []
-    chapters.value = data.unassigned_chapters || []
-    // Also get chapter outlines
-    const chRes = await fetch(`/api/v1/projects/${novelId}/outlines`)
-    if (chRes.ok) {
-      const chData = await chRes.json()
-      // Flatten all chapter outlines from volumes
-      const allChs = []
-      for (const vol of chData.volumes || []) {
-        for (const ch of vol.chapters || []) {
-          allChs.push(ch)
-        }
+    // Collect chapter outlines preserving volume_number
+    const allChs = []
+    for (const vol of data.volumes || []) {
+      for (const ch of vol.chapters || []) {
+        allChs.push({ ...ch, volume_number: vol.volume_number })
       }
-      chapters.value = allChs
     }
+    chapters.value = allChs
   }
 }
 
@@ -157,6 +156,18 @@ async function generateChapters(volNum) {
     await load()
   }
   generatingChs.value = null
+}
+
+async function generateVolumeContent(volNum) {
+  const res = await fetch(`/api/v1/projects/${novelId}/generate-volume`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ volume_number: volNum }),
+  })
+  if (res.ok) {
+    const data = await res.json()
+    alert(`已开始生成卷${volNum}章节，任务ID: ${data.task_id}`)
+  }
 }
 
 onMounted(load)

@@ -9,7 +9,10 @@
     <section class="mb-8">
       <div class="flex items-center justify-between mb-3">
         <h2 class="font-medium text-ink-800">故事线</h2>
-        <button @click="addStoryline" class="btn-primary text-xs">添加</button>
+        <div class="flex gap-2">
+          <button @click="aiGenerateStorylines" class="btn-secondary text-xs" :disabled="aiLoading">AI 生成</button>
+          <button @click="addStoryline" class="btn-primary text-xs">手动添加</button>
+        </div>
       </div>
       <div v-if="storylines.length === 0" class="card p-4 text-center text-ink-400 text-sm">暂无故事线</div>
       <div v-for="sl in storylines" :key="sl.id" class="card p-4 mb-2">
@@ -29,7 +32,10 @@
     <section class="mb-8">
       <div class="flex items-center justify-between mb-3">
         <h2 class="font-medium text-ink-800">人物弧光</h2>
-        <button @click="addArc" class="btn-primary text-xs">添加</button>
+        <div class="flex gap-2">
+          <button @click="aiGenerateArcs" class="btn-secondary text-xs" :disabled="aiLoading">AI 生成</button>
+          <button @click="addArc" class="btn-primary text-xs">手动添加</button>
+        </div>
       </div>
       <div v-if="arcs.length === 0" class="card p-4 text-center text-ink-400 text-sm">暂无人物弧光</div>
       <div v-for="arc in arcs" :key="arc.id" class="card p-4 mb-2">
@@ -48,7 +54,10 @@
     <section>
       <div class="flex items-center justify-between mb-3">
         <h2 class="font-medium text-ink-800">场景</h2>
-        <button @click="addScene" class="btn-primary text-xs">添加</button>
+        <div class="flex gap-2">
+          <button @click="aiGenerateScenes" class="btn-secondary text-xs" :disabled="aiLoading">AI 生成</button>
+          <button @click="addScene" class="btn-primary text-xs">手动添加</button>
+        </div>
       </div>
       <div v-if="scenes.length === 0" class="card p-4 text-center text-ink-400 text-sm">暂无场景</div>
       <div v-for="scene in scenes" :key="scene.id" class="card p-4 mb-2">
@@ -75,6 +84,7 @@ const novelId = route.params.id
 const storylines = ref([])
 const arcs = ref([])
 const scenes = ref([])
+const aiLoading = ref(false)
 
 async function load() {
   const [slRes, arcRes, scRes] = await Promise.all([
@@ -137,6 +147,27 @@ async function addScene() {
 async function deleteScene(id) {
   await fetch(`/api/v1/projects/${novelId}/scenes/${id}`, { method: 'DELETE' })
   await load()
+}
+
+async function aiGenerateStorylines() {
+  aiLoading.value = true
+  await fetch(`/api/v1/projects/${novelId}/storylines/generate-ai`, { method: 'POST' })
+  await load()
+  aiLoading.value = false
+}
+
+async function aiGenerateArcs() {
+  aiLoading.value = true
+  await fetch(`/api/v1/projects/${novelId}/character-arcs/generate-ai`, { method: 'POST' })
+  await load()
+  aiLoading.value = false
+}
+
+async function aiGenerateScenes() {
+  aiLoading.value = true
+  await fetch(`/api/v1/projects/${novelId}/scenes/generate-ai`, { method: 'POST' })
+  await load()
+  aiLoading.value = false
 }
 
 onMounted(load)

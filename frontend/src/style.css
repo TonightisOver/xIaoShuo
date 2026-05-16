@@ -11,19 +11,22 @@
 @layer components {
   .btn-primary {
     @apply px-6 py-2.5 bg-primary-600 text-white rounded-lg font-medium
-           hover:bg-primary-700 active:bg-primary-800
-           transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+           hover:bg-primary-700 hover:shadow-md active:bg-primary-800
+           transform hover:scale-[1.02] active:scale-[0.98]
+           transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none;
   }
 
   .btn-secondary {
     @apply px-6 py-2.5 border border-ink-300 text-ink-700 rounded-lg font-medium
-           hover:bg-ink-100 active:bg-ink-200
-           transition-colors duration-150;
+           hover:bg-ink-100 hover:shadow-sm active:bg-ink-200
+           transform hover:scale-[1.02] active:scale-[0.98]
+           transition-all duration-150;
   }
 
   .card {
     @apply bg-white rounded-xl border border-ink-200 shadow-sm
-           hover:shadow-md transition-shadow duration-200;
+           hover:shadow-lg hover:-translate-y-0.5
+           transition-all duration-200;
   }
 
   .input {
@@ -50,5 +53,18 @@
 
   .badge-failed {
     @apply badge bg-red-100 text-red-800;
+  }
+}
+
+@layer utilities {
+  .shimmer {
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
   }
 }

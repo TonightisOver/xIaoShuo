@@ -6,9 +6,13 @@
       <div class="flex items-center justify-between mb-6">
         <div>
           <h1 class="text-xl font-bold text-ink-900">第{{ chapter.chapter_number }}章：{{ chapter.title }}</h1>
-          <p class="text-xs text-ink-400 mt-1">{{ chapter.word_count }} 字</p>
+          <p class="text-xs text-ink-400 mt-1">{{ contentLength }} 字</p>
         </div>
         <div class="flex gap-2">
+          <button @click="regenerate" class="btn-secondary text-sm" :disabled="regenerating">
+            {{ regenerating ? '生成中...' : '重新生成' }}
+          </button>
+          <button @click="deleteChapter" class="text-red-500 hover:text-red-700 text-sm px-3 py-2">删除</button>
           <button @click="save" class="btn-primary text-sm" :disabled="saving">{{ saving ? '保存中...' : '保存' }}</button>
           <router-link :to="`/novels/${novelId}`" class="btn-secondary text-sm">返回</router-link>
         </div>
@@ -29,9 +33,10 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
+const router = useRouter()
 const novelId = route.params.id
 const chapterNum = route.params.num
 
@@ -39,6 +44,7 @@ const chapter = ref(null)
 const content = ref('')
 const saving = ref(false)
 const saved = ref(false)
+const regenerating = ref(false)
 
 const contentLength = computed(() => content.value.length)
 
@@ -61,6 +67,27 @@ async function save() {
   saving.value = false
   saved.value = true
   setTimeout(() => { saved.value = false }, 2000)
+}
+
+async function regenerate() {
+  if (!confirm('重新生成将覆盖当前内容，确定吗？')) return
+  regenerating.value = true
+  const res = await fetch(`/api/v1/projects/${novelId}/generate-chapters`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chapter_start: parseInt(chapterNum), chapter_end: parseInt(chapterNum) }),
+  })
+  if (res.ok) {
+    const data = await res.json()
+    router.push(`/task/${data.task_id}`)
+  }
+  regenerating.value = false
+}
+
+async function deleteChapter() {
+  if (!confirm('确定删除本章？此操作不可恢复。')) return
+  await fetch(`/api/v1/projects/${novelId}/chapters/${chapterNum}`, { method: 'DELETE' })
+  router.push(`/novels/${novelId}`)
 }
 
 onMounted(load)
