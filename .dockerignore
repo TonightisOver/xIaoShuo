@@ -11,11 +11,6 @@ logs/
 data/
 tests/
 frontend/node_modules/
-frontend/src/
-frontend/package-lock.json
-frontend/vite.config.js
-frontend/tailwind.config.js
-frontend/postcss.config.js
-frontend/index.html
+frontend/dist/
 *.md
 .harness/
