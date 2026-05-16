@@ -83,6 +83,25 @@
           </div>
         </router-link>
       </div>
+
+      <div v-if="activeTab === 'conversations'" class="space-y-3">
+        <div class="flex justify-between items-center">
+          <h2 class="font-medium text-ink-800">创作对话</h2>
+          <button @click="startConversation" class="btn-primary text-sm">新建对话</button>
+        </div>
+        <div v-if="conversations.length === 0" class="card p-6 text-center text-ink-400">暂无对话，开始一次创作讨论吧</div>
+        <router-link v-for="conv in conversations" :key="conv.id"
+          :to="`/novels/${novelId}/conversations/${conv.id}`"
+          class="card p-4 block hover:bg-ink-50 transition-colors"
+        >
+          <div class="flex justify-between items-center">
+            <span class="font-medium text-sm">{{ conv.topic }}</span>
+            <span :class="conv.status === 'active' ? 'badge-running' : 'badge-completed'">
+              {{ conv.status === 'active' ? '进行中' : '已结束' }}
+            </span>
+          </div>
+        </router-link>
+      </div>
     </template>
   </div>
 </template>
@@ -99,6 +118,7 @@ const novel = ref(null)
 const world = ref(null)
 const characters = ref([])
 const chapters = ref([])
+const conversations = ref([])
 const loading = ref(true)
 const generating = ref(false)
 const activeTab = ref('overview')
@@ -108,6 +128,7 @@ const tabs = [
   { id: 'world', label: '世界观' },
   { id: 'characters', label: '人物' },
   { id: 'chapters', label: '章节' },
+  { id: 'conversations', label: '创作对话' },
 ]
 
 const statusLabel = computed(() => {
@@ -118,16 +139,18 @@ const statusLabel = computed(() => {
 async function fetchAll() {
   loading.value = true
   try {
-    const [nRes, wRes, cRes, chRes] = await Promise.all([
+    const [nRes, wRes, cRes, chRes, convRes] = await Promise.all([
       fetch(`/api/v1/projects/${novelId}`),
       fetch(`/api/v1/projects/${novelId}/world`),
       fetch(`/api/v1/projects/${novelId}/characters`),
       fetch(`/api/v1/projects/${novelId}/chapters`),
+      fetch(`/api/v1/projects/${novelId}/conversations`),
     ])
     if (nRes.ok) novel.value = await nRes.json()
     if (wRes.ok) world.value = await wRes.json()
     if (cRes.ok) characters.value = await cRes.json()
     if (chRes.ok) chapters.value = await chRes.json()
+    if (convRes.ok) conversations.value = await convRes.json()
   } finally {
     loading.value = false
   }
@@ -143,6 +166,20 @@ async function generate() {
     }
   } finally {
     generating.value = false
+  }
+}
+
+async function startConversation() {
+  const topic = prompt('对话主题（如：讨论主角设定、情节走向）')
+  if (!topic) return
+  const res = await fetch(`/api/v1/projects/${novelId}/conversations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic }),
+  })
+  if (res.ok) {
+    const data = await res.json()
+    router.push(`/novels/${novelId}/conversations/${data.id}`)
   }
 }
 

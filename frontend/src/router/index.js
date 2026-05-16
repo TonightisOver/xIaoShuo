@@ -8,6 +8,7 @@ const routes = [
   { path: '/novels/:id/world', name: 'world', component: () => import('../views/WorldEdit.vue') },
   { path: '/novels/:id/characters', name: 'characters', component: () => import('../views/Characters.vue') },
   { path: '/novels/:id/chapters/:num', name: 'chapter-edit', component: () => import('../views/ChapterEdit.vue') },
+  { path: '/novels/:id/conversations/:convId', name: 'conversation', component: () => import('../views/Conversation.vue') },
 ]
 
 export default createRouter({

@@ -222,3 +222,45 @@ class Task(Base):
             "result": self.result,
             "errors": self.errors or [],
         }
+
+
+class Conversation(Base):
+    """创作对话"""
+
+    __tablename__ = "conversations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    topic: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    concluded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    messages: Mapped[list["Message"]] = relationship(
+        back_populates="conversation", cascade="all, delete-orphan",
+        order_by="Message.created_at"
+    )
+
+
+class Message(Base):
+    """对话消息"""
+
+    __tablename__ = "messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    conversation: Mapped["Conversation"] = relationship(back_populates="messages")
