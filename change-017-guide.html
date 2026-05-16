@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>CHANGE-017 故事线/人物弧光/场景 使用指南</title>
+<style>
+body { font-family: -apple-system, "Microsoft YaHei", sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #f8f9fa; color: #333; line-height: 1.8; }
+h1 { color: #1a6dff; border-bottom: 2px solid #1a6dff; padding-bottom: 10px; }
+h2 { color: #495057; margin-top: 30px; }
+h3 { color: #6c757d; }
+.step { background: white; border-radius: 8px; padding: 20px; margin: 15px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+code { background: #e9ecef; padding: 2px 6px; border-radius: 4px; font-size: 14px; }
+pre { background: #212529; color: #f8f9fa; padding: 15px; border-radius: 6px; overflow-x: auto; font-size: 13px; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+th, td { border: 1px solid #dee2e6; padding: 10px; text-align: left; }
+th { background: #e9ecef; }
+.tip { background: #e8f5e9; border-left: 4px solid #4caf50; padding: 12px; margin: 15px 0; border-radius: 4px; }
+.warn { background: #fff3e0; border-left: 4px solid #ff9800; padding: 12px; margin: 15px 0; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<h1>CHANGE-017: 故事线 / 人物弧光 / 场景管理</h1>
+
+<h2>功能概述</h2>
+<p>为小说项目添加结构化的叙事管理能力：</p>
+<table>
+<tr><th>功能</th><th>说明</th><th>用途</th></tr>
+<tr><td><strong>故事线</strong></td><td>贯穿多章的情节线索（主线/副线/暗线）</td><td>管理多条并行的情节脉络</td></tr>
+<tr><td><strong>人物弧光</strong></td><td>人物在故事中的内在变化轨迹</td><td>追踪角色成长/堕落/转变</td></tr>
+<tr><td><strong>场景</strong></td><td>故事中的重要时空场景</td><td>管理地点和事件发生地</td></tr>
+<tr><td><strong>三元关联</strong></td><td>故事线↔人物↔场景的关系</td><td>为图谱可视化提供数据</td></tr>
+</table>
+
+<h2>使用方式</h2>
+
+<h3>方式一：前端界面</h3>
+<div class="step">
+<p><strong>1.</strong> 打开小说详情页 → 点击"故事线" Tab</p>
+<p><strong>2.</strong> 点击"管理故事线"进入管理页面</p>
+<p><strong>3.</strong> 在管理页面可以：</p>
+<ul>
+<li>添加/删除故事线（主线/副线/暗线）</li>
+<li>添加/删除人物弧光（需要人物 ID）</li>
+<li>添加/删除场景</li>
+</ul>
+</div>
+
+<h3>方式二：API 调用</h3>
+
+<h4>故事线 CRUD</h4>
+<pre>
+# 创建故事线
+curl -X POST http://localhost/api/v1/projects/{novel_id}/storylines \
+  -H "Content-Type: application/json" \
+  -d '{"name": "主线：修仙之路", "type": "main", "description": "主角从凡人到仙人的成长", "key_events": [{"chapter": 1, "event": "觉醒灵根"}]}'
+
+# 列出故事线
+curl http://localhost/api/v1/projects/{novel_id}/storylines
+
+# 更新故事线
+curl -X PUT http://localhost/api/v1/projects/{novel_id}/storylines/{id} \
+  -H "Content-Type: application/json" \
+  -d '{"name": "主线：修仙之路", "type": "main", "status": "active"}'
+
+# 删除故事线
+curl -X DELETE http://localhost/api/v1/projects/{novel_id}/storylines/{id}
+
+# 关联人物到故事线
+curl -X POST http://localhost/api/v1/projects/{novel_id}/storylines/{id}/characters \
+  -H "Content-Type: application/json" \
+  -d '{"character_id": 1, "role_in_line": "主角"}'
+</pre>
+
+<h4>人物弧光</h4>
+<pre>
+# 创建人物弧光
+curl -X POST http://localhost/api/v1/projects/{novel_id}/character-arcs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "character_id": 1,
+    "arc_type": "growth",
+    "description": "从懦弱少年成长为担当之人",
+    "stages": [
+      {"chapter_range": [1, 5], "state": "懦弱", "trigger": "家乡被毁"},
+      {"chapter_range": [6, 15], "state": "独立", "trigger": "师父离去"},
+      {"chapter_range": [16, 30], "state": "成熟", "trigger": "保护同伴"}
+    ]
+  }'
+
+# 列出弧光
+curl http://localhost/api/v1/projects/{novel_id}/character-arcs
+</pre>
+
+<h4>场景</h4>
+<pre>
+# 创建场景
+curl -X POST http://localhost/api/v1/projects/{novel_id}/scenes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "青云宗大殿",
+    "location": "青云山顶",
+    "description": "宗门议事之地",
+    "appearances": [{"chapter": 3, "event": "入门仪式"}, {"chapter": 20, "event": "宗门大比"}]
+  }'
+
+# 列出场景
+curl http://localhost/api/v1/projects/{novel_id}/scenes
+</pre>
+
+<h4>获取三元关系（供图谱使用）</h4>
+<pre>
+# 获取完整关系数据
+curl http://localhost/api/v1/projects/{novel_id}/relations
+
+# 返回格式：
+{
+  "storylines": [...],
+  "character_arcs": [...],
+  "scenes": [...],
+  "storyline_character_links": [
+    {"storyline_id": 1, "character_id": 1, "role_in_line": "主角"}
+  ]
+}
+</pre>
+
+<h2>数据模型</h2>
+
+<h3>故事线类型</h3>
+<table>
+<tr><th>type</th><th>说明</th></tr>
+<tr><td>main</td><td>主线 - 核心情节</td></tr>
+<tr><td>sub</td><td>副线 - 辅助情节</td></tr>
+<tr><td>hidden</td><td>暗线 - 隐藏伏笔</td></tr>
+</table>
+
+<h3>弧光类型</h3>
+<table>
+<tr><th>arc_type</th><th>说明</th><th>示例</th></tr>
+<tr><td>growth</td><td>成长型</td><td>从弱到强</td></tr>
+<tr><td>fall</td><td>堕落型</td><td>从善到恶</td></tr>
+<tr><td>flat</td><td>平坦型</td><td>始终如一</td></tr>
+<tr><td>transformation</td><td>转变型</td><td>从敌到友</td></tr>
+</table>
+
+<h3>故事线状态</h3>
+<table>
+<tr><th>status</th><th>说明</th></tr>
+<tr><td>active</td><td>进行中</td></tr>
+<tr><td>resolved</td><td>已解决/完结</td></tr>
+<tr><td>abandoned</td><td>已放弃</td></tr>
+</table>
+
+<h2>典型工作流</h2>
+<div class="step">
+<p><strong>1. 创建故事线</strong> → 定义主线和副线</p>
+<p><strong>2. 关联人物</strong> → 每条线涉及哪些角色</p>
+<p><strong>3. 定义弧光</strong> → 每个角色在故事中如何变化</p>
+<p><strong>4. 创建场景</strong> → 重要地点和事件发生地</p>
+<p><strong>5. 查看关系</strong> → GET /relations 获取完整图谱数据</p>
+<p><strong>6. 可视化</strong> → CHANGE-018 将用树形图展示这些关系</p>
+</div>
+
+<div class="tip">
+<strong>提示：</strong>故事线的 key_events 和场景的 appearances 都引用了章节号，这样可以追踪"哪个事件发生在哪一章的哪个场景"。
+</div>
+
+<div class="warn">
+<strong>注意：</strong>人物弧光需要先创建人物（在"人物"管理中），然后用人物 ID 创建弧光。
+</div>
+
+</body>
+</html>
