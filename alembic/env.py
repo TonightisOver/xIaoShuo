@@ -8,7 +8,7 @@ from alembic import context
 # Import your models' Base
 from src.core.database import Base
 from src.api.models.db_models import (  # noqa: F401 - register with Base
-    Novel, WorldSetting, PowerSystem, Character, Chapter, Task
+    Novel, WorldSetting, PowerSystem, Character, Chapter, Volume, Task
 )
 
 # Import settings for dynamic URL

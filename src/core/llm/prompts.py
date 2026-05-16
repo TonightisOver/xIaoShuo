@@ -111,15 +111,16 @@ OUTLINE_GENERATION_PROMPT = PromptTemplate(
 
 请生成：
 1. 总体大纲（开端、发展、高潮、结局）
-2. 章节大纲（每章标题、主要情节、字数分配）
+2. 按卷划分章节（每卷 5-10 章，根据情节自然分卷）
+3. 每章标题和主要情节
 
 要求：
 - 情节紧凑，节奏合理
 - 符合三幕结构或起承转合
 - 总字数控制在{target_words}左右
-- 生成 10-20 章
+- 合理分卷，每卷有独立的小高潮
 
-请以 JSON 格式输出，包含以下字段：
+请以 JSON 格式输出：
 {{
     "outline": {{
         "opening": "开端描述",
@@ -127,12 +128,14 @@ OUTLINE_GENERATION_PROMPT = PromptTemplate(
         "climax": "高潮描述",
         "ending": "结局描述"
     }},
-    "chapter_outlines": [
+    "volumes": [
         {{
-            "chapter": 1,
-            "title": "章节标题",
-            "plot": "主要情节",
-            "words": 5000
+            "volume_number": 1,
+            "title": "卷标题",
+            "summary": "本卷概要",
+            "chapters": [
+                {{"chapter": 1, "title": "章节标题", "plot": "主要情节", "words": 5000}}
+            ]
         }}
     ]
 }}

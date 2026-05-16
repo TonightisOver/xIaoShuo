@@ -20,6 +20,7 @@ class NovelState(TypedDict, total=False):
     outline: dict | None
     chapter_outlines: list[dict]
     chapters: list[dict]
+    volumes: list[dict]
 
     # 流程控制
     current_stage: str

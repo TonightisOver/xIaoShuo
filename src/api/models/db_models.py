@@ -52,6 +52,10 @@ class Novel(Base):
         back_populates="novel", cascade="all, delete-orphan",
         order_by="Chapter.chapter_number"
     )
+    volumes: Mapped[list["Volume"]] = relationship(
+        back_populates="novel", cascade="all, delete-orphan",
+        order_by="Volume.volume_number"
+    )
 
 
 class WorldSetting(Base):
@@ -123,6 +127,31 @@ class Character(Base):
     novel: Mapped["Novel"] = relationship(back_populates="characters")
 
 
+class Volume(Base):
+    """卷"""
+
+    __tablename__ = "volumes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    volume_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str | None] = mapped_column(String(200))
+    summary: Mapped[str | None] = mapped_column(Text)
+    outline: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    chapter_start: Mapped[int | None] = mapped_column(Integer)
+    chapter_end: Mapped[int | None] = mapped_column(Integer)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now()
+    )
+
+    novel: Mapped["Novel"] = relationship(back_populates="volumes")
+
+
 class Chapter(Base):
     """章节"""
 
@@ -133,6 +162,7 @@ class Chapter(Base):
         String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
         nullable=False, index=True
     )
+    volume_number: Mapped[int | None] = mapped_column(Integer)
     chapter_number: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str | None] = mapped_column(String(200))
     content: Mapped[str | None] = mapped_column(Text)

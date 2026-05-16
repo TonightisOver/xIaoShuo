@@ -152,6 +152,68 @@ async def generate_novel(novel_id: str, background_tasks: BackgroundTasks):
     return {"task_id": task_id, "novel_id": novel_id, "status": "generating"}
 
 
+# --- Volumes ---
+
+@router.get("/{novel_id}/volumes")
+async def list_volumes(novel_id: str):
+    manager = get_novel_manager()
+    return await manager.list_volumes(novel_id)
+
+
+@router.get("/{novel_id}/volumes/{volume_number}")
+async def get_volume(novel_id: str, volume_number: int):
+    manager = get_novel_manager()
+    vol = await manager.get_volume(novel_id, volume_number)
+    if not vol:
+        raise HTTPException(status_code=404, detail="Volume not found")
+    return vol
+
+
+class VolumeUpdateRequest(BaseModel):
+    title: str | None = None
+    summary: str | None = None
+
+
+@router.put("/{novel_id}/volumes/{volume_number}")
+async def update_volume(novel_id: str, volume_number: int, request: VolumeUpdateRequest):
+    manager = get_novel_manager()
+    updated = await manager.update_volume(novel_id, volume_number, **request.model_dump(exclude_none=True))
+    if not updated:
+        raise HTTPException(status_code=404, detail="Volume not found")
+    return {"status": "updated"}
+
+
+class GenerateVolumeRequest(BaseModel):
+    volume_number: int
+
+
+@router.post("/{novel_id}/generate-volume", status_code=202)
+async def generate_volume(novel_id: str, request: GenerateVolumeRequest, background_tasks: BackgroundTasks):
+    manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
+
+    vol = await manager.get_volume(novel_id, request.volume_number)
+    if not vol:
+        raise HTTPException(status_code=404, detail="Volume not found")
+
+    from src.api.services.novel_generator import generate_volume_background
+
+    task_manager = get_task_manager()
+    task_id = await task_manager.create_task(
+        idea=novel["idea"],
+        novel_type=novel["novel_type"],
+        target_words=novel["target_words"],
+        novel_id=novel_id,
+    )
+
+    background_tasks.add_task(generate_volume_background, task_id, novel_id, request.volume_number)
+    await manager.update_volume(novel_id, request.volume_number, status="generating")
+
+    return {"task_id": task_id, "novel_id": novel_id, "volume_number": request.volume_number, "status": "generating"}
+
+
 # --- World Setting ---
 
 @router.get("/{novel_id}/world")

@@ -46,18 +46,15 @@ async def node(state: NovelState) -> NovelState:
                 "climax": "邪派来袭，主角挺身而出",
                 "ending": "主角战胜邪派，成为一代强者",
             },
-            "chapter_outlines": [
+            "volumes": [
                 {
-                    "chapter": 1,
-                    "title": "家乡变故",
-                    "plot": "主角的家乡遭到邪派袭击，师父出现相救",
-                    "words": 5000,
-                },
-                {
-                    "chapter": 2,
-                    "title": "拜入门派",
-                    "plot": "主角跟随师父来到门派，开始修炼之路",
-                    "words": 5000,
+                    "volume_number": 1,
+                    "title": "初入江湖",
+                    "summary": "主角遭遇变故，拜入门派开始修炼",
+                    "chapters": [
+                        {"chapter": 1, "title": "家乡变故", "plot": "主角的家乡遭到邪派袭击", "words": 5000},
+                        {"chapter": 2, "title": "拜入门派", "plot": "跟随师父来到门派", "words": 5000},
+                    ],
                 },
             ],
         }
@@ -66,19 +63,21 @@ async def node(state: NovelState) -> NovelState:
             response, fallback=fallback_data, extract_partial=True
         )
 
-        # 验证 JSON 结构
-        if not validate_json_structure(
-            result, ["outline", "chapter_outlines"], "outline_generation"
-        ):
-            logger.warning("Invalid outline_generation structure, using fallback")
-            result = fallback_data
-
         outline = result.get("outline", {})
+        volumes = result.get("volumes", [])
+
+        # 从 volumes 中提取 chapter_outlines（兼容旧格式）
         chapter_outlines = result.get("chapter_outlines", [])
+        if not chapter_outlines and volumes:
+            for vol in volumes:
+                for ch in vol.get("chapters", []):
+                    ch["volume_number"] = vol.get("volume_number", 1)
+                    chapter_outlines.append(ch)
 
         return {
             **state,
             "outline": outline,
+            "volumes": volumes,
             "chapter_outlines": chapter_outlines,
             "current_stage": "outline_generation_completed",
         }
@@ -92,30 +91,27 @@ async def node(state: NovelState) -> NovelState:
             "ending": "主角战胜邪派，成为一代强者",
         }
 
-        chapter_outlines = [
+        volumes = [
             {
-                "chapter": 1,
-                "title": "家乡变故",
-                "plot": "主角的家乡遭到邪派袭击，师父出现相救",
-                "words": 5000,
-            },
-            {
-                "chapter": 2,
-                "title": "拜入门派",
-                "plot": "主角跟随师父来到门派，开始修炼之路",
-                "words": 5000,
-            },
-            {
-                "chapter": 3,
-                "title": "初露锋芒",
-                "plot": "主角在门派比武中展现天赋",
-                "words": 5000,
+                "volume_number": 1,
+                "title": "初入江湖",
+                "summary": "主角遭遇变故，拜入门派",
+                "chapters": [
+                    {"chapter": 1, "title": "家乡变故", "plot": "邪派袭击", "words": 5000, "volume_number": 1},
+                    {"chapter": 2, "title": "拜入门派", "plot": "开始修炼", "words": 5000, "volume_number": 1},
+                    {"chapter": 3, "title": "初露锋芒", "plot": "门派比武", "words": 5000, "volume_number": 1},
+                ],
             },
         ]
+
+        chapter_outlines = []
+        for vol in volumes:
+            chapter_outlines.extend(vol["chapters"])
 
         return {
             **state,
             "outline": outline,
+            "volumes": volumes,
             "chapter_outlines": chapter_outlines,
             "current_stage": "outline_generation_completed",
             "errors": state["errors"] + [f"outline_generation API failed: {str(e)}"],
