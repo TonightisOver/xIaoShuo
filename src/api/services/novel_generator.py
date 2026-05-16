@@ -263,6 +263,123 @@ async def generate_volume_background(
         ))
 
 
+async def generate_chapters_background(
+    task_id: str, novel_id: str, chapter_start: int, chapter_end: int
+) -> None:
+    """按章节范围生成"""
+    task_manager = get_task_manager()
+    event_bus = get_event_bus()
+    novel_manager = get_novel_manager()
+
+    try:
+        await task_manager.update_status(task_id, "running")
+
+        novel = await novel_manager.get_novel(novel_id)
+        all_chapters = await novel_manager.list_chapters(novel_id)
+
+        prev_context = ""
+        if chapter_start > 1:
+            prev_chs = [c for c in all_chapters if c["chapter_number"] == chapter_start - 1]
+            if prev_chs:
+                prev_context = (prev_chs[0].get("content", "") or "")[-500:]
+
+        from src.core.llm.client import get_llm_client
+        from src.core.llm.prompts import CHAPTER_GENERATION_PROMPT
+        from src.core.validation import WRITING_STYLES
+        from src.api.models.db_models import Chapter
+        from src.core.database import get_db_session
+        from sqlalchemy import delete
+        import json
+
+        client = get_llm_client()
+        style_instruction = WRITING_STYLES.get(novel.get("writing_style", ""), "")
+
+        volumes = await novel_manager.list_volumes(novel_id)
+        chapter_outlines = []
+        for vol in volumes:
+            outline = vol.get("outline") or {}
+            for ch in outline.get("chapters", []):
+                chapter_outlines.append(ch)
+
+        total_to_generate = chapter_end - chapter_start + 1
+        generated_chapters = []
+
+        for ch_num in range(chapter_start, chapter_end + 1):
+            ch_outline = next(
+                (co for co in chapter_outlines if co.get("chapter") == ch_num),
+                {"chapter": ch_num, "title": f"第{ch_num}章", "plot": "续写情节", "words": 5000}
+            )
+
+            previous = prev_context if not generated_chapters else (generated_chapters[-1].get("content", "")[:500])
+
+            prompt = CHAPTER_GENERATION_PROMPT.format(
+                chapter_outline=json.dumps(ch_outline, ensure_ascii=False),
+                previous_chapter=previous or "这是起始章节",
+                characters=json.dumps([], ensure_ascii=False),
+                world_setting=json.dumps({}, ensure_ascii=False),
+            )
+            if style_instruction:
+                prompt = f"{style_instruction}\n\n{prompt}"
+
+            content = await client.generate(prompt, max_tokens=8000)
+            generated_chapters.append({
+                "chapter": ch_num,
+                "title": ch_outline.get("title", f"第{ch_num}章"),
+                "content": content,
+                "word_count": len(content),
+            })
+
+            progress_data = {
+                "current_stage": "chapter_generation",
+                "completed_chapters": len(generated_chapters),
+                "total_chapters": total_to_generate,
+                "percentage": int((len(generated_chapters) / total_to_generate) * 100),
+            }
+            await task_manager.update_status(task_id, "running", progress=progress_data)
+            await event_bus.publish(ProgressEvent(
+                task_id=task_id,
+                event_type=EventType.CHAPTER_PROGRESS,
+                data=progress_data,
+            ))
+
+        async with get_db_session() as session:
+            await session.execute(
+                delete(Chapter).where(
+                    Chapter.novel_id == novel_id,
+                    Chapter.chapter_number >= chapter_start,
+                    Chapter.chapter_number <= chapter_end,
+                )
+            )
+            for ch in generated_chapters:
+                chapter = Chapter(
+                    novel_id=novel_id,
+                    chapter_number=ch["chapter"],
+                    title=ch["title"],
+                    content=ch["content"],
+                    word_count=ch["word_count"],
+                    status="regenerated",
+                )
+                session.add(chapter)
+
+        await task_manager.complete_task(task_id, {"chapters": generated_chapters})
+        await event_bus.publish(ProgressEvent(
+            task_id=task_id,
+            event_type=EventType.COMPLETED,
+            data={"percentage": 100, "chapter_start": chapter_start, "chapter_end": chapter_end},
+        ))
+
+        logger.info(f"Chapters {chapter_start}-{chapter_end} generated for novel {novel_id}")
+
+    except Exception as e:
+        logger.exception(f"Chapter range generation failed: {e}")
+        await task_manager.fail_task(task_id, str(e))
+        await event_bus.publish(ProgressEvent(
+            task_id=task_id,
+            event_type=EventType.ERROR,
+            data={"error": str(e)},
+        ))
+
+
 async def _persist_to_novel(novel_id: str, result: dict[str, Any]) -> None:
     """Persist LangGraph result into novel sub-tables."""
     manager = get_novel_manager()

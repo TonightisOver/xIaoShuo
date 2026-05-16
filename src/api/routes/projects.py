@@ -214,6 +214,45 @@ async def generate_volume(novel_id: str, request: GenerateVolumeRequest, backgro
     return {"task_id": task_id, "novel_id": novel_id, "volume_number": request.volume_number, "status": "generating"}
 
 
+class GenerateChaptersRequest(BaseModel):
+    chapter_start: int = Field(..., ge=1)
+    chapter_end: int = Field(..., ge=1)
+
+
+@router.post("/{novel_id}/generate-chapters", status_code=202)
+async def generate_chapters(novel_id: str, request: GenerateChaptersRequest, background_tasks: BackgroundTasks):
+    manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
+
+    if request.chapter_end < request.chapter_start:
+        raise HTTPException(status_code=400, detail="chapter_end must be >= chapter_start")
+
+    from src.api.services.novel_generator import generate_chapters_background
+
+    task_manager = get_task_manager()
+    task_id = await task_manager.create_task(
+        idea=novel["idea"],
+        novel_type=novel["novel_type"],
+        target_words=novel["target_words"],
+        novel_id=novel_id,
+    )
+
+    background_tasks.add_task(
+        generate_chapters_background, task_id, novel_id,
+        request.chapter_start, request.chapter_end
+    )
+
+    return {
+        "task_id": task_id,
+        "novel_id": novel_id,
+        "chapter_start": request.chapter_start,
+        "chapter_end": request.chapter_end,
+        "status": "generating",
+    }
+
+
 # --- World Setting ---
 
 @router.get("/{novel_id}/world")
