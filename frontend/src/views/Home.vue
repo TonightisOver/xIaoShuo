@@ -34,10 +34,13 @@
         <h3 class="font-bold text-ink-800 group-hover:text-primary-600 transition-colors mb-2 line-clamp-1">
           {{ novel.title }}
         </h3>
-        <p class="text-xs text-ink-500">
-          {{ (novel.target_words / 10000).toFixed(0) }} 万字目标
-          &middot; {{ formatDate(novel.updated_at) }}
-        </p>
+        <div class="flex justify-between items-center">
+          <p class="text-xs text-ink-500">
+            {{ (novel.target_words / 10000).toFixed(0) }} 万字目标
+            &middot; {{ formatDate(novel.updated_at) }}
+          </p>
+          <button @click.prevent="deleteNovel(novel.novel_id)" class="text-red-400 hover:text-red-600 text-xs">删除</button>
+        </div>
       </router-link>
     </div>
 
@@ -83,6 +86,12 @@ async function fetchNovels() {
   } finally {
     loading.value = false
   }
+}
+
+async function deleteNovel(novelId) {
+  if (!confirm('确定删除这本小说？所有相关数据将被永久删除。')) return
+  await fetch(`/api/v1/projects/${novelId}`, { method: 'DELETE' })
+  await fetchNovels()
 }
 
 watch([typeFilter, offset], () => fetchNovels())

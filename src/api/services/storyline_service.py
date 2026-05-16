@@ -169,6 +169,53 @@ class StorylineService:
             "storyline_character_links": links,
         }
 
+    async def generate_from_conversation(self, novel_id: str, conv_id: int) -> list[dict]:
+        """从对话中提取故事线"""
+        from src.api.services.conversation_service import get_conversation_service
+        from src.core.llm.client import get_llm_client
+        from src.core.json_utils import safe_json_parse
+
+        conv_service = get_conversation_service()
+        conv = await conv_service.get_conversation(conv_id)
+        if not conv:
+            raise ValueError("对话不存在")
+
+        conv_text = "\n".join(
+            f"{'用户' if m['role'] == 'user' else 'AI'}：{m['content']}"
+            for m in conv.get("messages", [])
+        )
+
+        prompt = f"""分析以下创作对话，提取故事线结构。
+
+对话内容：
+{conv_text[:3000]}
+
+请提取出故事线，输出 JSON 数组：
+[{{"name": "线索名称", "type": "main|sub|hidden", "description": "描述", "key_events": [{{"chapter": 1, "event": "事件描述"}}]}}]
+
+只输出 JSON。"""
+
+        client = get_llm_client()
+        response = await client.generate(prompt, max_tokens=2000)
+        storylines_data = safe_json_parse(response, fallback=[], extract_partial=True)
+
+        if not isinstance(storylines_data, list):
+            storylines_data = []
+
+        created = []
+        for sl in storylines_data:
+            if isinstance(sl, dict) and sl.get("name"):
+                sl_id = await self.create_storyline(
+                    novel_id,
+                    name=sl.get("name", ""),
+                    type=sl.get("type", "main"),
+                    description=sl.get("description", ""),
+                    key_events=sl.get("key_events", []),
+                )
+                created.append({"id": sl_id, **sl})
+
+        return created
+
 
 _storyline_service: StorylineService | None = None
 

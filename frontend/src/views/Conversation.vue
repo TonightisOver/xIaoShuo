@@ -40,6 +40,10 @@
           >{{ s.applied ? '已应用' : '应用到设定' }}</button>
         </li>
       </ul>
+      <button @click="generateStorylines" class="btn-secondary text-xs mt-3" :disabled="generatingStorylines">
+        {{ generatingStorylines ? '生成中...' : '从对话生成故事线' }}
+      </button>
+      <p v-if="storylineGenerated" class="text-xs text-emerald-600 mt-1">故事线已生成</p>
     </div>
 
     <!-- Input -->
@@ -70,6 +74,8 @@ const input = ref('')
 const sending = ref(false)
 const suggestions = ref([])
 const messagesContainer = ref(null)
+const generatingStorylines = ref(false)
+const storylineGenerated = ref(false)
 
 function formatTime(iso) {
   if (!iso) return ''
@@ -130,6 +136,16 @@ async function applySuggestion(suggestion) {
   if (res.ok) {
     suggestion.applied = true
   }
+}
+
+async function generateStorylines() {
+  generatingStorylines.value = true
+  storylineGenerated.value = false
+  const res = await fetch(`/api/v1/projects/${novelId}/storylines/from-conversation/${convId}`, { method: 'POST' })
+  if (res.ok) {
+    storylineGenerated.value = true
+  }
+  generatingStorylines.value = false
 }
 
 function scrollToBottom() {

@@ -147,3 +147,13 @@ async def delete_scene(novel_id: str, scene_id: int):
 async def get_relations(novel_id: str):
     service = get_storyline_service()
     return await service.get_relations(novel_id)
+
+
+@router.post("/{novel_id}/storylines/from-conversation/{conv_id}")
+async def generate_storylines_from_conversation(novel_id: str, conv_id: int):
+    service = get_storyline_service()
+    try:
+        created = await service.generate_from_conversation(novel_id, conv_id)
+        return {"status": "generated", "storylines": created, "count": len(created)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

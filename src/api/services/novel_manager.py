@@ -277,6 +277,20 @@ class NovelManager:
             ch.updated_at = datetime.now(timezone.utc)
         return True
 
+    async def delete_chapter(self, novel_id: str, chapter_number: int) -> bool:
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(Chapter).where(
+                    Chapter.novel_id == novel_id,
+                    Chapter.chapter_number == chapter_number
+                )
+            )
+            ch = result.scalar_one_or_none()
+            if not ch:
+                return False
+            await session.delete(ch)
+        return True
+
     # --- Volumes ---
 
     async def list_volumes(self, novel_id: str) -> list[dict]:

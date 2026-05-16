@@ -81,14 +81,30 @@ async def apply_suggestion(novel_id: str, conv_id: int, request: ApplySuggestion
 
     if request.suggestion_type == "world":
         world = await manager.get_world_setting(novel_id)
-        existing = (world.get("rules", "") or "") if world else ""
-        new_rules = f"{existing}\n{request.content}".strip() if existing else request.content
-        await manager.upsert_world_setting(novel_id, rules=new_rules)
-        return {"status": "applied", "target": "world_settings.rules"}
+        existing_bg = (world.get("background") or "") if world else ""
+        existing_rules = (world.get("rules") or "") if world else ""
+        # Append to background if it looks like world-building, otherwise to rules
+        if any(kw in request.content for kw in ["世界", "大陆", "环境", "地理", "背景"]):
+            new_bg = f"{existing_bg}\n{request.content}".strip() if existing_bg else request.content
+            await manager.upsert_world_setting(novel_id, background=new_bg)
+            return {"status": "applied", "target": "world_settings.background", "content": new_bg[:100]}
+        else:
+            new_rules = f"{existing_rules}\n{request.content}".strip() if existing_rules else request.content
+            await manager.upsert_world_setting(novel_id, rules=new_rules)
+            return {"status": "applied", "target": "world_settings.rules", "content": new_rules[:100]}
 
     elif request.suggestion_type == "character":
-        char_id = await manager.create_character(novel_id, name=request.content[:50], description=request.content)
-        return {"status": "applied", "target": "characters", "id": char_id}
+        # Try to extract name from content (first few chars before colon or dash)
+        content = request.content
+        name = content[:20].split("：")[0].split(":")[0].split("—")[0].split("-")[0].strip()
+        if len(name) > 10:
+            name = name[:10]
+        description = content[len(name):].lstrip("：:-— ") if len(content) > len(name) else content
+        char_id = await manager.create_character(
+            novel_id, name=name or "新角色",
+            description=description or content
+        )
+        return {"status": "applied", "target": "characters", "id": char_id, "name": name}
 
     else:
         return {"status": "noted", "message": "情节建议已记录，请手动应用到大纲"}

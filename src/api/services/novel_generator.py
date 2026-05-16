@@ -92,6 +92,25 @@ async def generate_novel_background(
             "errors": [],
         }
 
+        # Inject existing settings if linked to a novel project
+        task_data = await task_manager.get_task(task_id)
+        novel_id = task_data.get("novel_id") if task_data else None
+        if novel_id:
+            novel_manager = get_novel_manager()
+            existing_world = await novel_manager.get_world_setting(novel_id)
+            existing_chars = await novel_manager.list_characters(novel_id)
+            if existing_world and any(existing_world.get(k) for k in ["background", "rules", "culture", "geography"]):
+                initial_state["world_setting"] = existing_world
+            if existing_chars:
+                initial_state["characters"] = existing_chars
+            # Inject storylines into idea as context
+            from src.api.services.storyline_service import get_storyline_service
+            sl_service = get_storyline_service()
+            storylines = await sl_service.list_storylines(novel_id)
+            if storylines:
+                sl_context = "\n".join(f"- [{sl['type']}] {sl['name']}: {sl.get('description', '')}" for sl in storylines)
+                initial_state["idea"] = f"{request.idea}\n\n已确定的故事线：\n{sl_context}"
+
         register_progress_callback(task_id, _chapter_progress_callback)
 
         config = {"configurable": {"thread_id": task_id}}

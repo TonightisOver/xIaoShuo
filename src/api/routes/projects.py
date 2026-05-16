@@ -380,3 +380,12 @@ async def update_chapter(novel_id: str, chapter_number: int, request: ChapterUpd
     if not updated:
         raise HTTPException(status_code=404, detail="Chapter not found")
     return {"status": "updated"}
+
+
+@router.delete("/{novel_id}/chapters/{chapter_number}")
+async def delete_chapter(novel_id: str, chapter_number: int):
+    manager = get_novel_manager()
+    deleted = await manager.delete_chapter(novel_id, chapter_number)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    return {"status": "deleted"}
