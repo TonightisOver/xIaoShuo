@@ -29,10 +29,15 @@
     <!-- Suggestions (after conclude) -->
     <div v-if="suggestions.length" class="card p-5 mb-6">
       <h2 class="text-sm font-medium text-ink-600 mb-3">对话结论</h2>
-      <ul class="space-y-2">
-        <li v-for="(s, i) in suggestions" :key="i" class="text-sm flex gap-2">
-          <span class="badge bg-ink-100 text-ink-600 shrink-0">{{ s.type }}</span>
-          <span>{{ s.content }}</span>
+      <ul class="space-y-3">
+        <li v-for="(s, i) in suggestions" :key="i" class="flex items-start gap-2">
+          <span class="badge bg-ink-100 text-ink-600 shrink-0 mt-0.5">{{ s.type }}</span>
+          <span class="text-sm flex-1">{{ s.content }}</span>
+          <button
+            @click="applySuggestion(s)"
+            class="btn-secondary text-xs shrink-0"
+            :disabled="s.applied"
+          >{{ s.applied ? '已应用' : '应用到设定' }}</button>
         </li>
       </ul>
     </div>
@@ -112,7 +117,18 @@ async function conclude() {
   if (res.ok) {
     const data = await res.json()
     conversation.value = { ...conversation.value, status: 'concluded' }
-    suggestions.value = data.suggestions || []
+    suggestions.value = (data.suggestions || []).map(s => ({ ...s, applied: false }))
+  }
+}
+
+async function applySuggestion(suggestion) {
+  const res = await fetch(`/api/v1/projects/${novelId}/conversations/${convId}/apply-suggestion`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ suggestion_type: suggestion.type, content: suggestion.content }),
+  })
+  if (res.ok) {
+    suggestion.applied = true
   }
 }
 

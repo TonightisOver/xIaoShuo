@@ -105,11 +105,28 @@ class ConversationService:
         characters = await novel_manager.list_characters(conv_data["novel_id"])
 
         context_parts = []
-        if world and world.get("background"):
-            context_parts.append(f"世界观：{world['background'][:200]}")
+        if world:
+            world_parts = []
+            if world.get("background"):
+                world_parts.append(f"背景：{world['background'][:300]}")
+            if world.get("rules"):
+                world_parts.append(f"规则：{world['rules'][:200]}")
+            if world.get("culture"):
+                world_parts.append(f"文化：{world['culture'][:200]}")
+            if world.get("geography"):
+                world_parts.append(f"地理：{world['geography'][:200]}")
+            if world_parts:
+                context_parts.append("世界观：\n" + "\n".join(world_parts))
         if characters:
-            char_names = ", ".join(c["name"] for c in characters[:5])
-            context_parts.append(f"主要人物：{char_names}")
+            for char in characters[:5]:
+                char_info = f"- {char['name']}（{char.get('role', '未知')}）"
+                if char.get("description"):
+                    char_info += f"：{char['description'][:100]}"
+                if char.get("personality"):
+                    char_info += f"，性格：{char['personality'][:50]}"
+                context_parts.append(char_info)
+            if context_parts and characters:
+                context_parts.insert(len(context_parts) - len(characters), "人物设定：")
 
         system_prompt = CONVERSATION_SYSTEM_PROMPT.format(
             novel_type=novel.get("novel_type", ""),

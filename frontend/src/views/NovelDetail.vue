@@ -70,18 +70,44 @@
         </div>
       </div>
 
-      <div v-if="activeTab === 'chapters'" class="space-y-3">
-        <h2 class="font-medium text-ink-800">章节列表</h2>
-        <div v-if="chapters.length === 0" class="card p-6 text-center text-ink-400">暂无章节</div>
-        <router-link v-for="ch in chapters" :key="ch.id"
-          :to="`/novels/${novelId}/chapters/${ch.chapter_number}`"
-          class="card p-4 block hover:bg-ink-50 transition-colors"
-        >
-          <div class="flex justify-between items-center">
-            <span class="font-medium text-sm">第{{ ch.chapter_number }}章：{{ ch.title }}</span>
-            <span class="text-xs text-ink-400">{{ ch.word_count }} 字</span>
-          </div>
-        </router-link>
+      <div v-if="activeTab === 'chapters'" class="space-y-4">
+        <div class="flex justify-between items-center">
+          <h2 class="font-medium text-ink-800">章节与卷</h2>
+          <button @click="showRangeDialog = true" class="btn-secondary text-sm">按范围生成</button>
+        </div>
+
+        <!-- Volume List -->
+        <VolumeList
+          v-if="volumes.length"
+          :volumes="volumes"
+          :chapters="chapters"
+          :novel-id="novelId"
+          @generate-volume="handleGenerateVolume"
+        />
+
+        <!-- Chapters without volume (legacy) -->
+        <div v-if="unassignedChapters.length" class="space-y-1">
+          <h3 v-if="volumes.length" class="text-sm text-ink-500 mt-4">未分卷章节</h3>
+          <router-link v-for="ch in unassignedChapters" :key="ch.id"
+            :to="`/novels/${novelId}/chapters/${ch.chapter_number}`"
+            class="card p-3 block hover:bg-ink-50 transition-colors"
+          >
+            <div class="flex justify-between items-center">
+              <span class="font-medium text-sm">第{{ ch.chapter_number }}章：{{ ch.title }}</span>
+              <span class="text-xs text-ink-400">{{ ch.word_count }} 字</span>
+            </div>
+          </router-link>
+        </div>
+
+        <div v-if="!volumes.length && !chapters.length" class="card p-6 text-center text-ink-400">
+          暂无章节，请先生成小说
+        </div>
+
+        <ChapterRangeDialog
+          :visible="showRangeDialog"
+          @close="showRangeDialog = false"
+          @generate="handleGenerateChapters"
+        />
       </div>
 
       <div v-if="activeTab === 'conversations'" class="space-y-3">
@@ -109,6 +135,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import VolumeList from '../components/VolumeList.vue'
+import ChapterRangeDialog from '../components/ChapterRangeDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -118,10 +146,16 @@ const novel = ref(null)
 const world = ref(null)
 const characters = ref([])
 const chapters = ref([])
+const volumes = ref([])
 const conversations = ref([])
 const loading = ref(true)
 const generating = ref(false)
 const activeTab = ref('overview')
+const showRangeDialog = ref(false)
+
+const unassignedChapters = computed(() =>
+  chapters.value.filter(c => !c.volume_number)
+)
 
 const tabs = [
   { id: 'overview', label: '概览' },
@@ -139,18 +173,20 @@ const statusLabel = computed(() => {
 async function fetchAll() {
   loading.value = true
   try {
-    const [nRes, wRes, cRes, chRes, convRes] = await Promise.all([
+    const [nRes, wRes, cRes, chRes, convRes, volRes] = await Promise.all([
       fetch(`/api/v1/projects/${novelId}`),
       fetch(`/api/v1/projects/${novelId}/world`),
       fetch(`/api/v1/projects/${novelId}/characters`),
       fetch(`/api/v1/projects/${novelId}/chapters`),
       fetch(`/api/v1/projects/${novelId}/conversations`),
+      fetch(`/api/v1/projects/${novelId}/volumes`),
     ])
     if (nRes.ok) novel.value = await nRes.json()
     if (wRes.ok) world.value = await wRes.json()
     if (cRes.ok) characters.value = await cRes.json()
     if (chRes.ok) chapters.value = await chRes.json()
     if (convRes.ok) conversations.value = await convRes.json()
+    if (volRes.ok) volumes.value = await volRes.json()
   } finally {
     loading.value = false
   }
@@ -180,6 +216,31 @@ async function startConversation() {
   if (res.ok) {
     const data = await res.json()
     router.push(`/novels/${novelId}/conversations/${data.id}`)
+  }
+}
+
+async function handleGenerateVolume(volumeNumber) {
+  const res = await fetch(`/api/v1/projects/${novelId}/generate-volume`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ volume_number: volumeNumber }),
+  })
+  if (res.ok) {
+    const data = await res.json()
+    router.push(`/task/${data.task_id}`)
+  }
+}
+
+async function handleGenerateChapters({ chapter_start, chapter_end }) {
+  showRangeDialog.value = false
+  const res = await fetch(`/api/v1/projects/${novelId}/generate-chapters`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chapter_start, chapter_end }),
+  })
+  if (res.ok) {
+    const data = await res.json()
+    router.push(`/task/${data.task_id}`)
   }
 }
 

@@ -25,11 +25,23 @@
       <!-- Progress Section -->
       <div v-if="task.status === 'running' || task.status === 'pending'" class="card p-6 mb-6">
         <h2 class="text-sm font-medium text-ink-600 mb-4">生成进度</h2>
-        <ProgressBar :percentage="progress.percentage" />
-        <StageIndicator :current-stage="progress.current_stage" class="mt-6" />
-        <p v-if="progress.completed_chapters" class="text-sm text-ink-500 mt-4">
-          已完成 {{ progress.completed_chapters }} / {{ progress.total_chapters }} 章
-        </p>
+        <template v-if="progress.percentage > 0">
+          <ProgressBar :percentage="progress.percentage" />
+          <StageIndicator :current-stage="progress.current_stage" class="mt-6" />
+          <p v-if="progress.completed_chapters" class="text-sm text-ink-500 mt-4">
+            已完成 {{ progress.completed_chapters }} / {{ progress.total_chapters }} 章
+          </p>
+        </template>
+        <p v-else class="text-sm text-ink-500">准备中，请稍候...</p>
+      </div>
+
+      <!-- Completed Summary -->
+      <div v-if="task.status === 'completed'" class="card p-6 mb-6 border-emerald-200">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="badge-completed">已完成</span>
+          <span v-if="task.completed_at" class="text-xs text-ink-400">{{ formatTime(task.completed_at) }}</span>
+        </div>
+        <p class="text-sm text-ink-600">生成完成，可查看结果或返回小说项目编辑。</p>
       </div>
 
       <!-- Result Section -->

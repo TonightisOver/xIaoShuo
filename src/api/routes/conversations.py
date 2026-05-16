@@ -63,3 +63,32 @@ async def conclude_conversation(novel_id: str, conv_id: int):
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+class ApplySuggestionRequest(BaseModel):
+    suggestion_type: str = Field(..., description="world|character|plot")
+    content: str = Field(..., min_length=1)
+
+
+@router.post("/{novel_id}/conversations/{conv_id}/apply-suggestion")
+async def apply_suggestion(novel_id: str, conv_id: int, request: ApplySuggestionRequest):
+    from src.api.services.novel_manager import get_novel_manager
+
+    manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
+
+    if request.suggestion_type == "world":
+        world = await manager.get_world_setting(novel_id)
+        existing = (world.get("rules", "") or "") if world else ""
+        new_rules = f"{existing}\n{request.content}".strip() if existing else request.content
+        await manager.upsert_world_setting(novel_id, rules=new_rules)
+        return {"status": "applied", "target": "world_settings.rules"}
+
+    elif request.suggestion_type == "character":
+        char_id = await manager.create_character(novel_id, name=request.content[:50], description=request.content)
+        return {"status": "applied", "target": "characters", "id": char_id}
+
+    else:
+        return {"status": "noted", "message": "情节建议已记录，请手动应用到大纲"}
