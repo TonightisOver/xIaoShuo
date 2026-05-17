@@ -17,3 +17,6 @@
 ### 业务文档
 - [小说生成流程](business/novel-generation-flow.md)
 - [小说类型与设定体系](business/novel-types.md)
+- [人机交互对话系统](business/conversation-system.md)
+- [故事线与图谱系统](business/storyline-system.md)
+- [大纲体系](business/outline-system.md)
