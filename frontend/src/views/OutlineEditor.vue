@@ -73,9 +73,10 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
+const router = useRouter()
 const novelId = route.params.id
 
 const master = ref({ premise: '', main_conflict: '', ending: '', themes_text: '' })
@@ -166,7 +167,7 @@ async function generateVolumeContent(volNum) {
   })
   if (res.ok) {
     const data = await res.json()
-    alert(`已开始生成卷${volNum}章节，任务ID: ${data.task_id}`)
+    router.push(`/task/${data.task_id}`)
   }
 }
 

@@ -129,7 +129,7 @@
         <p class="text-sm text-ink-500">在故事线管理器中创建和编辑故事线、人物弧光、场景，以及它们之间的关联关系。</p>
       </div>
 
-      <div v-if="activeTab === 'conversations'" class="space-y-3">>
+      <div v-if="activeTab === 'conversations'" class="space-y-3">
         <div class="flex justify-between items-center">
           <h2 class="font-medium text-ink-800">创作对话</h2>
           <button @click="startConversation" class="btn-primary text-sm">新建对话</button>

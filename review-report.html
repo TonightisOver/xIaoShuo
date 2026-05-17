@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>xIaoShuo Review Report</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,"Microsoft YaHei",sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.7;padding:40px 20px}
+.container{max-width:960px;margin:0 auto}
+h1{font-size:28px;color:#38bdf8;border-bottom:2px solid #1e3a5f;padding-bottom:12px;margin-bottom:8px}
+.subtitle{color:#94a3b8;font-size:14px;margin-bottom:30px}
+h2{font-size:20px;color:#7dd3fc;margin:30px 0 12px;padding:8px 12px;background:#1e293b;border-left:4px solid #38bdf8;border-radius:0 6px 6px 0}
+h3{font-size:16px;color:#e0f2fe;margin:16px 0 8px}
+.card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:16px;margin:10px 0}
+.summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}
+.stat{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:16px;text-align:center}
+.stat .num{font-size:28px;font-weight:bold;display:block}
+.stat .label{font-size:12px;color:#94a3b8;margin-top:4px}
+.green{color:#4ade80} .red{color:#f87171} .yellow{color:#fbbf24} .blue{color:#60a5fa}
+table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0}
+th{background:#334155;color:#cbd5e1;padding:8px 10px;text-align:left;font-weight:600}
+td{padding:8px 10px;border-bottom:1px solid #1e293b}
+tr:nth-child(even){background:#1e293b80}
+.p0{background:#7f1d1d;color:#fca5a5;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:bold}
+.p1{background:#78350f;color:#fde68a;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:bold}
+.p2{background:#1e3a5f;color:#93c5fd;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:bold}
+.pass{color:#4ade80} .fail{color:#f87171} .warn{color:#fbbf24}
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px}
+.tag-pass{background:#064e3b;color:#6ee7b7}
+.tag-fail{background:#7f1d1d;color:#fca5a5}
+.tag-warn{background:#78350f;color:#fde68a}
+ul{padding-left:20px;margin:6px 0}
+li{margin:3px 0;font-size:13px}
+code{background:#334155;padding:1px 5px;border-radius:3px;font-size:12px;color:#fbbf24}
+.section{margin-bottom:24px}
+.check{margin:4px 0;font-size:13px}
+.check::before{margin-right:6px}
+.check.ok::before{content:"✅"}
+.check.no::before{content:"❌"}
+.check.wn::before{content:"⚠️"}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>xIaoShuo 全面功能 Review 报告</h1>
+<p class="subtitle">审查时间：2026-05-17 · 基于 REVIEW_CHECKLIST.md (CHANGE-009 ~ CHANGE-021) · 审查方式：代码静态分析 + 单元测试</p>
+
+<!-- Summary -->
+<div class="summary-grid">
+  <div class="stat"><span class="num green">56</span><span class="label">测试通过</span></div>
+  <div class="stat"><span class="num red">7</span><span class="label">P0/P1 问题</span></div>
+  <div class="stat"><span class="num yellow">142</span><span class="label">Ruff Lint 告警</span></div>
+  <div class="stat"><span class="num blue">88</span><span class="label">Mypy 类型错误</span></div>
+</div>
+
+<!-- ==================== 阶段 1 ==================== -->
+<h2>阶段 1：创建小说项目</h2>
+<div class="card">
+  <h3>检查项</h3>
+  <div class="check ok">创建成功，跳转到小说详情页 — <code>Create.vue</code> → <code>POST /api/v1/projects</code> → 跳转 <code>/novels/{novel_id}</code> ✔</div>
+  <div class="check ok">文风选择 UI 可见且可用 — 9 种文风按钮 + "自定义"分支 ✔</div>
+  <div class="check ok">自定义文风生成指令成功 — <code>POST /api/v1/style/generate</code> 路由正常 ✔</div>
+
+  <h3>发现问题</h3>
+  <table>
+    <tr><th>#</th><th>问题</th><th>级别</th><th>详情</th></tr>
+    <tr>
+      <td>1</td>
+      <td>前端小说类型与后端白名单不一致</td>
+      <td><span class="p1">P1</span></td>
+      <td>前端 <code>Create.vue</code> 仅 8 种类型（缺 军事/游戏/竞技/灵异/同人），后端 <code>validation.py</code> 白名单 13 种。用户无法选择前端缺少的类型，且前端不展示后端支持的全集。</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ==================== 阶段 2 ==================== -->
+<h2>阶段 2：人机对话</h2>
+<div class="card">
+  <h3>检查项</h3>
+  <div class="check ok">对话创建成功 — <code>POST /{novel_id}/conversations</code> + 路由跳转 ✔</div>
+  <div class="check ok">AI 回复正常（引用了小说设定）— <code>ConversationService.send_message()</code> 会读取 world/characters 上下文 ✔</div>
+  <div class="check ok">"确定为世界观/人物/故事线"按钮可见 — <code>Conversation.vue</code> L26-28 三个按钮 ✔</div>
+  <div class="check no">点击"确定为世界观"后消息标记为"已确定" — <b>后端服务方法不存在</b></div>
+  <div class="check wn">世界观页面能看到刚确定的内容 — 依赖上一项功能</div>
+
+  <h3>发现问题</h3>
+  <table>
+    <tr><th>#</th><th>问题</th><th>级别</th><th>详情</th></tr>
+    <tr>
+      <td>2</td>
+      <td><b>confirm_message 服务方法未实现</b></td>
+      <td><span class="p0">P0</span></td>
+      <td>路由 <code>conversations.py:121</code> 调用 <code>service.confirm_message()</code>，但 <code>ConversationService</code> 类中无此方法。前端点击"确定为世界观/人物/故事线"按钮将触发 500 错误。同时 <code>Message</code> 模型无 <code>confirmed_as</code> 字段。</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ==================== 阶段 3 ==================== -->
+<h2>阶段 3：继续对话并确定人物</h2>
+<div class="card">
+  <h3>检查项</h3>
+  <div class="check ok">人物确定 — apply-suggestion 路由可用 ✔</div>
+  <div class="check ok">"人物" Tab 能看到新创建的人物 ✔</div>
+  <div class="check ok">结束对话后显示结论 — <code>conclude_conversation()</code> 正常 ✔</div>
+  <div class="check wn">"从对话生成故事线"按钮可用 — 依赖阶段 4</div>
+  <div class="check no">"生成总纲→卷纲"按钮 — <b>后端服务方法不存在</b></div>
+
+  <h3>发现问题</h3>
+  <table>
+    <tr><th>#</th><th>问题</th><th>级别</th><th>详情</th></tr>
+    <tr>
+      <td>3</td>
+      <td><b>generate_outline_from_conv 服务方法未实现</b></td>
+      <td><span class="p0">P0</span></td>
+      <td>路由 <code>conversations.py:131</code> 调用 <code>service.generate_outline_from_conv()</code>，但 <code>ConversationService</code> 无此方法。前端 <code>Conversation.vue:168</code> 的"生成总纲→卷纲"按钮点击后将 500。注：<code>OutlineService</code> 有 <code>generate_master_from_conversation</code>，但路由调用的是不同服务的不同方法。</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ==================== 阶段 4 ==================== -->
+<h2>阶段 4：生成故事线</h2>
+<div class="card">
+  <h3>检查项</h3>
+  <div class="check no">"从对话生成故事线" — <b>后端服务方法不存在</b></div>
+  <div class="check no">"AI 生成"按钮可用 — <b>后端服务方法不存在</b></div>
+  <div class="check wn">生成的内容与小说设定相关 — 功能不可用，无法验证</div>
+
+  <h3>发现问题</h3>
+  <table>
+    <tr><th>#</th><th>问题</th><th>级别</th><th>详情</th></tr>
+    <tr>
+      <td>4</td>
+      <td><b>StorylineService 多个 AI 生成方法未实现</b></td>
+      <td><span class="p0">P0</span></td>
+      <td>路由 <code>storylines.py:152-180</code> 注册了 4 个端点，调用 <code>StorylineService</code> 的方法：<br>
+        · <code>generate_from_conversation()</code><br>
+        · <code>generate_storylines_ai()</code><br>
+        · <code>generate_arcs_ai()</code><br>
+        · <code>generate_scenes_ai()</code><br>
+        但 <code>StorylineService</code> 中均<b>不存在</b>这些方法。前端 <code>StorylineManager.vue</code> 3 个"AI 生成"按钮、<code>Conversation.vue</code>"从对话生成故事线"按钮均将 500。
+      </td>
+    </tr>
+  </table>
+</div>
+
+<!-- ==================== 阶段 5 ==================== -->
+<h2>阶段 5：大纲体系</h2>
+<div class="card">
+  <h3>检查项</h3>
+  <div class="check ok">总纲可编辑并保存 — <code>PUT /{novel_id}/outlines/master</code> ✔</div>
+  <div class="check ok">"生成卷纲"按钮可用 — <code>OutlineService.generate_volume_outlines()</code> 已实现 ✔</div>
+  <div class="check ok">卷纲正确显示（多卷）✔</div>
+  <div class="check ok">"生成章纲"按钮可用 — <code>OutlineService.generate_chapter_outlines()</code> 已实现 ✔</div>
+  <div class="check ok">章纲按卷归组显示 — <code>OutlineEditor.vue</code> 使用 <code>chaptersByVolume</code> computed ✔</div>
+  <div class="check ok">每卷下方有"生成本卷章节"按钮 — L53 条件渲染 ✔</div>
+</div>
+
+<!-- ==================== 阶段 6 ==================== -->
+<h2>阶段 6：生成章节</h2>
+<div class="card">
+  <h3>检查项</h3>
+  <div class="check ok">"生成本卷章节"触发成功 — <code>POST /{novel_id}/generate-volume</code> ✔</div>
+  <div class="check wn">跳转到任务详情页 — <code>OutlineEditor.vue</code> 使用 <code>alert()</code> 而非路由跳转</div>
+  <div class="check ok">任务详情页显示进度 — <code>TaskDetail.vue</code> + WebSocket ✔</div>
+  <div class="check ok">"按范围生成"弹窗可用 — <code>ChapterRangeDialog</code> 组件 ✔</div>
+
+  <h3>发现问题</h3>
+  <table>
+    <tr><th>#</th><th>问题</th><th>级别</th><th>详情</th></tr>
+    <tr>
+      <td>5</td>
+      <td>生成本卷章节后不跳转到任务页</td>
+      <td><span class="p2">P2</span></td>
+      <td><code>OutlineEditor.vue:169</code> 使用 <code>alert()</code> 提示 task_id，而非 <code>router.push(/task/${id})</code> 跳转。用户需手动导航查看进度，体验不一致（其他生成操作都有跳转）。</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ==================== 阶段 7 ==================== -->
+<h2>阶段 7：章节管理</h2>
+<div class="card">
+  <h3>检查项</h3>
+  <div class="check ok">章节编辑页可正常编辑和保存 — <code>PUT /{novel_id}/chapters/{num}</code> ✔</div>
+  <div class="check ok">"重新生成"按钮可用（跳转到任务页）✔</div>
+  <div class="check no">"删除"按钮 — <b>后端无 DELETE 章节路由</b></div>
+  <div class="check ok">字数实时统计 — <code>contentLength</code> computed ✔</div>
+
+  <h3>发现问题</h3>
+  <table>
+    <tr><th>#</th><th>问题</th><th>级别</th><th>详情</th></tr>
+    <tr>
+      <td>6</td>
+      <td><b>章节删除路由不存在</b></td>
+      <td><span class="p0">P0</span></td>
+      <td>前端 <code>ChapterEdit.vue:89</code> 调用 <code>DELETE /api/v1/projects/{id}/chapters/{num}</code>，但 <code>projects.py</code> 未注册该路由。点击"删除"按钮将返回 405 Method Not Allowed。</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ==================== 阶段 8 ==================== -->
+<h2>阶段 8：世界观/人物编辑</h2>
+<div class="card">
+  <h3>检查项</h3>
+  <div class="check ok">世界观编辑页可保存 — <code>PUT /{novel_id}/world</code> ✔</div>
+  <div class="check ok">人物可添加/删除 — POST + DELETE 路由完整 ✔</div>
+  <div class="check ok">保存后返回详情页数据更新 ✔</div>
+</div>
+
+<!-- ==================== 阶段 9 ==================== -->
+<h2>阶段 9：图谱可视化</h2>
+<div class="card">
+  <h3>检查项</h3>
+  <div class="check ok">图谱页面加载成功 — <code>GET /{novel_id}/relations</code> ✔</div>
+  <div class="check ok">树形图正确显示 — D3.js 树形布局 + <code>transformToTree()</code> ✔</div>
+  <div class="check ok">节点颜色区分正确 — 6 种颜色映射 ✔</div>
+</div>
+
+<!-- ==================== 阶段 10 ==================== -->
+<h2>阶段 10：删除小说</h2>
+<div class="card">
+  <h3>检查项</h3>
+  <div class="check ok">删除确认弹窗出现 — <code>confirm()</code> 调用 ✔</div>
+  <div class="check ok">确认后小说从列表消失 — <code>DELETE /{novel_id}</code> + 刷新列表 ✔</div>
+  <div class="check ok">关联数据一并删除 — ORM cascade="all, delete-orphan" ✔</div>
+</div>
+
+<!-- ==================== HTML Bug ==================== -->
+<h2>前端模板缺陷</h2>
+<div class="card">
+  <table>
+    <tr><th>#</th><th>问题</th><th>级别</th><th>详情</th></tr>
+    <tr>
+      <td>7</td>
+      <td>NovelDetail.vue 第 132 行 HTML 语法错误</td>
+      <td><span class="p1">P1</span></td>
+      <td><code>&lt;div ... class="space-y-3"&gt;&gt;</code> 有多余的 <code>&gt;</code>，会导致"创作对话"Tab 页面渲染出一个多余的 <code>&gt;</code> 文本字符。</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ==================== 代码质量 ==================== -->
+<h2>代码质量扫描</h2>
+<div class="card">
+  <h3>pytest — <span class="green">56 passed</span> (38.03s)</h3>
+  <p style="font-size:13px;color:#94a3b8">全部通过，2851 warnings（主要来自 pytest-asyncio 的 Python 3.16 弃用提醒）。</p>
+
+  <h3 style="margin-top:12px">Ruff — <span class="yellow">142 errors</span></h3>
+  <ul>
+    <li><b>E501</b> 行过长 — 多处超过 88 字符限制</li>
+    <li><b>I001</b> import 排序 — main.py / db_models.py 等</li>
+    <li><b>F541</b> 无效 f-string — main.py:33</li>
+    <li>大量路由函数缺少返回类型注解（非阻塞性）</li>
+  </ul>
+
+  <h3 style="margin-top:12px">Mypy — <span class="yellow">88 errors</span> in 13 files</h3>
+  <ul>
+    <li>主要为 <code>[no-untyped-def]</code>：路由函数缺少返回类型注解</li>
+    <li>均为类型标注缺失，无逻辑性错误</li>
+  </ul>
+</div>
+
+<!-- ==================== 汇总 ==================== -->
+<h2>问题汇总（按优先级排序）</h2>
+<div class="card">
+  <table>
+    <tr><th>#</th><th>级别</th><th>阶段</th><th>问题</th><th>影响</th></tr>
+    <tr><td>2</td><td><span class="p0">P0</span></td><td>2</td><td>confirm_message() 方法 + DB 字段缺失</td><td>"确定为 XX"按钮全部 500</td></tr>
+    <tr><td>3</td><td><span class="p0">P0</span></td><td>3</td><td>generate_outline_from_conv() 方法缺失</td><td>"生成总纲→卷纲"按钮 500</td></tr>
+    <tr><td>4</td><td><span class="p0">P0</span></td><td>4</td><td>StorylineService 4 个 AI 方法缺失</td><td>所有"AI 生成"按钮 500</td></tr>
+    <tr><td>6</td><td><span class="p0">P0</span></td><td>7</td><td>DELETE 章节路由缺失</td><td>"删除"按钮 405</td></tr>
+    <tr><td>1</td><td><span class="p1">P1</span></td><td>1</td><td>前后端小说类型不一致 (8 vs 13)</td><td>5种类型无法在前端选择</td></tr>
+    <tr><td>7</td><td><span class="p1">P1</span></td><td>—</td><td>NovelDetail.vue L132 多余 &gt;</td><td>对话Tab页面显示异常</td></tr>
+    <tr><td>5</td><td><span class="p2">P2</span></td><td>6</td><td>生成本卷章节后 alert 而非跳转</td><td>体验不一致</td></tr>
+  </table>
+</div>
+
+<!-- ==================== 结论 ==================== -->
+<h2>总体结论</h2>
+<div class="card">
+  <p style="font-size:14px;margin-bottom:12px">项目架构完整、测试全部通过，但存在 <b>4 个 P0 级前后端断连问题</b>，核心原因是路由层注册了端点并调用了服务方法，但服务层尚未实现对应方法。这些问题将导致前端多个按钮点击后直接 500。</p>
+  <p style="font-size:14px;margin-bottom:12px"><b>可正常工作的完整流程</b>：创建项目 → 编辑世界观/人物 → 编辑大纲(总纲/卷纲/章纲) → 生成章节(全量/按卷/按范围) → 实时进度 → 阅读/编辑章节 → 图谱可视化 → 删除项目。</p>
+  <p style="font-size:14px"><b>不可用的功能</b>：对话中"确定为XX"按钮、"生成总纲→卷纲"按钮、故事线"AI 生成"按钮(3个)、章节"删除"按钮。</p>
+</div>
+
+</div>
+</body>
+</html>

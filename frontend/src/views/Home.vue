@@ -61,7 +61,7 @@ const loading = ref(true)
 const typeFilter = ref('')
 const offset = ref(0)
 const limit = 12
-const types = ['玄幻', '仙侠', '都市', '科幻', '历史', '武侠', '言情', '悬疑']
+const types = ['玄幻', '仙侠', '都市', '科幻', '历史', '武侠', '言情', '悬疑', '军事', '游戏', '竞技', '灵异', '同人']
 
 function statusClass(s) {
   return { draft: 'pending', generating: 'running', completed: 'completed', failed: 'failed' }[s] || 'pending'
