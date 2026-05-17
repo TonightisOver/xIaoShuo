@@ -5,8 +5,8 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from src.api.services.outline_service import get_outline_service
 from src.api.services.novel_manager import get_novel_manager
+from src.api.services.outline_service import get_outline_service
 
 logger = logging.getLogger(__name__)
 

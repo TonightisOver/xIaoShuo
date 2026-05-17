@@ -7,7 +7,10 @@ from typing import Any
 from sqlalchemy import select
 
 from src.api.models.db_models import (
-    CharacterArc, Scene, Storyline, StorylineCharacter,
+    CharacterArc,
+    Scene,
+    Storyline,
+    StorylineCharacter,
 )
 from src.core.database import get_db_session
 
@@ -35,9 +38,12 @@ class StorylineService:
             await session.flush()
             return sl.id
 
-    async def update_storyline(self, sl_id: int, **kwargs) -> bool:
+    async def update_storyline(self, sl_id: int, novel_id: str = None, **kwargs) -> bool:
         async with get_db_session() as session:
-            result = await session.execute(select(Storyline).where(Storyline.id == sl_id))
+            query = select(Storyline).where(Storyline.id == sl_id)
+            if novel_id:
+                query = query.where(Storyline.novel_id == novel_id)
+            result = await session.execute(query)
             sl = result.scalar_one_or_none()
             if not sl:
                 return False
@@ -47,9 +53,12 @@ class StorylineService:
             sl.updated_at = datetime.now(timezone.utc)
         return True
 
-    async def delete_storyline(self, sl_id: int) -> bool:
+    async def delete_storyline(self, sl_id: int, novel_id: str = None) -> bool:
         async with get_db_session() as session:
-            result = await session.execute(select(Storyline).where(Storyline.id == sl_id))
+            query = select(Storyline).where(Storyline.id == sl_id)
+            if novel_id:
+                query = query.where(Storyline.novel_id == novel_id)
+            result = await session.execute(query)
             sl = result.scalar_one_or_none()
             if not sl:
                 return False
@@ -75,9 +84,12 @@ class StorylineService:
             await session.flush()
             return arc.id
 
-    async def update_character_arc(self, arc_id: int, **kwargs) -> bool:
+    async def update_character_arc(self, arc_id: int, novel_id: str = None, **kwargs) -> bool:
         async with get_db_session() as session:
-            result = await session.execute(select(CharacterArc).where(CharacterArc.id == arc_id))
+            query = select(CharacterArc).where(CharacterArc.id == arc_id)
+            if novel_id:
+                query = query.where(CharacterArc.novel_id == novel_id)
+            result = await session.execute(query)
             arc = result.scalar_one_or_none()
             if not arc:
                 return False
@@ -87,9 +99,12 @@ class StorylineService:
             arc.updated_at = datetime.now(timezone.utc)
         return True
 
-    async def delete_character_arc(self, arc_id: int) -> bool:
+    async def delete_character_arc(self, arc_id: int, novel_id: str = None) -> bool:
         async with get_db_session() as session:
-            result = await session.execute(select(CharacterArc).where(CharacterArc.id == arc_id))
+            query = select(CharacterArc).where(CharacterArc.id == arc_id)
+            if novel_id:
+                query = query.where(CharacterArc.novel_id == novel_id)
+            result = await session.execute(query)
             arc = result.scalar_one_or_none()
             if not arc:
                 return False
@@ -115,9 +130,12 @@ class StorylineService:
             await session.flush()
             return scene.id
 
-    async def update_scene(self, scene_id: int, **kwargs) -> bool:
+    async def update_scene(self, scene_id: int, novel_id: str = None, **kwargs) -> bool:
         async with get_db_session() as session:
-            result = await session.execute(select(Scene).where(Scene.id == scene_id))
+            query = select(Scene).where(Scene.id == scene_id)
+            if novel_id:
+                query = query.where(Scene.novel_id == novel_id)
+            result = await session.execute(query)
             scene = result.scalar_one_or_none()
             if not scene:
                 return False
@@ -127,9 +145,12 @@ class StorylineService:
             scene.updated_at = datetime.now(timezone.utc)
         return True
 
-    async def delete_scene(self, scene_id: int) -> bool:
+    async def delete_scene(self, scene_id: int, novel_id: str = None) -> bool:
         async with get_db_session() as session:
-            result = await session.execute(select(Scene).where(Scene.id == scene_id))
+            query = select(Scene).where(Scene.id == scene_id)
+            if novel_id:
+                query = query.where(Scene.novel_id == novel_id)
+            result = await session.execute(query)
             scene = result.scalar_one_or_none()
             if not scene:
                 return False
@@ -172,8 +193,8 @@ class StorylineService:
     async def generate_from_conversation(self, novel_id: str, conv_id: int) -> list[dict]:
         """从对话中提取故事线"""
         from src.api.services.conversation_service import get_conversation_service
-        from src.core.llm.client import get_llm_client
         from src.core.json_utils import safe_json_parse
+        from src.core.llm.client import get_llm_client
 
         conv_service = get_conversation_service()
         conv = await conv_service.get_conversation(conv_id)
@@ -220,11 +241,13 @@ class StorylineService:
     async def generate_storylines_ai(self, novel_id: str) -> list[dict]:
         """基于已有设定 LLM 自动生成故事线"""
         from src.api.services.novel_manager import get_novel_manager
-        from src.core.llm.client import get_llm_client
         from src.core.json_utils import safe_json_parse
+        from src.core.llm.client import get_llm_client
 
         manager = get_novel_manager()
         novel = await manager.get_novel(novel_id)
+        if not novel:
+            raise ValueError("小说不存在")
         world = await manager.get_world_setting(novel_id)
         characters = await manager.list_characters(novel_id)
 
@@ -262,8 +285,8 @@ class StorylineService:
     async def generate_arcs_ai(self, novel_id: str) -> list[dict]:
         """基于已有人物+大纲 LLM 自动生成人物弧光"""
         from src.api.services.novel_manager import get_novel_manager
-        from src.core.llm.client import get_llm_client
         from src.core.json_utils import safe_json_parse
+        from src.core.llm.client import get_llm_client
 
         manager = get_novel_manager()
         characters = await manager.list_characters(novel_id)
@@ -305,8 +328,8 @@ class StorylineService:
     async def generate_scenes_ai(self, novel_id: str) -> list[dict]:
         """基于世界观+大纲 LLM 自动生成场景"""
         from src.api.services.novel_manager import get_novel_manager
-        from src.core.llm.client import get_llm_client
         from src.core.json_utils import safe_json_parse
+        from src.core.llm.client import get_llm_client
 
         manager = get_novel_manager()
         world = await manager.get_world_setting(novel_id)

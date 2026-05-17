@@ -14,7 +14,7 @@ from src.api.models.responses import (
     TaskSummary,
 )
 from src.api.services import generate_novel_background, get_task_manager
-from src.core.validation import validate_idea, validate_novel_type, ValidationError
+from src.core.validation import ValidationError, validate_idea, validate_novel_type
 
 logger = logging.getLogger(__name__)
 

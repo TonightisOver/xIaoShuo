@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 from src.api.models.requests import CreateNovelRequest
+from src.api.services.novel_manager import get_novel_manager
 from src.api.services.progress_event_bus import (
     EventType,
     ProgressEvent,
@@ -15,7 +16,6 @@ from src.api.services.progress_event_bus import (
     unregister_progress_callback,
 )
 from src.api.services.task_manager import get_task_manager
-from src.api.services.novel_manager import get_novel_manager
 from src.core.langgraph.graph import create_novel_graph
 from src.core.langgraph.state import NovelState
 
@@ -204,12 +204,13 @@ async def generate_volume_background(
             last_ch = prev_in_earlier_vols[-1]
             prev_context = f"前文最后一章《{last_ch.get('title', '')}》结尾：{(last_ch.get('content', '') or '')[-500:]}"
 
+        import json
+
+        from src.api.models.db_models import Chapter
+        from src.core.database import get_db_session
         from src.core.llm.client import get_llm_client
         from src.core.llm.prompts import CHAPTER_GENERATION_PROMPT
         from src.core.validation import WRITING_STYLES
-        from src.api.models.db_models import Chapter
-        from src.core.database import get_db_session
-        import json
 
         client = get_llm_client()
         style_instruction = WRITING_STYLES.get(novel.get("writing_style", ""), "")
@@ -303,13 +304,15 @@ async def generate_chapters_background(
             if prev_chs:
                 prev_context = (prev_chs[0].get("content", "") or "")[-500:]
 
+        import json
+
+        from sqlalchemy import delete
+
+        from src.api.models.db_models import Chapter
+        from src.core.database import get_db_session
         from src.core.llm.client import get_llm_client
         from src.core.llm.prompts import CHAPTER_GENERATION_PROMPT
         from src.core.validation import WRITING_STYLES
-        from src.api.models.db_models import Chapter
-        from src.core.database import get_db_session
-        from sqlalchemy import delete
-        import json
 
         client = get_llm_client()
         style_instruction = WRITING_STYLES.get(novel.get("writing_style", ""), "")
@@ -452,9 +455,10 @@ async def _persist_to_novel(novel_id: str, result: dict[str, Any]) -> None:
 
         # Chapters
         chapters = result.get("chapters", [])
+        from datetime import datetime, timezone
+
         from src.api.models.db_models import Chapter
         from src.core.database import get_db_session
-        from datetime import datetime, timezone
 
         async with get_db_session() as session:
             for ch in chapters:

@@ -5,7 +5,7 @@ import logging
 from src.core.langgraph.state import NovelState
 from src.core.llm.client import get_llm_client
 from src.core.llm.prompts import IDEA_EXPANSION_PROMPT
-from src.core.validation import ValidationError, validate_idea, get_style_instruction
+from src.core.validation import ValidationError, get_style_instruction, validate_idea
 
 logger = logging.getLogger(__name__)
 

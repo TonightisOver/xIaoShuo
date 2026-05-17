@@ -82,8 +82,12 @@ class ConversationService:
             }
 
     async def send_message(self, conv_id: int, content: str) -> dict:
+        # Validate conversation exists first
+        conv_data = await self.get_conversation(conv_id)
+        if not conv_data:
+            raise ValueError("Conversation not found")
+
         async with get_db_session() as session:
-            # Save user message
             user_msg = Message(
                 conversation_id=conv_id,
                 role="user",
@@ -93,10 +97,8 @@ class ConversationService:
             session.add(user_msg)
             await session.flush()
 
-        # Get conversation with messages for context
+        # Refresh conversation with new message
         conv_data = await self.get_conversation(conv_id)
-        if not conv_data:
-            raise ValueError("Conversation not found")
 
         # Build prompt with novel context
         novel_manager = get_novel_manager()
@@ -239,8 +241,8 @@ class ConversationService:
 
     async def generate_outline_from_conv(self, novel_id: str, conv_id: int) -> dict:
         """从对话生成总纲并自动生成卷纲"""
-        from src.api.services.outline_service import get_outline_service
         from src.api.services.novel_manager import get_novel_manager
+        from src.api.services.outline_service import get_outline_service
 
         outline_service = get_outline_service()
         novel_manager = get_novel_manager()

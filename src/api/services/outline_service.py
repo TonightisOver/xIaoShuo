@@ -2,14 +2,13 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import Any
 
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select
 
 from src.api.models.db_models import Outline
 from src.core.database import get_db_session
-from src.core.llm.client import get_llm_client
 from src.core.json_utils import safe_json_parse
+from src.core.llm.client import get_llm_client
 
 logger = logging.getLogger(__name__)
 

@@ -151,23 +151,32 @@ async function deleteScene(id) {
 
 async function aiGenerateStorylines() {
   aiLoading.value = true
-  await fetch(`/api/v1/projects/${novelId}/storylines/generate-ai`, { method: 'POST' })
-  await load()
-  aiLoading.value = false
+  try {
+    await fetch(`/api/v1/projects/${novelId}/storylines/generate-ai`, { method: 'POST' })
+    await load()
+  } finally {
+    aiLoading.value = false
+  }
 }
 
 async function aiGenerateArcs() {
   aiLoading.value = true
-  await fetch(`/api/v1/projects/${novelId}/character-arcs/generate-ai`, { method: 'POST' })
-  await load()
-  aiLoading.value = false
+  try {
+    await fetch(`/api/v1/projects/${novelId}/character-arcs/generate-ai`, { method: 'POST' })
+    await load()
+  } finally {
+    aiLoading.value = false
+  }
 }
 
 async function aiGenerateScenes() {
   aiLoading.value = true
-  await fetch(`/api/v1/projects/${novelId}/scenes/generate-ai`, { method: 'POST' })
-  await load()
-  aiLoading.value = false
+  try {
+    await fetch(`/api/v1/projects/${novelId}/scenes/generate-ai`, { method: 'POST' })
+    await load()
+  } finally {
+    aiLoading.value = false
+  }
 }
 
 onMounted(load)

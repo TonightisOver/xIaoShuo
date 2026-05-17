@@ -5,11 +5,11 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from src.api.models.requests import CreateNovelRequest
+from src.api.services.novel_generator import generate_novel_background
 from src.api.services.novel_manager import get_novel_manager
 from src.api.services.task_manager import get_task_manager
-from src.api.services.novel_generator import generate_novel_background
-from src.api.models.requests import CreateNovelRequest
-from src.core.validation import validate_idea, validate_novel_type, ValidationError
+from src.core.validation import ValidationError, validate_idea, validate_novel_type
 
 logger = logging.getLogger(__name__)
 

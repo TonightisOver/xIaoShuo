@@ -8,7 +8,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from src.api.models.db_models import (
-    Chapter, Character, Novel, PowerSystem, Volume, WorldSetting,
+    Chapter,
+    Character,
+    Novel,
+    PowerSystem,
+    Volume,
+    WorldSetting,
 )
 from src.core.database import get_db_session
 

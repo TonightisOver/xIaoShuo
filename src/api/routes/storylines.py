@@ -53,7 +53,7 @@ async def create_storyline(novel_id: str, request: StorylineRequest):
 @router.put("/{novel_id}/storylines/{sl_id}")
 async def update_storyline(novel_id: str, sl_id: int, request: StorylineRequest):
     service = get_storyline_service()
-    updated = await service.update_storyline(sl_id, **request.model_dump())
+    updated = await service.update_storyline(sl_id, novel_id=novel_id, **request.model_dump())
     if not updated:
         raise HTTPException(status_code=404, detail="Storyline not found")
     return {"status": "updated"}
@@ -62,7 +62,7 @@ async def update_storyline(novel_id: str, sl_id: int, request: StorylineRequest)
 @router.delete("/{novel_id}/storylines/{sl_id}")
 async def delete_storyline(novel_id: str, sl_id: int):
     service = get_storyline_service()
-    deleted = await service.delete_storyline(sl_id)
+    deleted = await service.delete_storyline(sl_id, novel_id=novel_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Storyline not found")
     return {"status": "deleted"}

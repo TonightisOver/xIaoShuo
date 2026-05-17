@@ -9,7 +9,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from src.api.routes import health_router, novels_router, projects_router, ws_router, conversations_router, style_router, outlines_router, storylines_router
+from src.api.routes import (
+    conversations_router,
+    health_router,
+    novels_router,
+    outlines_router,
+    projects_router,
+    storylines_router,
+    style_router,
+    ws_router,
+)
 from src.core.config import get_settings
 from src.core.database import close_db, init_db
 from src.core.logging_config import setup_logging
