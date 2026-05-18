@@ -28,17 +28,35 @@
 | DELETE | /api/v1/projects/{id} | 删除项目 |
 | POST | /api/v1/projects/{id}/generate | 触发生成 |
 
+### 全功能生成 API（CHANGE-026）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | /api/v1/projects/full-generate | 创建项目 + 启动 13 阶段全功能生成 |
+| POST | /api/v1/projects/{id}/generate-full | 对已有项目启动全功能生成 |
+| POST | /api/v1/projects/{id}/generate-volume | 按卷生成章节（支持 outlines 表 fallback） |
+| POST | /api/v1/projects/{id}/generate-chapters | 按章节范围生成 |
+
 ### 子资源 API
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET/PUT | /api/v1/projects/{id}/world | 世界观 |
-| GET/POST | /api/v1/projects/{id}/power-systems | 等级体系 |
-| PUT/DELETE | /api/v1/projects/{id}/power-systems/{ps_id} | 单个体系 |
-| GET/POST | /api/v1/projects/{id}/characters | 人物 |
-| PUT/DELETE | /api/v1/projects/{id}/characters/{char_id} | 单个人物 |
-| GET | /api/v1/projects/{id}/chapters | 章节列表 |
-| GET/PUT | /api/v1/projects/{id}/chapters/{num} | 单个章节 |
+| GET/PUT | /api/v1/projects/{id}/world | 世界观（不存在返回 404） |
+| GET/POST | /api/v1/projects/{id}/power-systems | 力量体系（不存在返回 404） |
+| PUT/DELETE | /api/v1/projects/{id}/power-systems/{ps_id} | 单个体系（不存在返回 404） |
+| GET/POST | /api/v1/projects/{id}/characters | 人物（不存在返回 404） |
+| PUT/DELETE | /api/v1/projects/{id}/characters/{char_id} | 单个人物（不存在返回 404） |
+| GET | /api/v1/projects/{id}/chapters | 章节列表（不存在返回 404） |
+| GET/PUT/DELETE | /api/v1/projects/{id}/chapters/{num} | 单个章节（不存在返回 404） |
+| GET | /api/v1/projects/{id}/volumes | 卷列表（不存在返回 404） |
+| GET/PUT | /api/v1/projects/{id}/volumes/{num} | 单卷（不存在返回 404） |
+
+### 子资源一致性（CHANGE-026 v2）
+
+所有子资源端点（GET/POST/PUT/DELETE）统一先校验项目存在性：
+- 项目存在但有数据 → 正常返回数据或空数据
+- 项目存在但无数据 → 返回空列表或 null 字段（200）
+- 项目不存在 → 统一返回 404 `{"detail": "Novel not found"}`
 
 ### WebSocket
 
@@ -87,3 +105,12 @@
 | 404 | 资源不存在 |
 | 422 | 请求格式错误 |
 | 500 | 服务器内部错误 |
+
+## 数据隔离原则（CHANGE-024）
+
+所有子资源 API 均以 `novel_id` 作为隔离边界：
+
+- **service 层强制 novel_id**：update/delete 方法的 novel_id 参数无默认值，调用方必须显式传递
+- **双键查询**：`WHERE resource_id = X AND novel_id = Y`，跨小说访问返回 404
+- **confirm_message 三元组**：`msg_id + conv_id + novel_id` JOIN 校验，防止跨小说误写
+- **关联表过滤**：`get_relations` 通过 DB JOIN 过滤，不做 Python 层过滤

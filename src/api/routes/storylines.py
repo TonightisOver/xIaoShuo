@@ -71,7 +71,10 @@ async def delete_storyline(novel_id: str, sl_id: int):
 @router.post("/{novel_id}/storylines/{sl_id}/characters")
 async def link_character_to_storyline(novel_id: str, sl_id: int, request: LinkCharacterRequest):
     service = get_storyline_service()
-    await service.add_character_to_storyline(sl_id, request.character_id, request.role_in_line)
+    try:
+        await service.add_character_to_storyline(sl_id, request.character_id, novel_id, request.role_in_line)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     return {"status": "linked"}
 
 
@@ -93,7 +96,7 @@ async def create_character_arc(novel_id: str, request: CharacterArcRequest):
 @router.put("/{novel_id}/character-arcs/{arc_id}")
 async def update_character_arc(novel_id: str, arc_id: int, request: CharacterArcRequest):
     service = get_storyline_service()
-    updated = await service.update_character_arc(arc_id, **request.model_dump())
+    updated = await service.update_character_arc(arc_id, novel_id=novel_id, **request.model_dump())
     if not updated:
         raise HTTPException(status_code=404, detail="Character arc not found")
     return {"status": "updated"}
@@ -102,7 +105,7 @@ async def update_character_arc(novel_id: str, arc_id: int, request: CharacterArc
 @router.delete("/{novel_id}/character-arcs/{arc_id}")
 async def delete_character_arc(novel_id: str, arc_id: int):
     service = get_storyline_service()
-    deleted = await service.delete_character_arc(arc_id)
+    deleted = await service.delete_character_arc(arc_id, novel_id=novel_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Character arc not found")
     return {"status": "deleted"}
@@ -126,7 +129,7 @@ async def create_scene(novel_id: str, request: SceneRequest):
 @router.put("/{novel_id}/scenes/{scene_id}")
 async def update_scene(novel_id: str, scene_id: int, request: SceneRequest):
     service = get_storyline_service()
-    updated = await service.update_scene(scene_id, **request.model_dump())
+    updated = await service.update_scene(scene_id, novel_id=novel_id, **request.model_dump())
     if not updated:
         raise HTTPException(status_code=404, detail="Scene not found")
     return {"status": "updated"}
@@ -135,7 +138,7 @@ async def update_scene(novel_id: str, scene_id: int, request: SceneRequest):
 @router.delete("/{novel_id}/scenes/{scene_id}")
 async def delete_scene(novel_id: str, scene_id: int):
     service = get_storyline_service()
-    deleted = await service.delete_scene(scene_id)
+    deleted = await service.delete_scene(scene_id, novel_id=novel_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Scene not found")
     return {"status": "deleted"}

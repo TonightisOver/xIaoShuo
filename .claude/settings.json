@@ -1,4 +1,4 @@
-﻿{
+{
   "hooks": {
     "PreToolUse": [
       {
@@ -8,14 +8,14 @@
             "type": "command",
             "command": "powershell -NonInteractive -File .claude/hooks/gate1-design-approved.ps1",
             "shell": "powershell",
-            "statusMessage": "Gate 1: checking tech design approval...",
+            "statusMessage": "Gate 1: checking design approval...",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "powershell -NonInteractive -File .claude/hooks/gate2-deploy-verified.ps1",
+            "command": "powershell -NonInteractive -File .claude/hooks/gate2-delivery-approved.ps1",
             "shell": "powershell",
-            "statusMessage": "Gate 2: checking deploy verification...",
+            "statusMessage": "Gate 2: checking delivery approval...",
             "timeout": 10
           }
         ]

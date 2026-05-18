@@ -17,6 +17,8 @@ class EventType(str, Enum):
     STAGE_START = "stage_start"
     STAGE_COMPLETE = "stage_complete"
     CHAPTER_PROGRESS = "chapter_progress"
+    SUB_FEATURE_START = "sub_feature_start"
+    SUB_FEATURE_COMPLETE = "sub_feature_complete"
     ERROR = "error"
     COMPLETED = "completed"
 

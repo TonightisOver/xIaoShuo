@@ -1,7 +1,7 @@
 """大纲服务 - 三级大纲管理"""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import and_, select
 
@@ -86,12 +86,12 @@ class OutlineService:
             outline = result.scalar_one_or_none()
             if outline:
                 outline.content = content
-                outline.updated_at = datetime.now(timezone.utc)
+                outline.updated_at = datetime.now(UTC)
             else:
                 outline = Outline(
                     novel_id=novel_id, level="master",
                     content=content, status="draft",
-                    updated_at=datetime.now(timezone.utc)
+                    updated_at=datetime.now(UTC)
                 )
                 session.add(outline)
 
@@ -134,12 +134,12 @@ class OutlineService:
             outline = result.scalar_one_or_none()
             if outline:
                 outline.content = content
-                outline.updated_at = datetime.now(timezone.utc)
+                outline.updated_at = datetime.now(UTC)
             else:
                 outline = Outline(
                     novel_id=novel_id, level="volume",
                     volume_number=volume_number, content=content,
-                    status="draft", updated_at=datetime.now(timezone.utc)
+                    status="draft", updated_at=datetime.now(UTC)
                 )
                 session.add(outline)
 
@@ -150,19 +150,20 @@ class OutlineService:
                 select(Outline).where(and_(
                     Outline.novel_id == novel_id,
                     Outline.level == "chapter",
+                    Outline.volume_number == volume_number,
                     Outline.chapter_number == chapter_number
                 ))
             )
             outline = result.scalar_one_or_none()
             if outline:
                 outline.content = content
-                outline.updated_at = datetime.now(timezone.utc)
+                outline.updated_at = datetime.now(UTC)
             else:
                 outline = Outline(
                     novel_id=novel_id, level="chapter",
                     volume_number=volume_number,
                     chapter_number=chapter_number, content=content,
-                    status="draft", updated_at=datetime.now(timezone.utc)
+                    status="draft", updated_at=datetime.now(UTC)
                 )
                 session.add(outline)
 
@@ -206,9 +207,10 @@ class OutlineService:
         if not isinstance(volumes, list):
             volumes = []
 
-        # Save to DB
-        for vol in volumes:
-            vol_num = vol.get("volume_number", 1)
+        # Save to DB — use enumerated index as fallback if LLM omits volume_number
+        for idx, vol in enumerate(volumes, start=1):
+            vol_num = vol.get("volume_number") or idx
+            vol["volume_number"] = vol_num
             await self.upsert_volume_outline(novel_id, vol_num, vol)
 
         return volumes
@@ -243,12 +245,55 @@ class OutlineService:
 
         return chapters
 
+    async def persist_outlines_from_result(self, novel_id: str, result: dict) -> dict:
+        """从 LangGraph 生成结果中提取并持久化大纲（总纲+卷纲+章纲）"""
+        persisted = {"master": False, "volumes": 0, "chapters": 0}
+
+        # Master outline — extract from chapter_outlines or plot_arcs
+        master_data = result.get("master_outline") or result.get("plot_arcs")
+        if master_data:
+            master_content = master_data if isinstance(master_data, dict) else {
+                "premise": str(master_data)[:500],
+                "main_conflict": "",
+                "plot_arcs": [],
+                "ending": "",
+                "themes": [],
+            }
+            await self.upsert_master_outline(novel_id, master_content)
+            persisted["master"] = True
+
+        # Volumes — extract per-volume outlines
+        volumes = result.get("volumes", [])
+        for vol in volumes:
+            if isinstance(vol, dict):
+                vol_num = vol.get("volume_number", 1)
+                await self.upsert_volume_outline(novel_id, vol_num, vol)
+                persisted["volumes"] += 1
+
+                # Chapters within each volume
+                for ch in vol.get("chapters", []):
+                    if isinstance(ch, dict) and ch.get("chapter"):
+                        await self.upsert_chapter_outline(
+                            novel_id, vol_num, ch["chapter"], ch
+                        )
+                        persisted["chapters"] += 1
+
+        # Standalone chapters (not in volumes)
+        chapters = result.get("chapter_outlines", [])
+        for ch in chapters:
+            if isinstance(ch, dict) and ch.get("chapter"):
+                await self.upsert_chapter_outline(novel_id, 0, ch["chapter"], ch)
+                persisted["chapters"] += 1
+
+        logger.info(f"Persisted outlines for novel {novel_id}: {persisted}")
+        return persisted
+
     async def generate_master_from_conversation(self, novel_id: str, conv_id: int) -> dict:
         from src.api.services.conversation_service import get_conversation_service
         from src.api.services.novel_manager import get_novel_manager
 
         conv_service = get_conversation_service()
-        conv = await conv_service.get_conversation(conv_id)
+        conv = await conv_service.get_conversation(conv_id, novel_id)
         if not conv:
             raise ValueError("对话不存在")
 
@@ -272,6 +317,44 @@ class OutlineService:
             conversation_text=conv_text[:3000],
             context=context or "暂无",
         )
+        response = await client.generate(prompt, max_tokens=2000)
+        master_content = safe_json_parse(response, fallback={
+            "premise": "待完善",
+            "main_conflict": "待完善",
+            "plot_arcs": [],
+            "ending": "待完善",
+            "themes": [],
+        }, extract_partial=True)
+
+        await self.upsert_master_outline(novel_id, master_content)
+        return master_content
+
+
+    async def generate_master_from_novel(self, novel_id: str) -> dict:
+        """基于小说设定（idea/世界观/人物）直接生成总纲，无需对话"""
+        from src.api.services.novel_manager import get_novel_manager
+
+        manager = get_novel_manager()
+        novel = await manager.get_novel(novel_id)
+        if not novel:
+            raise ValueError("小说不存在")
+
+        world = await manager.get_world_setting(novel_id)
+        characters = await manager.list_characters(novel_id)
+
+        context_parts = [f"小说类型：{novel.get('novel_type', '')}", f"创意：{novel.get('idea', '')[:500]}"]
+        if world and world.get("background"):
+            context_parts.append(f"世界观：{world['background'][:300]}")
+        if characters:
+            names = ", ".join(c["name"] for c in characters[:8])
+            context_parts.append(f"人物：{names}")
+
+        prompt = FROM_CONVERSATION_PROMPT.format(
+            conversation_text="（直接基于小说设定生成，无对话记录）",
+            context="\n".join(context_parts),
+        )
+
+        client = get_llm_client()
         response = await client.generate(prompt, max_tokens=2000)
         master_content = safe_json_parse(response, fallback={
             "premise": "待完善",

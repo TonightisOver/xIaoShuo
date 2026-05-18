@@ -123,8 +123,10 @@ function addEvent(type, data) {
     stage_start: `开始阶段: ${data.stage}`,
     stage_complete: `完成阶段: ${data.current_stage} (${data.percentage}%)`,
     chapter_progress: `章节进度: ${data.completed_chapters}/${data.total_chapters}`,
+    sub_feature_start: `子功能: ${data.label} 开始 (${data.percentage}%)`,
+    sub_feature_complete: `子功能: ${data.label} 完成`,
     completed: '生成完成',
-    error: `错误: ${data.error || '未知'}`,
+    error: `错误: ${data.error || '未知'}${data.non_blocking ? ' (非阻塞)' : ''}`,
     heartbeat: '心跳',
   }
   events.value.push({ time, message: messages[type] || type })
@@ -146,7 +148,7 @@ const { connect, disconnect } = useWebSocket(taskId, {
   onMessage(msg) {
     if (msg.type === 'connected') {
       task.value = { ...task.value, status: msg.current_status, progress: msg.progress }
-    } else if (msg.type === 'stage_complete' || msg.type === 'chapter_progress' || msg.type === 'stage_start') {
+    } else if (msg.type === 'stage_complete' || msg.type === 'chapter_progress' || msg.type === 'stage_start' || msg.type === 'sub_feature_start' || msg.type === 'sub_feature_complete') {
       if (task.value) {
         task.value = { ...task.value, progress: msg.data, status: 'running' }
       }

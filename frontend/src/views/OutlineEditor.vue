@@ -10,6 +10,9 @@
       <div class="flex items-center justify-between mb-4">
         <h2 class="font-medium text-ink-800">总纲</h2>
         <div class="flex gap-2">
+          <button @click="aiGenerateMaster" class="btn-secondary text-xs" :disabled="generatingMaster">
+            {{ generatingMaster ? 'AI生成中...' : 'AI生成' }}
+          </button>
           <button @click="saveMaster" class="btn-primary text-xs" :disabled="savingMaster">保存</button>
           <button @click="generateVolumes" class="btn-secondary text-xs" :disabled="generatingVols">
             {{ generatingVols ? '生成中...' : '生成卷纲' }}
@@ -86,6 +89,7 @@ const savingMaster = ref(false)
 const masterSaved = ref(false)
 const generatingVols = ref(false)
 const generatingChs = ref(null)
+const generatingMaster = ref(false)
 
 const chaptersByVolume = computed(() => {
   const map = {}
@@ -119,6 +123,26 @@ async function load() {
       }
     }
     chapters.value = allChs
+  }
+}
+
+async function aiGenerateMaster() {
+  generatingMaster.value = true
+  try {
+    const res = await fetch(`/api/v1/projects/${novelId}/outlines/generate-master`, { method: 'POST' })
+    if (res.ok) {
+      const data = await res.json()
+      const c = data.content || {}
+      master.value = {
+        premise: c.premise || '',
+        main_conflict: c.main_conflict || '',
+        ending: c.ending || '',
+        themes_text: (c.themes || []).join(', '),
+      }
+      masterSaved.value = false
+    }
+  } finally {
+    generatingMaster.value = false
   }
 }
 

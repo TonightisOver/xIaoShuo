@@ -96,8 +96,11 @@
       </div>
 
       <div class="pt-4 flex gap-3">
-        <button type="submit" class="btn-primary flex-1" :disabled="!canSubmit || submitting">
+        <button type="submit" class="btn-primary flex-1" :disabled="!canSubmit || submitting || fullGenerating">
           {{ submitting ? '提交中...' : '开始生成' }}
+        </button>
+        <button type="button" class="btn-primary flex-1 bg-emerald-600 hover:bg-emerald-700" :disabled="!canSubmit || submitting || fullGenerating" @click="fullGenerate">
+          {{ fullGenerating ? '启动中...' : '一键全功能生成' }}
         </button>
         <router-link to="/" class="btn-secondary">取消</router-link>
       </div>
@@ -129,6 +132,7 @@ const form = ref({
 })
 
 const submitting = ref(false)
+const fullGenerating = ref(false)
 const error = ref('')
 const generatingStyle = ref(false)
 
@@ -175,6 +179,32 @@ async function submit() {
     error.value = e.message
   } finally {
     submitting.value = false
+  }
+}
+
+async function fullGenerate() {
+  if (!canSubmit.value) return
+  fullGenerating.value = true
+  error.value = ''
+
+  try {
+    const res = await fetch('/api/v1/projects/full-generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form.value),
+    })
+
+    if (!res.ok) {
+      const data = await res.json()
+      throw new Error(data.detail || `请求失败 (${res.status})`)
+    }
+
+    const data = await res.json()
+    router.push(`/task/${data.task_id}`)
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    fullGenerating.value = false
   }
 }
 </script>

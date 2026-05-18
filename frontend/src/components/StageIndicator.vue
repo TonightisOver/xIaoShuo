@@ -43,6 +43,12 @@ const stages = [
   { id: 'chapter_generation', label: '章节' },
   { id: 'quality_check', label: '质检' },
   { id: 'human_review', label: '审核' },
+  { id: 'power_systems', label: '力量体系' },
+  { id: 'outline_persist', label: '大纲生成' },
+  { id: 'storylines', label: '故事线' },
+  { id: 'character_arcs', label: '人物弧光' },
+  { id: 'scenes', label: '场景' },
+  { id: 'auto_conversation', label: '自动对话' },
 ]
 
 function stageStatus(id) {

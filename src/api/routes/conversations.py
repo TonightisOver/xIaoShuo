@@ -36,7 +36,7 @@ async def list_conversations(novel_id: str):
 @router.get("/{novel_id}/conversations/{conv_id}")
 async def get_conversation(novel_id: str, conv_id: int):
     service = get_conversation_service()
-    conv = await service.get_conversation(conv_id)
+    conv = await service.get_conversation(conv_id, novel_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conv
@@ -46,7 +46,7 @@ async def get_conversation(novel_id: str, conv_id: int):
 async def send_message(novel_id: str, conv_id: int, request: SendMessageRequest):
     service = get_conversation_service()
     try:
-        response = await service.send_message(conv_id, request.content)
+        response = await service.send_message(conv_id, request.content, novel_id)
         return response
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -59,7 +59,7 @@ async def send_message(novel_id: str, conv_id: int, request: SendMessageRequest)
 async def conclude_conversation(novel_id: str, conv_id: int):
     service = get_conversation_service()
     try:
-        result = await service.conclude_conversation(conv_id)
+        result = await service.conclude_conversation(conv_id, novel_id)
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

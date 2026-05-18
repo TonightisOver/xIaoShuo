@@ -1,7 +1,7 @@
 """创作对话服务"""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -41,7 +41,7 @@ class ConversationService:
                 novel_id=novel_id,
                 topic=topic,
                 status="active",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             session.add(conv)
             await session.flush()
@@ -58,12 +58,12 @@ class ConversationService:
                      "created_at": c.created_at, "concluded_at": c.concluded_at}
                     for c in result.scalars().all()]
 
-    async def get_conversation(self, conv_id: int) -> dict | None:
+    async def get_conversation(self, conv_id: int, novel_id: str) -> dict | None:
         async with get_db_session() as session:
             result = await session.execute(
                 select(Conversation)
                 .options(selectinload(Conversation.messages))
-                .where(Conversation.id == conv_id)
+                .where(Conversation.id == conv_id, Conversation.novel_id == novel_id)
             )
             conv = result.scalar_one_or_none()
             if not conv:
@@ -81,9 +81,9 @@ class ConversationService:
                 ],
             }
 
-    async def send_message(self, conv_id: int, content: str) -> dict:
-        # Validate conversation exists first
-        conv_data = await self.get_conversation(conv_id)
+    async def send_message(self, conv_id: int, content: str, novel_id: str) -> dict:
+        # Validate conversation exists and belongs to this novel
+        conv_data = await self.get_conversation(conv_id, novel_id)
         if not conv_data:
             raise ValueError("Conversation not found")
 
@@ -92,13 +92,14 @@ class ConversationService:
                 conversation_id=conv_id,
                 role="user",
                 content=content,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             session.add(user_msg)
             await session.flush()
 
         # Refresh conversation with new message
-        conv_data = await self.get_conversation(conv_id)
+        conv_data = await self.get_conversation(conv_id, novel_id)
+        assert conv_data is not None  # just validated above
 
         # Build prompt with novel context
         novel_manager = get_novel_manager()
@@ -153,15 +154,15 @@ class ConversationService:
                 conversation_id=conv_id,
                 role="assistant",
                 content=ai_response,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             session.add(ai_msg)
             await session.flush()
             return {"id": ai_msg.id, "role": "assistant",
                     "content": ai_response, "created_at": ai_msg.created_at}
 
-    async def conclude_conversation(self, conv_id: int) -> dict:
-        conv_data = await self.get_conversation(conv_id)
+    async def conclude_conversation(self, conv_id: int, novel_id: str) -> dict:
+        conv_data = await self.get_conversation(conv_id, novel_id)
         if not conv_data:
             raise ValueError("Conversation not found")
 
@@ -190,7 +191,7 @@ class ConversationService:
             conv = result.scalar_one_or_none()
             if conv:
                 conv.status = "concluded"
-                conv.concluded_at = datetime.now(timezone.utc)
+                conv.concluded_at = datetime.now(UTC)
 
         return {"status": "concluded", "suggestions": suggestions}
 
@@ -199,14 +200,20 @@ class ConversationService:
         """确认消息为设定，直接写入对应数据"""
         from src.api.models.db_models import Message as MsgModel
 
-        # Update message confirmed_as
+        # Validate msg_id + conv_id + novel_id together
         async with get_db_session() as session:
             result = await session.execute(
-                select(MsgModel).where(MsgModel.id == msg_id)
+                select(MsgModel)
+                .join(Conversation, MsgModel.conversation_id == Conversation.id)
+                .where(
+                    MsgModel.id == msg_id,
+                    MsgModel.conversation_id == conv_id,
+                    Conversation.novel_id == novel_id,
+                )
             )
             msg = result.scalar_one_or_none()
             if not msg:
-                raise ValueError("消息不存在")
+                raise ValueError("消息不存在或无权访问")
             msg.confirmed_as = confirm_as
             content = msg.content
 
@@ -239,6 +246,68 @@ class ConversationService:
 
         return {"status": "confirmed", "target": confirm_as}
 
+    async def generate_auto_conversation(self, novel_id: str) -> dict:
+        """自动创建并运行一次 AI 创作对话（无需用户参与）"""
+        from src.api.services.novel_manager import get_novel_manager
+
+        manager = get_novel_manager()
+        novel = await manager.get_novel(novel_id)
+        if not novel:
+            raise ValueError("小说不存在")
+
+        world = await manager.get_world_setting(novel_id)
+        characters = await manager.list_characters(novel_id)
+
+        # Build initial topic
+        topic = f"小说设定完善 — {novel.get('title', '')}"
+        conv_id = await self.create_conversation(novel_id, topic)
+
+        # Build context for the auto-conversation
+        context_parts: list[str] = [f"小说类型：{novel.get('novel_type', '')}", f"创意：{novel.get('idea', '')[:500]}"]
+        if world:
+            for key, label in [("background", "世界背景"), ("rules", "世界规则"), ("culture", "文化体系")]:
+                val = world.get(key)
+                if val:
+                    context_parts.append(f"{label}：{val[:300]}")
+        if characters:
+            char_names = ", ".join(c["name"] for c in characters[:10])
+            context_parts.append(f"已有人物：{char_names}")
+
+        # AI assistant self-dialogue prompt
+        prompt = f"""你是一位资深小说编辑，正在审阅一部小说的设定。请基于以下信息，给出一段 300 字以内的专业建议，指出设定的优点和可以完善的地方。
+
+{chr(10).join(context_parts)}
+
+直接给出建议内容，不需要前缀。"""
+
+        client = get_llm_client()
+        ai_content = await client.generate(prompt, max_tokens=1000)
+
+        # Save the AI-to-AI message
+        async with get_db_session() as session:
+            user_msg = Message(
+                conversation_id=conv_id,
+                role="user",
+                content="请审阅当前小说设定并给出建议",
+                created_at=datetime.now(UTC),
+            )
+            session.add(user_msg)
+            await session.flush()
+            ai_msg = Message(
+                conversation_id=conv_id,
+                role="assistant",
+                content=ai_content,
+                created_at=datetime.now(UTC),
+            )
+            session.add(ai_msg)
+            await session.flush()
+
+        return {
+            "conversation_id": conv_id,
+            "topic": topic,
+            "suggestion_preview": ai_content[:200],
+        }
+
     async def generate_outline_from_conv(self, novel_id: str, conv_id: int) -> dict:
         """从对话生成总纲并自动生成卷纲"""
         from src.api.services.novel_manager import get_novel_manager
@@ -249,7 +318,6 @@ class ConversationService:
 
         # Generate master outline from conversation
         master_content = await outline_service.generate_master_from_conversation(novel_id, conv_id)
-
         # Auto-generate volume outlines
         novel = await novel_manager.get_novel(novel_id)
         volumes = []

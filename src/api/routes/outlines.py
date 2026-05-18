@@ -103,6 +103,16 @@ async def update_chapter_outline(novel_id: str, chapter_number: int, request: Ch
     return {"status": "updated"}
 
 
+@router.post("/{novel_id}/outlines/generate-master")
+async def generate_master_outline(novel_id: str):
+    service = get_outline_service()
+    try:
+        content = await service.generate_master_from_novel(novel_id)
+        return {"status": "generated", "content": content}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/{novel_id}/outlines/from-conversation/{conv_id}")
 async def generate_master_from_conversation(novel_id: str, conv_id: int):
     service = get_outline_service()

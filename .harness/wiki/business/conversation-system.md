@@ -46,5 +46,9 @@ POST   /projects/{id}/conversations/{conv_id}/apply-suggestion — 应用建议
 
 ## 数据安全
 
-- send_message 先验证会话存在再插入消息
-- confirm_message 校验消息归属
+- send_message 先验证会话存在再插入消息（CHANGE-023）
+- **novel_id 隔离（CHANGE-024）**：所有对话操作均按 `conv_id + novel_id` 双键查询，跨小说访问返回 404
+  - `get_conversation(conv_id, novel_id)` — WHERE 双键，不可跨小说读取
+  - `send_message(conv_id, content, novel_id)` — 传入 novel_id 校验归属
+  - `conclude_conversation(conv_id, novel_id)` — 传入 novel_id 校验归属
+  - `confirm_message` — JOIN Conversation 三元组校验（msg_id + conv_id + novel_id），防止跨小说误写设定

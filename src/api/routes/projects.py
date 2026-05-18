@@ -6,7 +6,10 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.api.models.requests import CreateNovelRequest
-from src.api.services.novel_generator import generate_novel_background
+from src.api.services.novel_generator import (
+    generate_novel_background,
+    generate_novel_full_background,
+)
 from src.api.services.novel_manager import get_novel_manager
 from src.api.services.task_manager import get_task_manager
 from src.core.validation import ValidationError, validate_idea, validate_novel_type
@@ -159,17 +162,116 @@ async def generate_novel(novel_id: str, background_tasks: BackgroundTasks):
     return {"task_id": task_id, "novel_id": novel_id, "status": "generating"}
 
 
+# --- Full Generate (13-stage pipeline) ---
+
+
+class FullGenerateRequest(BaseModel):
+    idea: str = Field(..., min_length=10, max_length=1000)
+    novel_type: str
+    target_words: int = Field(default=100000, ge=10000, le=10000000)
+    title: str | None = None
+    writing_style: str = Field(default="现代白话")
+    custom_style_description: str | None = None
+    writing_style_prompt: str | None = None
+
+
+@router.post("/full-generate", status_code=202)
+async def full_generate_project(
+    request: FullGenerateRequest, background_tasks: BackgroundTasks,
+):
+    """创建项目并启动 13 阶段全功能生成"""
+    try:
+        validate_idea(request.idea)
+        validate_novel_type(request.novel_type)
+    except (ValidationError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    manager = get_novel_manager()
+    novel_id = await manager.create_novel(
+        idea=request.idea,
+        novel_type=request.novel_type,
+        target_words=request.target_words,
+        title=request.title,
+        writing_style=request.writing_style,
+        custom_style_description=request.custom_style_description,
+        writing_style_prompt=request.writing_style_prompt,
+    )
+
+    task_manager = get_task_manager()
+    task_id = await task_manager.create_task(
+        idea=request.idea,
+        novel_type=request.novel_type,
+        target_words=request.target_words,
+        novel_id=novel_id,
+    )
+
+    gen_request = CreateNovelRequest(
+        idea=request.idea,
+        novel_type=request.novel_type,
+        target_words=request.target_words,
+        writing_style=request.writing_style,
+        writing_style_prompt=request.writing_style_prompt or "",
+    )
+    background_tasks.add_task(generate_novel_full_background, task_id, gen_request)
+
+    await manager.update_novel(novel_id, status="generating")
+
+    return {
+        "task_id": task_id, "novel_id": novel_id,
+        "status": "full_generating", "pipeline": "full_13_stage",
+    }
+
+
+@router.post("/{novel_id}/generate-full", status_code=202)
+async def full_generate_existing(novel_id: str, background_tasks: BackgroundTasks):
+    """对已有项目启动 13 阶段全功能生成"""
+    manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
+
+    task_manager = get_task_manager()
+    task_id = await task_manager.create_task(
+        idea=novel["idea"],
+        novel_type=novel["novel_type"],
+        target_words=novel["target_words"],
+        novel_id=novel_id,
+    )
+
+    gen_request = CreateNovelRequest(
+        idea=novel["idea"],
+        novel_type=novel["novel_type"],
+        target_words=novel["target_words"],
+        writing_style=novel.get("writing_style", "现代白话"),
+        writing_style_prompt=novel.get("writing_style_prompt", ""),
+    )
+    background_tasks.add_task(generate_novel_full_background, task_id, gen_request)
+
+    await manager.update_novel(novel_id, status="generating")
+
+    return {
+        "task_id": task_id, "novel_id": novel_id,
+        "status": "full_generating", "pipeline": "full_13_stage",
+    }
+
+
 # --- Volumes ---
 
 @router.get("/{novel_id}/volumes")
 async def list_volumes(novel_id: str):
     manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
     return await manager.list_volumes(novel_id)
 
 
 @router.get("/{novel_id}/volumes/{volume_number}")
 async def get_volume(novel_id: str, volume_number: int):
     manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
     vol = await manager.get_volume(novel_id, volume_number)
     if not vol:
         raise HTTPException(status_code=404, detail="Volume not found")
@@ -184,6 +286,9 @@ class VolumeUpdateRequest(BaseModel):
 @router.put("/{novel_id}/volumes/{volume_number}")
 async def update_volume(novel_id: str, volume_number: int, request: VolumeUpdateRequest):
     manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
     updated = await manager.update_volume(novel_id, volume_number, **request.model_dump(exclude_none=True))
     if not updated:
         raise HTTPException(status_code=404, detail="Volume not found")
@@ -203,7 +308,13 @@ async def generate_volume(novel_id: str, request: GenerateVolumeRequest, backgro
 
     vol = await manager.get_volume(novel_id, request.volume_number)
     if not vol:
-        raise HTTPException(status_code=404, detail="Volume not found")
+        # Fallback: check outlines table for volume data
+        from src.api.services.outline_service import get_outline_service
+        outline_svc = get_outline_service()
+        vol_outlines = await outline_svc.get_volume_outlines(novel_id)
+        outline_vol = next((v for v in vol_outlines if v["volume_number"] == request.volume_number), None)
+        if not outline_vol:
+            raise HTTPException(status_code=404, detail="Volume not found")
 
     from src.api.services.novel_generator import generate_volume_background
 
@@ -265,6 +376,9 @@ async def generate_chapters(novel_id: str, request: GenerateChaptersRequest, bac
 @router.get("/{novel_id}/world")
 async def get_world_setting(novel_id: str):
     manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
     ws = await manager.get_world_setting(novel_id)
     if not ws:
         return {"novel_id": novel_id, "background": None, "geography": None,
@@ -287,12 +401,18 @@ async def update_world_setting(novel_id: str, request: WorldSettingRequest):
 @router.get("/{novel_id}/power-systems")
 async def list_power_systems(novel_id: str):
     manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
     return await manager.list_power_systems(novel_id)
 
 
 @router.post("/{novel_id}/power-systems", status_code=201)
 async def create_power_system(novel_id: str, request: PowerSystemRequest):
     manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
     ps_id = await manager.create_power_system(
         novel_id, name=request.name,
         description=request.description, levels=request.levels
@@ -303,6 +423,9 @@ async def create_power_system(novel_id: str, request: PowerSystemRequest):
 @router.put("/{novel_id}/power-systems/{ps_id}")
 async def update_power_system(novel_id: str, ps_id: int, request: PowerSystemRequest):
     manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
     updated = await manager.update_power_system(
         ps_id, name=request.name,
         description=request.description, levels=request.levels
@@ -315,6 +438,9 @@ async def update_power_system(novel_id: str, ps_id: int, request: PowerSystemReq
 @router.delete("/{novel_id}/power-systems/{ps_id}")
 async def delete_power_system(novel_id: str, ps_id: int):
     manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
     deleted = await manager.delete_power_system(ps_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Power system not found")
@@ -326,12 +452,18 @@ async def delete_power_system(novel_id: str, ps_id: int):
 @router.get("/{novel_id}/characters")
 async def list_characters(novel_id: str):
     manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
     return await manager.list_characters(novel_id)
 
 
 @router.post("/{novel_id}/characters", status_code=201)
 async def create_character(novel_id: str, request: CharacterRequest):
     manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
     char_id = await manager.create_character(novel_id, **request.model_dump(exclude_none=True))
     return {"id": char_id, "status": "created"}
 
@@ -339,6 +471,9 @@ async def create_character(novel_id: str, request: CharacterRequest):
 @router.put("/{novel_id}/characters/{char_id}")
 async def update_character(novel_id: str, char_id: int, request: CharacterRequest):
     manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
     updated = await manager.update_character(char_id, **request.model_dump(exclude_none=True))
     if not updated:
         raise HTTPException(status_code=404, detail="Character not found")
@@ -348,6 +483,9 @@ async def update_character(novel_id: str, char_id: int, request: CharacterReques
 @router.delete("/{novel_id}/characters/{char_id}")
 async def delete_character(novel_id: str, char_id: int):
     manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
     deleted = await manager.delete_character(char_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Character not found")
@@ -359,12 +497,18 @@ async def delete_character(novel_id: str, char_id: int):
 @router.get("/{novel_id}/chapters")
 async def list_chapters(novel_id: str):
     manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
     return await manager.list_chapters(novel_id)
 
 
 @router.get("/{novel_id}/chapters/{chapter_number}")
 async def get_chapter(novel_id: str, chapter_number: int):
     manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
     chapter = await manager.get_chapter(novel_id, chapter_number)
     if not chapter:
         raise HTTPException(status_code=404, detail="Chapter not found")
@@ -374,6 +518,9 @@ async def get_chapter(novel_id: str, chapter_number: int):
 @router.put("/{novel_id}/chapters/{chapter_number}")
 async def update_chapter(novel_id: str, chapter_number: int, request: ChapterUpdateRequest):
     manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
     updated = await manager.update_chapter(
         novel_id, chapter_number, **request.model_dump(exclude_none=True)
     )
@@ -385,6 +532,9 @@ async def update_chapter(novel_id: str, chapter_number: int, request: ChapterUpd
 @router.delete("/{novel_id}/chapters/{chapter_number}")
 async def delete_chapter(novel_id: str, chapter_number: int):
     manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
     deleted = await manager.delete_chapter(novel_id, chapter_number)
     if not deleted:
         raise HTTPException(status_code=404, detail="Chapter not found")
