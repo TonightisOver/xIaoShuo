@@ -1,6 +1,6 @@
 """add_knowledge_graph_tables
 
-Revision ID: 20260520_add_knowledge_graph_tables
+Revision ID: kg_20260520
 Revises: 20260519_add_status_indexes
 Create Date: 2026-05-20 00:00:00.000000
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "20260520_add_knowledge_graph_tables"
+revision: str = "kg_20260520"
 down_revision: Union[str, Sequence[str], None] = "20260519_add_status_indexes"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

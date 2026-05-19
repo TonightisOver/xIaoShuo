@@ -1,7 +1,7 @@
 """add unique constraints to chapters and volumes
 
-Revision ID: 20260520_add_chapter_volume_unique
-Revises: 20260520_add_knowledge_graph_tables
+Revision ID: chvol_20260520
+Revises: kg_20260520
 Create Date: 2026-05-20 12:00:00.000000
 
 """
@@ -10,8 +10,8 @@ from typing import Sequence, Union
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "20260520_add_chapter_volume_unique"
-down_revision: Union[str, Sequence[str], None] = "20260520_add_knowledge_graph_tables"
+revision: str = "chvol_20260520"
+down_revision: Union[str, Sequence[str], None] = "kg_20260520"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
