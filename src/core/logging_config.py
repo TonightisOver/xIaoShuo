@@ -4,46 +4,73 @@ import logging
 import sys
 from pathlib import Path
 
+import structlog
 
-def setup_logging(log_level: str = "INFO", log_file: str | None = None) -> None:
-    """配置日志系统
+
+def setup_logging(
+    log_level: str = "INFO",
+    log_file: str | None = None,
+    log_format: str = "console",
+) -> None:
+    """配置日志系统（structlog）
 
     Args:
         log_level: 日志级别 (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         log_file: 日志文件路径，如果为 None 则只输出到控制台
+        log_format: 输出格式，"console" 为人类可读，"json" 为结构化 JSON
     """
-    # 创建日志格式
-    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    date_format = "%Y-%m-%d %H:%M:%S"
+    level = getattr(logging, log_level.upper(), logging.INFO)
 
-    # 配置根日志记录器
+    # --- stdlib handlers ---
     handlers: list[logging.Handler] = []
 
-    # 控制台处理器
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(logging.Formatter(log_format, date_format))
     handlers.append(console_handler)
 
-    # 文件处理器（如果指定了日志文件）
     if log_file:
         log_path = Path(log_file)
         log_path.parent.mkdir(parents=True, exist_ok=True)
-
         file_handler = logging.FileHandler(log_file, encoding="utf-8")
-        file_handler.setFormatter(logging.Formatter(log_format, date_format))
         handlers.append(file_handler)
 
-    # 配置根日志记录器
     logging.basicConfig(
-        level=getattr(logging, log_level.upper()),
-        format=log_format,
-        datefmt=date_format,
+        level=level,
         handlers=handlers,
         force=True,
     )
 
-    # 设置第三方库的日志级别
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-    logging.getLogger("openai").setLevel(logging.WARNING)
-    logging.getLogger("langchain").setLevel(logging.WARNING)
+    # 降低第三方库噪音
+    for noisy in ("httpx", "httpcore", "openai", "langchain"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
+    # --- structlog processors ---
+    shared_processors: list[structlog.types.Processor] = [
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+    ]
+
+    if log_format == "json":
+        renderer: structlog.types.Processor = structlog.processors.JSONRenderer()
+    else:
+        renderer = structlog.dev.ConsoleRenderer()
+
+    structlog.configure(
+        processors=[
+            *shared_processors,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
+    )
+
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processor=renderer,
+        foreign_pre_chain=shared_processors,
+    )
+
+    for handler in handlers:
+        handler.setFormatter(formatter)

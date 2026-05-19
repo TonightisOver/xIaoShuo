@@ -77,3 +77,77 @@ class ErrorResponse(BaseModel):
     """错误响应"""
 
     error: ErrorDetail
+
+
+# --- Project / Novel response models ---
+
+
+class NovelSummaryResponse(BaseModel):
+    """小说列表项"""
+
+    novel_id: str
+    title: str | None = None
+    novel_type: str
+    target_words: int
+    status: str
+    writing_style: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class NovelDetailResponse(NovelSummaryResponse):
+    """小说详情"""
+
+    idea: str
+    custom_style_description: str | None = None
+    writing_style_prompt: str | None = None
+    completed_at: datetime | None = None
+
+
+class NovelListResponse(BaseModel):
+    """小说列表 + 分页"""
+
+    novels: list[NovelSummaryResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class CreateResponse(BaseModel):
+    """创建资源响应"""
+
+    novel_id: str
+    status: str
+
+
+class StatusResponse(BaseModel):
+    """通用状态响应"""
+
+    status: str
+
+
+class ChapterResponse(BaseModel):
+    """章节响应"""
+
+    novel_id: str
+    chapter_number: int
+    title: str | None = None
+    content: str | None = None
+    word_count: int = 0
+    status: str
+    volume_number: int | None = None
+    updated_at: datetime
+
+
+class VolumeResponse(BaseModel):
+    """卷响应"""
+
+    novel_id: str
+    volume_number: int
+    title: str | None = None
+    summary: str | None = None
+    status: str
+    chapter_start: int | None = None
+    chapter_end: int | None = None
+    updated_at: datetime
+

@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     # 日志配置
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str | None = "logs/xiaoshuo.log"
+    LOG_FORMAT: str = "console"  # "console" | "json"
+
+    # CORS 配置
+    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
     # API 配置
     API_HOST: str = "0.0.0.0"

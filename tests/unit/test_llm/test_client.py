@@ -111,3 +111,181 @@ class TestLLMClient:
 
         assert client1 is client2
         assert mock_chat_openai.call_count == 1
+
+
+# ============================================================
+#  CHANGE-027: 重试逻辑测试
+# ============================================================
+
+class TestLLMClientRetry:
+    """测试 AsyncRetrying 重试逻辑（CHANGE-027）"""
+
+    @pytest.mark.asyncio
+    async def test_retries_on_429(self, mock_settings, mock_chat_openai):
+        """429 错误应触发重试，最终成功返回"""
+        import httpx
+        from langchain_core.messages import AIMessage
+
+        mock_llm_instance = AsyncMock()
+        mock_chat_openai.return_value = mock_llm_instance
+
+        # 第一次 429，第二次成功
+        rate_limit_response = MagicMock()
+        rate_limit_response.status_code = 429
+        rate_limit_error = httpx.HTTPStatusError(
+            "429 Too Many Requests",
+            request=MagicMock(),
+            response=rate_limit_response,
+        )
+        mock_llm_instance.ainvoke.side_effect = [
+            rate_limit_error,
+            AIMessage(content="重试后成功"),
+        ]
+
+        client = LLMClient()
+        client.max_retries = 3
+
+        # 跳过真实等待
+        with patch("src.core.llm.client.wait_exponential", return_value=MagicMock()):
+            with patch("tenacity.wait_exponential") as mock_wait:
+                mock_wait.return_value = lambda retry_state: 0
+                # 直接 patch AsyncRetrying 的 wait 参数
+                result = await client.generate("测试 prompt")
+
+        assert result == "重试后成功"
+        assert mock_llm_instance.ainvoke.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_does_not_retry_on_401(self, mock_settings, mock_chat_openai):
+        """401 认证错误不应重试，直接抛出"""
+        import httpx
+
+        mock_llm_instance = AsyncMock()
+        mock_chat_openai.return_value = mock_llm_instance
+
+        auth_response = MagicMock()
+        auth_response.status_code = 401
+        auth_error = httpx.HTTPStatusError(
+            "401 Unauthorized",
+            request=MagicMock(),
+            response=auth_response,
+        )
+        mock_llm_instance.ainvoke.side_effect = auth_error
+
+        client = LLMClient()
+        client.max_retries = 3
+
+        with pytest.raises(httpx.HTTPStatusError) as exc_info:
+            await client.generate("测试 prompt")
+
+        # 401 不重试，ainvoke 只调用一次
+        assert mock_llm_instance.ainvoke.call_count == 1
+        assert exc_info.value.response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_max_retries_exhausted_raises(self, mock_settings, mock_chat_openai):
+        """超过 max_retries 次数后应抛出异常"""
+        mock_llm_instance = AsyncMock()
+        mock_chat_openai.return_value = mock_llm_instance
+
+        # 每次都抛出 ConnectionError（可重试）
+        mock_llm_instance.ainvoke.side_effect = ConnectionError("连接失败")
+
+        client = LLMClient()
+        client.max_retries = 2  # 最多重试 2 次
+
+        with pytest.raises(Exception):
+            await client.generate("测试 prompt")
+
+        # max_retries=2 意味着最多尝试 2 次
+        assert mock_llm_instance.ainvoke.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_retries_on_500(self, mock_settings, mock_chat_openai):
+        """5xx 服务器错误应触发重试"""
+        import httpx
+        from langchain_core.messages import AIMessage
+
+        mock_llm_instance = AsyncMock()
+        mock_chat_openai.return_value = mock_llm_instance
+
+        server_error_response = MagicMock()
+        server_error_response.status_code = 500
+        server_error = httpx.HTTPStatusError(
+            "500 Internal Server Error",
+            request=MagicMock(),
+            response=server_error_response,
+        )
+        mock_llm_instance.ainvoke.side_effect = [
+            server_error,
+            AIMessage(content="服务器恢复后成功"),
+        ]
+
+        client = LLMClient()
+        client.max_retries = 3
+
+        result = await client.generate("测试 prompt")
+
+        assert result == "服务器恢复后成功"
+        assert mock_llm_instance.ainvoke.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_retries_on_timeout(self, mock_settings, mock_chat_openai):
+        """TimeoutError 应触发重试"""
+        from langchain_core.messages import AIMessage
+
+        mock_llm_instance = AsyncMock()
+        mock_chat_openai.return_value = mock_llm_instance
+
+        mock_llm_instance.ainvoke.side_effect = [
+            TimeoutError("请求超时"),
+            AIMessage(content="超时后重试成功"),
+        ]
+
+        client = LLMClient()
+        client.max_retries = 3
+
+        result = await client.generate("测试 prompt")
+
+        assert result == "超时后重试成功"
+        assert mock_llm_instance.ainvoke.call_count == 2
+
+    def test_is_retryable_http_error_429(self):
+        """_is_retryable_http_error 对 429 返回 True"""
+        import httpx
+        from src.core.llm.client import _is_retryable_http_error
+
+        response = MagicMock()
+        response.status_code = 429
+        exc = httpx.HTTPStatusError("429", request=MagicMock(), response=response)
+
+        assert _is_retryable_http_error(exc) is True
+
+    def test_is_retryable_http_error_500(self):
+        """_is_retryable_http_error 对 5xx 返回 True"""
+        import httpx
+        from src.core.llm.client import _is_retryable_http_error
+
+        for status in (500, 502, 503, 504):
+            response = MagicMock()
+            response.status_code = status
+            exc = httpx.HTTPStatusError(str(status), request=MagicMock(), response=response)
+            assert _is_retryable_http_error(exc) is True, f"Expected True for {status}"
+
+    def test_is_retryable_http_error_401(self):
+        """_is_retryable_http_error 对 401 返回 False"""
+        import httpx
+        from src.core.llm.client import _is_retryable_http_error
+
+        response = MagicMock()
+        response.status_code = 401
+        exc = httpx.HTTPStatusError("401", request=MagicMock(), response=response)
+
+        assert _is_retryable_http_error(exc) is False
+
+    def test_is_retryable_http_error_non_http(self):
+        """_is_retryable_http_error 对非 HTTPStatusError 返回 False"""
+        from src.core.llm.client import _is_retryable_http_error
+
+        assert _is_retryable_http_error(ValueError("not http")) is False
+        assert _is_retryable_http_error(ConnectionError("conn")) is False

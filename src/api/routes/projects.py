@@ -6,6 +6,14 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.api.models.requests import CreateNovelRequest
+from src.api.models.responses import (
+    ChapterResponse,
+    CreateResponse,
+    NovelDetailResponse,
+    NovelListResponse,
+    StatusResponse,
+    VolumeResponse,
+)
 from src.api.services.novel_generator import (
     generate_novel_background,
     generate_novel_full_background,
@@ -72,7 +80,7 @@ class ChapterUpdateRequest(BaseModel):
 
 # --- Novel Project CRUD ---
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, response_model=CreateResponse)
 async def create_project(request: CreateProjectRequest):
     try:
         validate_idea(request.idea)
@@ -93,7 +101,7 @@ async def create_project(request: CreateProjectRequest):
     return {"novel_id": novel_id, "status": "draft"}
 
 
-@router.get("")
+@router.get("", response_model=NovelListResponse)
 async def list_projects(
     novel_type: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
@@ -104,7 +112,7 @@ async def list_projects(
     return {"novels": novels, "total": total, "limit": limit, "offset": offset}
 
 
-@router.get("/{novel_id}")
+@router.get("/{novel_id}", response_model=NovelDetailResponse)
 async def get_project(novel_id: str):
     manager = get_novel_manager()
     novel = await manager.get_novel(novel_id)
@@ -113,7 +121,7 @@ async def get_project(novel_id: str):
     return novel
 
 
-@router.put("/{novel_id}")
+@router.put("/{novel_id}", response_model=StatusResponse)
 async def update_project(novel_id: str, request: UpdateProjectRequest):
     manager = get_novel_manager()
     updated = await manager.update_novel(novel_id, **request.model_dump(exclude_none=True))
@@ -122,7 +130,7 @@ async def update_project(novel_id: str, request: UpdateProjectRequest):
     return {"status": "updated"}
 
 
-@router.delete("/{novel_id}")
+@router.delete("/{novel_id}", response_model=StatusResponse)
 async def delete_project(novel_id: str):
     manager = get_novel_manager()
     deleted = await manager.delete_novel(novel_id)
@@ -266,7 +274,7 @@ async def list_volumes(novel_id: str):
     return await manager.list_volumes(novel_id)
 
 
-@router.get("/{novel_id}/volumes/{volume_number}")
+@router.get("/{novel_id}/volumes/{volume_number}", response_model=VolumeResponse)
 async def get_volume(novel_id: str, volume_number: int):
     manager = get_novel_manager()
     novel = await manager.get_novel(novel_id)
@@ -283,7 +291,7 @@ class VolumeUpdateRequest(BaseModel):
     summary: str | None = None
 
 
-@router.put("/{novel_id}/volumes/{volume_number}")
+@router.put("/{novel_id}/volumes/{volume_number}", response_model=StatusResponse)
 async def update_volume(novel_id: str, volume_number: int, request: VolumeUpdateRequest):
     manager = get_novel_manager()
     novel = await manager.get_novel(novel_id)
@@ -503,7 +511,7 @@ async def list_chapters(novel_id: str):
     return await manager.list_chapters(novel_id)
 
 
-@router.get("/{novel_id}/chapters/{chapter_number}")
+@router.get("/{novel_id}/chapters/{chapter_number}", response_model=ChapterResponse)
 async def get_chapter(novel_id: str, chapter_number: int):
     manager = get_novel_manager()
     novel = await manager.get_novel(novel_id)
@@ -515,7 +523,7 @@ async def get_chapter(novel_id: str, chapter_number: int):
     return chapter
 
 
-@router.put("/{novel_id}/chapters/{chapter_number}")
+@router.put("/{novel_id}/chapters/{chapter_number}", response_model=StatusResponse)
 async def update_chapter(novel_id: str, chapter_number: int, request: ChapterUpdateRequest):
     manager = get_novel_manager()
     novel = await manager.get_novel(novel_id)

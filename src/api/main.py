@@ -1,9 +1,9 @@
 """FastAPI 应用入口"""
 
-import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -25,9 +25,13 @@ from src.core.logging_config import setup_logging
 
 # 设置日志
 settings = get_settings()
-setup_logging(log_level=settings.LOG_LEVEL, log_file=settings.LOG_FILE)
+setup_logging(
+    log_level=settings.LOG_LEVEL,
+    log_file=settings.LOG_FILE,
+    log_format=settings.LOG_FORMAT,
+)
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
@@ -39,7 +43,7 @@ async def lifespan(app: FastAPI):
     logger.info("xIaoShuo API starting up...")
     await init_db()
     logger.info("Database initialized")
-    logger.info(f"API documentation available at http://localhost:8000/docs")
+    logger.info("API documentation available at http://localhost:8000/docs")
 
     yield
 
@@ -62,7 +66,7 @@ app = FastAPI(
 # 添加 CORS 中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

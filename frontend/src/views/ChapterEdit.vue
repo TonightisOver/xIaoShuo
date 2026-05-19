@@ -5,7 +5,9 @@
     <template v-else>
       <div class="flex items-center justify-between mb-6">
         <div>
-          <h1 class="text-xl font-bold text-ink-900">第{{ chapter.chapter_number }}章：{{ chapter.title }}</h1>
+          <h1 class="text-xl font-bold text-ink-900">
+            {{ chapter.volume_number ? `第${chapter.volume_number}卷 · ` : '' }}第{{ chapter.chapter_number }}章：{{ chapter.title }}
+          </h1>
           <p class="text-xs text-ink-400 mt-1">{{ contentLength }} 字</p>
         </div>
         <div class="flex gap-2">

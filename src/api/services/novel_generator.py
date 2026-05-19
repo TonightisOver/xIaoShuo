@@ -3,8 +3,9 @@
 负责执行小说生成任务，通过事件总线推送实时进度。
 """
 
-import logging
 from typing import Any
+
+import structlog
 
 from src.api.models.requests import CreateNovelRequest
 from src.api.services.novel_manager import get_novel_manager
@@ -19,7 +20,7 @@ from src.api.services.task_manager import get_task_manager
 from src.core.langgraph.graph import create_novel_graph
 from src.core.langgraph.state import NovelState
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 STAGE_ORDER = [
     "idea_expansion",
@@ -56,7 +57,7 @@ async def generate_novel_background(
             data={"stage": "idea_expansion", "percentage": 0},
         ))
 
-        logger.info(f"Starting novel generation for task {task_id}")
+        logger.info("novel_generation_starting", task_id=task_id)
 
         graph = create_novel_graph()
 
@@ -168,12 +169,13 @@ async def generate_novel_background(
         ))
 
         logger.info(
-            f"Novel generation completed for task {task_id}, "
-            f"generated {len(result.get('chapters', []))} chapters"
+            "novel_generation_completed",
+            task_id=task_id,
+            chapters=len(result.get("chapters", [])),
         )
 
     except Exception as e:
-        logger.exception(f"Novel generation failed for task {task_id}")
+        logger.exception("novel_generation_failed", task_id=task_id)
         await task_manager.fail_task(task_id, str(e))
         await event_bus.publish(ProgressEvent(
             task_id=task_id,
@@ -306,7 +308,7 @@ async def generate_novel_full_background(
     try:
         await task_manager.update_status(task_id, "running")
 
-        logger.info(f"Starting FULL generation for task {task_id}")
+        logger.info("full_generation_starting", task_id=task_id)
 
         # --- Build initial state (same logic as generate_novel_background) ---
         initial_state: dict[str, Any] = {
@@ -408,10 +410,10 @@ async def generate_novel_full_background(
             data={"percentage": 100, "current_stage": "completed", "pipeline": "full"},
         ))
 
-        logger.info(f"Full novel generation completed for task {task_id}")
+        logger.info("full_generation_completed", task_id=task_id)
 
     except Exception as e:
-        logger.exception(f"Full novel generation failed for task {task_id}")
+        logger.exception("full_generation_failed", task_id=task_id)
         await task_manager.fail_task(task_id, str(e))
         await event_bus.publish(ProgressEvent(
             task_id=task_id,
@@ -692,10 +694,14 @@ async def generate_volume_background(
             data={"percentage": 100, "volume_number": volume_number},
         ))
 
-        logger.info(f"Volume {volume_number} generation completed for novel {novel_id}")
+        logger.info(
+            "volume_generation_completed",
+            novel_id=novel_id,
+            volume_number=volume_number,
+        )
 
     except Exception as e:
-        logger.exception(f"Volume generation failed: {e}")
+        logger.exception("volume_generation_failed", error=str(e))
         await task_manager.fail_task(task_id, str(e))
         await novel_manager.update_volume(novel_id, volume_number, status="failed")
         await event_bus.publish(ProgressEvent(
@@ -840,10 +846,15 @@ async def generate_chapters_background(
             data={"percentage": 100, "chapter_start": chapter_start, "chapter_end": chapter_end},
         ))
 
-        logger.info(f"Chapters {chapter_start}-{chapter_end} generated for novel {novel_id}")
+        logger.info(
+            "chapters_generation_completed",
+            novel_id=novel_id,
+            chapter_start=chapter_start,
+            chapter_end=chapter_end,
+        )
 
     except Exception as e:
-        logger.exception(f"Chapter range generation failed: {e}")
+        logger.exception("chapters_generation_failed", error=str(e))
         await task_manager.fail_task(task_id, str(e))
         await event_bus.publish(ProgressEvent(
             task_id=task_id,
@@ -914,6 +925,7 @@ async def _persist_to_novel(novel_id: str, result: dict[str, Any]) -> None:
                 if isinstance(ch, dict):
                     chapter = Chapter(
                         novel_id=novel_id,
+                        volume_number=ch.get("volume_number"),
                         chapter_number=ch.get("chapter", 0),
                         title=ch.get("title", ""),
                         content=ch.get("content", ""),
@@ -926,7 +938,7 @@ async def _persist_to_novel(novel_id: str, result: dict[str, Any]) -> None:
         # Update novel status
         await manager.update_novel(novel_id, status="completed")
 
-        logger.info(f"Persisted generation results to novel {novel_id}")
+        logger.info("persist_results_completed", novel_id=novel_id)
 
     except Exception as e:
-        logger.error(f"Failed to persist results to novel {novel_id}: {e}")
+        logger.error("persist_results_failed", novel_id=novel_id, error=str(e))

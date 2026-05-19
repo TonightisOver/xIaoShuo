@@ -143,7 +143,7 @@ class Volume(Base):
     title: Mapped[str | None] = mapped_column(String(200))
     summary: Mapped[str | None] = mapped_column(Text)
     outline: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-    status: Mapped[str] = mapped_column(String(20), default="draft")
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
     chapter_start: Mapped[int | None] = mapped_column(Integer)
     chapter_end: Mapped[int | None] = mapped_column(Integer)
     updated_at: Mapped[datetime] = mapped_column(
@@ -169,7 +169,7 @@ class Chapter(Base):
     title: Mapped[str | None] = mapped_column(String(200))
     content: Mapped[str | None] = mapped_column(Text)
     word_count: Mapped[int] = mapped_column(Integer, default=0)
-    status: Mapped[str] = mapped_column(String(20), default="draft")
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(),
         onupdate=func.now()
@@ -237,7 +237,7 @@ class Conversation(Base):
         nullable=False, index=True
     )
     topic: Mapped[str] = mapped_column(String(100), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), default="active")
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -283,7 +283,7 @@ class Outline(Base):
     volume_number: Mapped[int | None] = mapped_column(Integer)
     chapter_number: Mapped[int | None] = mapped_column(Integer)
     content: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
-    status: Mapped[str] = mapped_column(String(20), default="draft")
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -307,7 +307,7 @@ class Storyline(Base):
     type: Mapped[str] = mapped_column(String(20), nullable=False, default="main")
     description: Mapped[str | None] = mapped_column(Text)
     key_events: Mapped[list[dict] | None] = mapped_column(JSON, default=list)
-    status: Mapped[str] = mapped_column(String(20), default="active")
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(),
         onupdate=func.now()

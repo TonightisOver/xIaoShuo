@@ -22,7 +22,7 @@
           :to="`/novels/${novelId}/chapters/${ch.chapter_number}`"
           class="block text-sm text-ink-600 hover:text-primary-600 transition-colors py-0.5"
         >
-          第{{ ch.chapter_number }}章：{{ ch.title }}
+          第{{ chapterIndexInVolume(vol, ch) }}章：{{ ch.title }}
           <span class="text-ink-400 text-xs ml-1">{{ ch.word_count }}字</span>
         </router-link>
       </div>
@@ -43,6 +43,17 @@ defineEmits(['generate-volume'])
 function volumeChapters(vol) {
   const chs = props.chapters.filter(c => c.volume_number === vol.volume_number)
   return chs.length ? chs : null
+}
+
+function chapterIndexInVolume(vol, ch) {
+  if (vol.chapter_start != null) {
+    return ch.chapter_number - vol.chapter_start + 1
+  }
+  const chs = props.chapters
+    .filter(c => c.volume_number === vol.volume_number)
+    .sort((a, b) => a.chapter_number - b.chapter_number)
+  const idx = chs.findIndex(c => c.id === ch.id)
+  return idx >= 0 ? idx + 1 : ch.chapter_number
 }
 
 function statusClass(s) {

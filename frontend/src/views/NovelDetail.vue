@@ -339,8 +339,8 @@ async function fetchAll() {
       fetch(`/api/v1/projects/${novelId}/conversations`),
       fetch(`/api/v1/projects/${novelId}/volumes`),
       fetch(`/api/v1/projects/${novelId}/power-systems`),
-      fetch(`/api/v1/storylines/${novelId}/relations`),
-      fetch(`/api/v1/outlines/${novelId}/tree`),
+      fetch(`/api/v1/projects/${novelId}/relations`),
+      fetch(`/api/v1/projects/${novelId}/outlines`),
     ])
     if (nRes.ok) novel.value = await nRes.json()
     if (wRes.ok) world.value = await wRes.json()

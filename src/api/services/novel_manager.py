@@ -64,6 +64,8 @@ class NovelManager:
 
     async def list_novels(self, novel_type: str | None = None,
                           limit: int = 20, offset: int = 0):
+        # No N+1 issue here: _novel_summary() only accesses scalar columns on Novel
+        # itself and does not traverse any relationship, so no lazy-load is triggered.
         async with get_db_session() as session:
             query = select(Novel)
             if novel_type:
@@ -240,6 +242,7 @@ class NovelManager:
                 .order_by(Chapter.chapter_number)
             )
             return [{"id": c.id, "chapter_number": c.chapter_number,
+                     "volume_number": c.volume_number,
                      "title": c.title, "content": c.content,
                      "word_count": c.word_count, "status": c.status,
                      "updated_at": c.updated_at}
@@ -257,6 +260,7 @@ class NovelManager:
             if not c:
                 return None
             return {"id": c.id, "chapter_number": c.chapter_number,
+                    "volume_number": c.volume_number,
                     "title": c.title, "content": c.content,
                     "word_count": c.word_count, "status": c.status,
                     "updated_at": c.updated_at}
