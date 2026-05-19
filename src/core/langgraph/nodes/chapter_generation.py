@@ -1,14 +1,16 @@
 """章节生成节点"""
 
 import json
-import logging
 
+import structlog
+
+from src.core.config import get_settings
 from src.core.langgraph.state import NovelState
+from src.core.llm.chapter_generator import generate_single_chapter
 from src.core.llm.client import get_llm_client
-from src.core.llm.prompts import CHAPTER_GENERATION_PROMPT
 from src.core.validation import get_style_instruction
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 async def node(state: NovelState) -> NovelState:
@@ -17,43 +19,46 @@ async def node(state: NovelState) -> NovelState:
         chapters: list[dict] = []
         chapter_outlines = state.get("chapter_outlines", [])
 
+        settings = get_settings()
+        kg_enabled = settings.KNOWLEDGE_GRAPH_ENABLED
+
+        if kg_enabled:
+            from src.api.services.knowledge_graph_service import (
+                get_knowledge_graph_service,
+            )
+            kg_service = get_knowledge_graph_service()
+        else:
+            kg_service = None
+
+        client = get_llm_client()
+        characters_json = json.dumps(state["characters"], ensure_ascii=False)
+        world_setting_json = json.dumps(state["world_setting"], ensure_ascii=False)
+        style_instruction = get_style_instruction(
+            state.get("writing_style", ""),
+            state.get("writing_style_prompt", ""),
+        )
+
         for i, chapter_outline in enumerate(chapter_outlines):
-            # 获取上一章内容
             previous_chapter = ""
             if i > 0 and chapters:
-                previous_chapter = chapters[-1].get("content", "")
-
-            client = get_llm_client()
-            prompt = CHAPTER_GENERATION_PROMPT.format(
-                chapter_outline=json.dumps(
-                    chapter_outline, ensure_ascii=False
-                ),
-                previous_chapter=(
-                    previous_chapter[:500] if previous_chapter else "这是第一章"
-                ),
-                characters=json.dumps(state["characters"], ensure_ascii=False),
-                world_setting=json.dumps(
-                    state["world_setting"], ensure_ascii=False
-                ),
-            )
+                previous_chapter = chapters[-1].get("content", "")[:500]
 
             logger.info(
                 f"Generating chapter {chapter_outline['chapter']} "
                 f"for project {state['project_id']}"
             )
-            style_instruction = get_style_instruction(state.get("writing_style", ""), state.get("writing_style_prompt", ""))
-            if style_instruction:
-                prompt = f"{style_instruction}\n\n{prompt}"
-            content = await client.generate(prompt, max_tokens=8000)
 
-            chapters.append(
-                {
-                    "chapter": chapter_outline["chapter"],
-                    "title": chapter_outline["title"],
-                    "content": content,
-                    "word_count": len(content),
-                }
+            chapter_result = await generate_single_chapter(
+                client=client,
+                chapter_outline=chapter_outline,
+                previous_chapter=previous_chapter,
+                characters_json=characters_json,
+                world_setting_json=world_setting_json,
+                style_instruction=style_instruction,
+                kg_service=kg_service,
+                novel_id=state["project_id"],
             )
+            chapters.append(chapter_result)
 
             # Emit per-chapter progress via callback registry
             from src.api.services.progress_event_bus import get_progress_callback

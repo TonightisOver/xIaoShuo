@@ -18,7 +18,6 @@ from src.api.services.progress_event_bus import (
 )
 from src.api.services.task_manager import get_task_manager
 from src.core.langgraph.graph import create_novel_graph
-from src.core.langgraph.state import NovelState
 
 logger = structlog.get_logger(__name__)
 
@@ -33,12 +32,51 @@ STAGE_ORDER = [
 ]
 
 
-def _stage_percentage(stage: str) -> int:
-    try:
-        idx = STAGE_ORDER.index(stage)
-        return int(((idx + 1) / len(STAGE_ORDER)) * 100)
-    except ValueError:
-        return 0
+async def _build_initial_state(
+    task_id: str,
+    request: CreateNovelRequest,
+) -> tuple[dict[str, Any], str | None]:
+    """构建 LangGraph 初始状态，注入已有设定。
+
+    Returns:
+        (initial_state, novel_id)
+    """
+    initial_state: dict[str, Any] = {
+        "project_id": task_id,
+        "idea": request.idea,
+        "novel_type": request.novel_type,
+        "target_words": request.target_words,
+        "writing_style": request.writing_style,
+        "writing_style_prompt": request.writing_style_prompt,
+        "current_stage": "start",
+        "chapters": [],
+        "errors": [],
+    }
+
+    task_manager = get_task_manager()
+    task_data = await task_manager.get_task(task_id)
+    novel_id = task_data.get("novel_id") if task_data else None
+    if novel_id:
+        novel_manager = get_novel_manager()
+        existing_world = await novel_manager.get_world_setting(novel_id)
+        existing_chars = await novel_manager.list_characters(novel_id)
+        ws_keys = ["background", "rules", "culture", "geography"]
+        if existing_world and any(existing_world.get(k) for k in ws_keys):
+            initial_state["world_setting"] = existing_world
+        if existing_chars:
+            initial_state["characters"] = existing_chars
+        from src.api.services.storyline_service import get_storyline_service
+        sl_service = get_storyline_service()
+        storylines = await sl_service.list_storylines(novel_id)
+        if storylines:
+            sl_parts = [
+                f"- [{sl['type']}] {sl['name']}: {sl.get('description', '')}"
+                for sl in storylines
+            ]
+            sl_context = "\n".join(sl_parts)
+            initial_state["idea"] = f"{request.idea}\n\n已确定的故事线：\n{sl_context}"
+
+    return initial_state, novel_id
 
 
 async def generate_novel_background(
@@ -59,108 +97,16 @@ async def generate_novel_background(
 
         logger.info("novel_generation_starting", task_id=task_id)
 
-        graph = create_novel_graph()
+        initial_state, novel_id = await _build_initial_state(task_id, request)
 
-        async def _chapter_progress_callback(data: dict[str, Any]) -> None:
-            total = max(data.get("total_chapters", 1), 1)
-            completed = data.get("completed_chapters", 0)
-            base = _stage_percentage("outline_generation")
-            span = _stage_percentage("chapter_generation") - base
-            pct = base + int((completed / total) * span)
-
-            progress_data = {
-                "current_stage": "chapter_generation",
-                "completed_chapters": completed,
-                "total_chapters": total,
-                "percentage": pct,
-            }
-            await task_manager.update_status(task_id, "running", progress=progress_data)
-            await event_bus.publish(ProgressEvent(
-                task_id=task_id,
-                event_type=EventType.CHAPTER_PROGRESS,
-                data=progress_data,
-            ))
-
-        initial_state: NovelState = {
-            "project_id": task_id,
-            "idea": request.idea,
-            "novel_type": request.novel_type,
-            "target_words": request.target_words,
-            "writing_style": request.writing_style,
-            "writing_style_prompt": request.writing_style_prompt,
-            "current_stage": "start",
-            "chapters": [],
-            "errors": [],
-        }
-
-        # Inject existing settings if linked to a novel project
-        task_data = await task_manager.get_task(task_id)
-        novel_id = task_data.get("novel_id") if task_data else None
-        if novel_id:
-            novel_manager = get_novel_manager()
-            existing_world = await novel_manager.get_world_setting(novel_id)
-            existing_chars = await novel_manager.list_characters(novel_id)
-            ws_keys = ["background", "rules", "culture", "geography"]
-            if existing_world and any(existing_world.get(k) for k in ws_keys):
-                initial_state["world_setting"] = existing_world
-            if existing_chars:
-                initial_state["characters"] = existing_chars
-            # Inject storylines into idea as context
-            from src.api.services.storyline_service import get_storyline_service
-            sl_service = get_storyline_service()
-            storylines = await sl_service.list_storylines(novel_id)
-            if storylines:
-                sl_parts = []
-                for sl in storylines:
-                    sl_parts.append(
-                        f"- [{sl['type']}] {sl['name']}: {sl.get('description', '')}"
-                    )
-                sl_context = "\n".join(sl_parts)
-                initial_state["idea"] = f"{request.idea}\n\n已确定的故事线：\n{sl_context}"
-
-        register_progress_callback(task_id, _chapter_progress_callback)
-
-        config = {"configurable": {"thread_id": task_id}}
-        result: dict[str, Any] = {}
-
-        async for event in graph.astream(initial_state, config=config):
-            for node_name, state_update in event.items():
-                result = state_update
-                percentage = _stage_percentage(node_name)
-
-                progress_data = {
-                    "current_stage": node_name,
-                    "completed_chapters": len(state_update.get("chapters", [])),
-                    "total_chapters": len(state_update.get("chapter_outlines", [])),
-                    "percentage": percentage,
-                }
-                await task_manager.update_status(
-                    task_id, "running", progress=progress_data
-                )
-
-                await event_bus.publish(ProgressEvent(
-                    task_id=task_id,
-                    event_type=EventType.STAGE_COMPLETE,
-                    data=progress_data,
-                ))
-
-                idx = STAGE_ORDER.index(node_name) if node_name in STAGE_ORDER else -1
-                if 0 <= idx < len(STAGE_ORDER) - 1:
-                    await event_bus.publish(ProgressEvent(
-                        task_id=task_id,
-                        event_type=EventType.STAGE_START,
-                        data={
-                            "stage": STAGE_ORDER[idx + 1],
-                            "percentage": percentage,
-                        },
-                    ))
+        result = await _run_langgraph_pipeline(
+            task_id, initial_state, stage_offset=0, total_stages=len(STAGE_ORDER),
+        )
 
         await task_manager.complete_task(task_id, result)
 
-        # Persist results into novel sub-tables if linked to a project
-        task_data = await task_manager.get_task(task_id)
-        if task_data and task_data.get("novel_id"):
-            await _persist_to_novel(task_data["novel_id"], result)
+        if novel_id:
+            await _persist_to_novel(novel_id, result)
 
         await event_bus.publish(ProgressEvent(
             task_id=task_id,
@@ -182,8 +128,6 @@ async def generate_novel_background(
             event_type=EventType.ERROR,
             data={"error": str(e)},
         ))
-    finally:
-        unregister_progress_callback(task_id)
 
 
 FULL_GENERATE_STAGES = [
@@ -203,22 +147,32 @@ FULL_GENERATE_STAGES = [
 ]
 
 
-def _full_generate_percentage(stage_index: int) -> int:
-    """Calculate percentage for a stage index (0-based) in the 13-stage pipeline."""
-    total = len(FULL_GENERATE_STAGES)
+def _full_generate_percentage(stage_index: int, total_stages: int | None = None) -> int:
+    """Calculate percentage for a stage index (0-based).
+
+    Args:
+        stage_index: 0-based index of the current stage.
+        total_stages: Override total stage count (defaults to len(FULL_GENERATE_STAGES)).
+    """
+    total = total_stages if total_stages is not None else len(FULL_GENERATE_STAGES)
     return int(((stage_index + 1) / total) * 100)
 
 
 async def _run_langgraph_pipeline(
-    task_id: str, initial_state: dict[str, Any], stage_offset: int = 0,
+    task_id: str,
+    initial_state: dict[str, Any],
+    stage_offset: int = 0,
+    total_stages: int | None = None,
 ) -> dict[str, Any]:
     """Run the LangGraph 7-node pipeline, emitting progress events.
 
     Args:
         task_id: Task identifier for progress tracking.
-        initial_state: Initial NovelState dict.
+        initial_state: Initial state dict.
         stage_offset: How many stages to skip in percentage calculation
                       (for when LangGraph is part of a larger pipeline).
+        total_stages: Override total stage count for percentage calculation.
+                      Defaults to len(FULL_GENERATE_STAGES).
 
     Returns:
         The final state from the LangGraph execution.
@@ -230,8 +184,8 @@ async def _run_langgraph_pipeline(
     async def _chapter_progress_callback(data: dict[str, Any]) -> None:
         total = max(data.get("total_chapters", 1), 1)
         completed = data.get("completed_chapters", 0)
-        base = _full_generate_percentage(stage_offset + 3)  # outline_generation at base
-        span = _full_generate_percentage(stage_offset + 4) - base
+        base = _full_generate_percentage(stage_offset + 3, total_stages)
+        span = _full_generate_percentage(stage_offset + 4, total_stages) - base
         pct = base + int((completed / total) * span)
         progress_data = {
             "current_stage": "chapter_generation",
@@ -260,7 +214,7 @@ async def _run_langgraph_pipeline(
                     node_idx = -1
                 if node_idx < 0:
                     continue
-                percentage = _full_generate_percentage(stage_offset + node_idx)
+                percentage = _full_generate_percentage(stage_offset + node_idx, total_stages)
 
                 progress_data = {
                     "current_stage": node_name,
@@ -310,41 +264,8 @@ async def generate_novel_full_background(
 
         logger.info("full_generation_starting", task_id=task_id)
 
-        # --- Build initial state (same logic as generate_novel_background) ---
-        initial_state: dict[str, Any] = {
-            "project_id": task_id,
-            "idea": request.idea,
-            "novel_type": request.novel_type,
-            "target_words": request.target_words,
-            "writing_style": request.writing_style,
-            "writing_style_prompt": request.writing_style_prompt,
-            "current_stage": "start",
-            "chapters": [],
-            "errors": [],
-        }
-
-        task_data = await task_manager.get_task(task_id)
-        novel_id = task_data.get("novel_id") if task_data else None
-        if novel_id:
-            novel_manager = get_novel_manager()
-            existing_world = await novel_manager.get_world_setting(novel_id)
-            existing_chars = await novel_manager.list_characters(novel_id)
-            ws_keys = ["background", "rules", "culture", "geography"]
-            if existing_world and any(existing_world.get(k) for k in ws_keys):
-                initial_state["world_setting"] = existing_world
-            if existing_chars:
-                initial_state["characters"] = existing_chars
-            from src.api.services.storyline_service import get_storyline_service
-            sl_service = get_storyline_service()
-            storylines = await sl_service.list_storylines(novel_id)
-            if storylines:
-                sl_parts = []
-                for sl in storylines:
-                    sl_parts.append(
-                        f"- [{sl['type']}] {sl['name']}: {sl.get('description', '')}"
-                    )
-                sl_context = "\n".join(sl_parts)
-                initial_state["idea"] = f"{request.idea}\n\n已确定的故事线：\n{sl_context}"
+        # --- Build initial state ---
+        initial_state, novel_id = await _build_initial_state(task_id, request)
 
         # --- Stage 1-7: Run LangGraph pipeline ---
         await event_bus.publish(ProgressEvent(
@@ -611,8 +532,8 @@ async def generate_volume_background(
 
         from src.api.models.db_models import Chapter
         from src.core.database import get_db_session
+        from src.core.llm.chapter_generator import generate_single_chapter
         from src.core.llm.client import get_llm_client
-        from src.core.llm.prompts import CHAPTER_GENERATION_PROMPT
         from src.core.validation import WRITING_STYLES
 
         client = get_llm_client()
@@ -640,24 +561,16 @@ async def generate_volume_background(
         for i, ch_outline in enumerate(chapters_data):
             previous_chapter = prev_context if i == 0 else (generated_chapters[-1].get("content", "")[:500] if generated_chapters else "")
 
-            prompt = CHAPTER_GENERATION_PROMPT.format(
-                chapter_outline=json.dumps(ch_outline, ensure_ascii=False),
+            chapter_result = await generate_single_chapter(
+                client=client,
+                chapter_outline=ch_outline,
                 previous_chapter=previous_chapter or "这是本卷第一章",
-                characters=chars_str,
-                world_setting=world_str,
+                characters_json=chars_str,
+                world_setting_json=world_str,
+                storylines_json=sl_str,
+                style_instruction=style_instruction,
             )
-            if sl_str:
-                prompt += f"\n\n已确定的故事线：\n{sl_str}"
-            if style_instruction:
-                prompt = f"{style_instruction}\n\n{prompt}"
-
-            content = await client.generate(prompt, max_tokens=8000)
-            generated_chapters.append({
-                "chapter": ch_outline.get("chapter", i + 1),
-                "title": ch_outline.get("title", f"第{i+1}章"),
-                "content": content,
-                "word_count": len(content),
-            })
+            generated_chapters.append(chapter_result)
 
             progress_data = {
                 "current_stage": "chapter_generation",
@@ -737,8 +650,8 @@ async def generate_chapters_background(
 
         from src.api.models.db_models import Chapter
         from src.core.database import get_db_session
+        from src.core.llm.chapter_generator import generate_single_chapter
         from src.core.llm.client import get_llm_client
-        from src.core.llm.prompts import CHAPTER_GENERATION_PROMPT
         from src.core.validation import WRITING_STYLES
 
         client = get_llm_client()
@@ -788,24 +701,16 @@ async def generate_chapters_background(
 
             previous = prev_context if not generated_chapters else (generated_chapters[-1].get("content", "")[:500])
 
-            prompt = CHAPTER_GENERATION_PROMPT.format(
-                chapter_outline=json.dumps(ch_outline, ensure_ascii=False),
+            chapter_result = await generate_single_chapter(
+                client=client,
+                chapter_outline=ch_outline,
                 previous_chapter=previous or "这是起始章节",
-                characters=chars_str,
-                world_setting=world_str,
+                characters_json=chars_str,
+                world_setting_json=world_str,
+                storylines_json=sl_str,
+                style_instruction=style_instruction,
             )
-            if sl_str:
-                prompt += f"\n\n已确定的故事线：\n{sl_str}"
-            if style_instruction:
-                prompt = f"{style_instruction}\n\n{prompt}"
-
-            content = await client.generate(prompt, max_tokens=8000)
-            generated_chapters.append({
-                "chapter": ch_num,
-                "title": ch_outline.get("title", f"第{ch_num}章"),
-                "content": content,
-                "word_count": len(content),
-            })
+            generated_chapters.append(chapter_result)
 
             progress_data = {
                 "current_stage": "chapter_generation",

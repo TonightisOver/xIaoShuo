@@ -3,7 +3,16 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -133,6 +142,9 @@ class Volume(Base):
     """卷"""
 
     __tablename__ = "volumes"
+    __table_args__ = (
+        UniqueConstraint("novel_id", "volume_number", name="uq_volume_novel_number"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     novel_id: Mapped[str] = mapped_column(
@@ -158,6 +170,9 @@ class Chapter(Base):
     """章节"""
 
     __tablename__ = "chapters"
+    __table_args__ = (
+        UniqueConstraint("novel_id", "chapter_number", name="uq_chapter_novel_number"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     novel_id: Mapped[str] = mapped_column(
@@ -369,3 +384,83 @@ class StorylineCharacter(Base):
         Integer, ForeignKey("characters.id", ondelete="CASCADE"), nullable=False
     )
     role_in_line: Mapped[str | None] = mapped_column(String(50))
+
+
+class KnowledgeEntity(Base):
+    """知识图谱实体"""
+
+    __tablename__ = "knowledge_entities"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    entity_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    aliases: Mapped[list] = mapped_column(JSON, default=list)
+    attributes: Mapped[dict] = mapped_column(JSON, default=dict)
+    first_chapter: Mapped[int] = mapped_column(Integer, nullable=False)
+    last_chapter: Mapped[int | None] = mapped_column(Integer)
+    source: Mapped[str] = mapped_column(String(20), default="extracted")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now()
+    )
+
+
+class KnowledgeTriple(Base):
+    """知识图谱三元组"""
+
+    __tablename__ = "knowledge_triples"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    subject_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("knowledge_entities.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    predicate: Mapped[str] = mapped_column(String(100), nullable=False)
+    object_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("knowledge_entities.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    chapter_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    source: Mapped[str] = mapped_column(String(20), default="extracted")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now()
+    )
+
+
+class KnowledgeExtractionLog(Base):
+    """知识抽取日志"""
+
+    __tablename__ = "knowledge_extraction_logs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    chapter_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    entities_count: Mapped[int] = mapped_column(Integer, default=0)
+    triples_count: Mapped[int] = mapped_column(Integer, default=0)
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

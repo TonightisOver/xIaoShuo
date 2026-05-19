@@ -31,16 +31,14 @@ class Settings(BaseSettings):
     API_WORKERS: int = 1
     API_RELOAD: bool = False
 
-    # 任务配置
-    TASK_STORAGE_PATH: str = "data/tasks.json"
-    TASK_MAX_CONCURRENT: int = 3
-    TASK_CLEANUP_DAYS: int = 7
-
     # Database configuration
     DATABASE_URL: str = "postgresql+asyncpg://xiaoshuo:password@localhost:5432/xiaoshuo"
     DATABASE_POOL_SIZE: int = 5
     DATABASE_MAX_OVERFLOW: int = 10
     DATABASE_ECHO: bool = False
+
+    # Knowledge Graph
+    KNOWLEDGE_GRAPH_ENABLED: bool = True
 
     model_config = SettingsConfigDict(
         env_file=".env",

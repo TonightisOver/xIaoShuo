@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from src.api.routes import (
     conversations_router,
     health_router,
+    knowledge_graph_router,
     novels_router,
     outlines_router,
     projects_router,
@@ -80,6 +81,7 @@ app.include_router(conversations_router)
 app.include_router(style_router)
 app.include_router(outlines_router)
 app.include_router(storylines_router)
+app.include_router(knowledge_graph_router)
 app.include_router(ws_router)
 
 # 挂载前端静态文件

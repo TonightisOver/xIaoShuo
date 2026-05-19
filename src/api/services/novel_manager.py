@@ -1,9 +1,9 @@
 """小说项目管理服务"""
 
-import logging
 import uuid
 from datetime import datetime, timezone
 
+import structlog
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
@@ -17,7 +17,7 @@ from src.api.models.db_models import (
 )
 from src.core.database import get_db_session
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class NovelManager:
@@ -162,10 +162,13 @@ class NovelManager:
             await session.flush()
             return ps.id
 
-    async def update_power_system(self, ps_id: int, **kwargs) -> bool:
+    async def update_power_system(self, novel_id: str, ps_id: int, **kwargs) -> bool:
         async with get_db_session() as session:
             result = await session.execute(
-                select(PowerSystem).where(PowerSystem.id == ps_id)
+                select(PowerSystem).where(
+                    PowerSystem.id == ps_id,
+                    PowerSystem.novel_id == novel_id,
+                )
             )
             ps = result.scalar_one_or_none()
             if not ps:
@@ -176,10 +179,13 @@ class NovelManager:
             ps.updated_at = datetime.now(timezone.utc)
         return True
 
-    async def delete_power_system(self, ps_id: int) -> bool:
+    async def delete_power_system(self, novel_id: str, ps_id: int) -> bool:
         async with get_db_session() as session:
             result = await session.execute(
-                select(PowerSystem).where(PowerSystem.id == ps_id)
+                select(PowerSystem).where(
+                    PowerSystem.id == ps_id,
+                    PowerSystem.novel_id == novel_id,
+                )
             )
             ps = result.scalar_one_or_none()
             if not ps:
@@ -208,10 +214,13 @@ class NovelManager:
             await session.flush()
             return char.id
 
-    async def update_character(self, char_id: int, **kwargs) -> bool:
+    async def update_character(self, novel_id: str, char_id: int, **kwargs) -> bool:
         async with get_db_session() as session:
             result = await session.execute(
-                select(Character).where(Character.id == char_id)
+                select(Character).where(
+                    Character.id == char_id,
+                    Character.novel_id == novel_id,
+                )
             )
             char = result.scalar_one_or_none()
             if not char:
@@ -222,10 +231,13 @@ class NovelManager:
             char.updated_at = datetime.now(timezone.utc)
         return True
 
-    async def delete_character(self, char_id: int) -> bool:
+    async def delete_character(self, novel_id: str, char_id: int) -> bool:
         async with get_db_session() as session:
             result = await session.execute(
-                select(Character).where(Character.id == char_id)
+                select(Character).where(
+                    Character.id == char_id,
+                    Character.novel_id == novel_id,
+                )
             )
             char = result.scalar_one_or_none()
             if not char:

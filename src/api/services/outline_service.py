@@ -1,8 +1,8 @@
 """大纲服务 - 三级大纲管理"""
 
-import logging
 from datetime import UTC, datetime
 
+import structlog
 from sqlalchemy import and_, select
 
 from src.api.models.db_models import Outline
@@ -10,7 +10,7 @@ from src.core.database import get_db_session
 from src.core.json_utils import safe_json_parse
 from src.core.llm.client import get_llm_client
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 GENERATE_VOLUMES_PROMPT = """你是小说大纲师。基于以下总纲，将故事拆分为若干卷。
 

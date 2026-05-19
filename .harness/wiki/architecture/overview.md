@@ -59,17 +59,23 @@
 src/
 ├── api/                    # Web 层
 │   ├── main.py            # 应用入口
-│   ├── routes/            # 路由（health/novels/projects/ws）
+│   ├── routes/            # 路由（health/novels/projects/ws/knowledge_graph）
 │   ├── models/            # Pydantic + SQLAlchemy 模型
 │   └── services/          # 业务服务
+│       ├── novel_generator.py    # 生成编排（LangGraph 管道）
+│       ├── novel_manager.py      # 小说 CRUD
+│       ├── knowledge_graph_service.py  # 知识图谱（抽取/检索/检查）
+│       └── ...
 └── core/                   # 核心层
     ├── config.py          # 配置管理
     ├── database.py        # 数据库连接
     ├── langgraph/         # 工作流引擎
     │   ├── graph.py       # 图定义
     │   ├── state.py       # 状态定义
-    │   └── nodes/         # 7 个节点
+    │   └── nodes/         # 节点（chapter_generation, quality_check 等）
     └── llm/               # LLM 客户端
+        ├── client.py      # DeepSeek API 封装
+        └── chapter_generator.py  # 共享章节生成逻辑
 ```
 
 ## 数据流
@@ -78,5 +84,7 @@ src/
 2. 触发生成 → `POST /api/v1/projects/{id}/generate`
 3. 后台执行 LangGraph 工作流（astream 逐节点）
 4. 每个节点完成 → 更新 DB 进度 + 发布 WebSocket 事件
-5. 全部完成 → 结果拆分存入子表（world_settings/characters/chapters）
-6. 用户查看/编辑设定和章节
+5. 章节生成时 → 知识图谱检索上下文注入 prompt → 生成后自动抽取实体/三元组
+6. 质量检查 → 一致性检查（规则 + LLM）
+7. 全部完成 → 结果拆分存入子表（world_settings/characters/chapters）
+8. 用户查看/编辑设定和章节

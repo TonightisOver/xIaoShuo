@@ -1,9 +1,9 @@
 """故事线/人物弧光/场景管理服务"""
 
-import logging
 from datetime import UTC, datetime
 from typing import Any
 
+import structlog
 from sqlalchemy import select
 
 from src.api.models.db_models import (
@@ -14,7 +14,7 @@ from src.api.models.db_models import (
 )
 from src.core.database import get_db_session
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class StorylineService:

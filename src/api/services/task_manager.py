@@ -3,17 +3,17 @@
 负责任务的创建、状态管理和持久化
 """
 
-import logging
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
+import structlog
 from sqlalchemy import func, select
 
 from src.api.models.db_models import Task
 from src.core.database import get_db_session
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class TaskManager:

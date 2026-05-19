@@ -1,7 +1,6 @@
 """小说项目管理 API 路由"""
 
-import logging
-
+import structlog
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -22,7 +21,7 @@ from src.api.services.novel_manager import get_novel_manager
 from src.api.services.task_manager import get_task_manager
 from src.core.validation import ValidationError, validate_idea, validate_novel_type
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
@@ -435,7 +434,7 @@ async def update_power_system(novel_id: str, ps_id: int, request: PowerSystemReq
     if not novel:
         raise HTTPException(status_code=404, detail="Novel not found")
     updated = await manager.update_power_system(
-        ps_id, name=request.name,
+        novel_id, ps_id, name=request.name,
         description=request.description, levels=request.levels
     )
     if not updated:
@@ -449,7 +448,7 @@ async def delete_power_system(novel_id: str, ps_id: int):
     novel = await manager.get_novel(novel_id)
     if not novel:
         raise HTTPException(status_code=404, detail="Novel not found")
-    deleted = await manager.delete_power_system(ps_id)
+    deleted = await manager.delete_power_system(novel_id, ps_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Power system not found")
     return {"status": "deleted"}
@@ -482,7 +481,7 @@ async def update_character(novel_id: str, char_id: int, request: CharacterReques
     novel = await manager.get_novel(novel_id)
     if not novel:
         raise HTTPException(status_code=404, detail="Novel not found")
-    updated = await manager.update_character(char_id, **request.model_dump(exclude_none=True))
+    updated = await manager.update_character(novel_id, char_id, **request.model_dump(exclude_none=True))
     if not updated:
         raise HTTPException(status_code=404, detail="Character not found")
     return {"status": "updated"}
@@ -494,7 +493,7 @@ async def delete_character(novel_id: str, char_id: int):
     novel = await manager.get_novel(novel_id)
     if not novel:
         raise HTTPException(status_code=404, detail="Novel not found")
-    deleted = await manager.delete_character(char_id)
+    deleted = await manager.delete_character(novel_id, char_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Character not found")
     return {"status": "deleted"}

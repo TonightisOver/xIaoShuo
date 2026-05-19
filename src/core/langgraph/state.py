@@ -31,5 +31,9 @@ class NovelState(TypedDict, total=False):
     # 质量指标
     quality_scores: dict[str, float]
 
+    # 知识图谱相关
+    kg_context: str
+    consistency_warnings: list[dict]
+
     # 错误信息
     errors: list[str]

@@ -1,8 +1,8 @@
 """创作对话服务"""
 
-import logging
 from datetime import UTC, datetime
 
+import structlog
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -11,7 +11,7 @@ from src.api.services.novel_manager import get_novel_manager
 from src.core.database import get_db_session
 from src.core.llm.client import get_llm_client
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 CONVERSATION_SYSTEM_PROMPT = """你是一位资深小说创作顾问。当前正在协助用户创作一部{novel_type}小说。
 
