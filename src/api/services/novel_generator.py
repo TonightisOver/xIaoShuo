@@ -86,6 +86,7 @@ async def generate_novel_background(
     """后台执行小说生成"""
     task_manager = get_task_manager()
     event_bus = get_event_bus()
+    novel_id: str | None = None
 
     try:
         await task_manager.update_status(task_id, "running")
@@ -265,6 +266,7 @@ async def generate_novel_full_background(
     """
     task_manager = get_task_manager()
     event_bus = get_event_bus()
+    novel_id: str | None = None
 
     try:
         await task_manager.update_status(task_id, "running")
@@ -547,10 +549,13 @@ async def generate_volume_background(
         from src.core.database import get_db_session
         from src.core.llm.chapter_generator import generate_single_chapter
         from src.core.llm.client import get_llm_client
-        from src.core.validation import WRITING_STYLES
+        from src.core.validation import get_style_instruction
 
         client = get_llm_client()
-        style_instruction = WRITING_STYLES.get(novel.get("writing_style", ""), "")
+        style_instruction = get_style_instruction(
+            novel.get("writing_style", ""),
+            novel.get("writing_style_prompt", ""),
+        )
 
         # Build context strings
         chars_str = json.dumps([{
@@ -673,10 +678,13 @@ async def generate_chapters_background(
         from src.core.database import get_db_session
         from src.core.llm.chapter_generator import generate_single_chapter
         from src.core.llm.client import get_llm_client
-        from src.core.validation import WRITING_STYLES
+        from src.core.validation import get_style_instruction
 
         client = get_llm_client()
-        style_instruction = WRITING_STYLES.get(novel.get("writing_style", ""), "")
+        style_instruction = get_style_instruction(
+            novel.get("writing_style", ""),
+            novel.get("writing_style_prompt", ""),
+        )
 
         # Fetch context: characters, world setting, and storylines
         world = await novel_manager.get_world_setting(novel_id)

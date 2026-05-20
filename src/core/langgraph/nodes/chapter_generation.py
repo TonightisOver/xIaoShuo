@@ -18,6 +18,11 @@ async def node(state: NovelState) -> NovelState:
     try:
         chapters: list[dict] = []
         chapter_outlines = state.get("chapter_outlines", [])
+        regeneration_count = state.get("_regeneration_count", 0)
+
+        # If we already have chapters, this is a regeneration attempt
+        if state.get("chapters"):
+            regeneration_count += 1
 
         settings = get_settings()
         kg_enabled = settings.KNOWLEDGE_GRAPH_ENABLED
@@ -75,10 +80,12 @@ async def node(state: NovelState) -> NovelState:
             **state,
             "chapters": chapters,
             "current_stage": "chapter_generation_completed",
+            "_regeneration_count": regeneration_count,
         }
 
     except Exception as e:
         logger.error(f"Chapter generation failed, using fallback: {e}")
+        regeneration_count = state.get("_regeneration_count", 0) + 1
         chapters = [
             {
                 "chapter": 1,
@@ -100,5 +107,6 @@ async def node(state: NovelState) -> NovelState:
             **state,
             "chapters": chapters,
             "current_stage": "chapter_generation_completed",
+            "_regeneration_count": regeneration_count,
             "errors": state["errors"] + [f"chapter_generation API failed: {str(e)}"],
         }

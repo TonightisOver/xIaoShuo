@@ -16,6 +16,9 @@ from src.core.langgraph.nodes import (
 from src.core.langgraph.state import NovelState
 
 
+MAX_REGENERATION_ATTEMPTS = 2
+
+
 def should_continue(state: NovelState) -> str:
     """条件路由：根据质量分数决定下一步
 
@@ -26,7 +29,8 @@ def should_continue(state: NovelState) -> str:
         下一个节点的名称
     """
     quality_score = state.get("quality_scores", {}).get("overall", 0)
-    if quality_score >= 0.8:
+    regeneration_count = state.get("_regeneration_count", 0)
+    if quality_score >= 0.8 or regeneration_count >= MAX_REGENERATION_ATTEMPTS:
         return "human_review"
     else:
         return "regenerate"

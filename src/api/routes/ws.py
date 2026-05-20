@@ -57,7 +57,10 @@ async def task_progress_ws(websocket: WebSocket, task_id: str):
                     "data": event.data,
                     "timestamp": event.timestamp.isoformat(),
                 })
-                if event.event_type in (EventType.COMPLETED, EventType.ERROR):
+                if event.event_type == EventType.COMPLETED:
+                    await websocket.close(code=1000)
+                    break
+                if event.event_type == EventType.ERROR and not event.data.get("non_blocking"):
                     await websocket.close(code=1000)
                     break
             except asyncio.TimeoutError:

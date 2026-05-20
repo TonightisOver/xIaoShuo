@@ -28,6 +28,7 @@ class NovelState(TypedDict, total=False):
     current_stage: str
     approval_status: str
     revision_requests: list[str]
+    _regeneration_count: int
 
     # 质量指标
     quality_scores: dict[str, float]
