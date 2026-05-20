@@ -8,6 +8,7 @@ class NovelState(TypedDict, total=False):
 
     # 项目元信息
     project_id: str
+    novel_id: str
     novel_type: str
     target_words: int
     writing_style: str

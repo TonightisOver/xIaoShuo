@@ -56,6 +56,7 @@ async def _build_initial_state(
     task_manager = get_task_manager()
     task_data = await task_manager.get_task(task_id)
     novel_id = task_data.get("novel_id") if task_data else None
+    initial_state["novel_id"] = novel_id
     if novel_id:
         novel_manager = get_novel_manager()
         existing_world = await novel_manager.get_world_setting(novel_id)

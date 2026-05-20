@@ -56,7 +56,7 @@ async def node(state: NovelState) -> NovelState:
                 world_setting_json=world_setting_json,
                 style_instruction=style_instruction,
                 kg_service=kg_service,
-                novel_id=state["project_id"],
+                novel_id=state.get("novel_id") or state["project_id"],
             )
             chapters.append(chapter_result)
 

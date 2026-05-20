@@ -1,25 +1,40 @@
 <template>
-  <div class="max-w-full mx-auto px-6 py-10">
-    <div class="flex items-center justify-between mb-6">
-      <div class="flex items-center gap-3">
-        <h1 class="text-2xl font-extrabold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">全景故事与知识图谱</h1>
-        <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">双引擎</span>
+  <div class="max-w-7xl mx-auto px-6 py-10 font-sans">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+      <div>
+        <div class="flex items-center gap-3 mb-2 flex-wrap">
+          <h1 class="text-2xl font-bold tracking-tight text-[#1d1d1f] flex items-center gap-2">
+            <span>全景故事与三层知识图谱</span>
+            <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-purple-50 text-purple-600 border border-purple-200/50">
+              双引擎分析
+            </span>
+          </h1>
+        </div>
+        <p class="text-[#86868b] text-xs md:text-sm">提供故事脉络骨架测绘与智能抽取的深层因果关系网模型</p>
       </div>
-      <router-link :to="`/novels/${novelId}`" class="btn-secondary text-sm glass-panel hover:bg-white/10 transition-all px-4 py-2 rounded-lg border border-white/10 text-ink-300">返回小说详情</router-link>
+      <div>
+        <router-link :to="`/novels/${novelId}`" class="btn-secondary text-sm flex items-center gap-1">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+          </svg>
+          <span>返回小说详情</span>
+        </router-link>
+      </div>
     </div>
 
     <!-- Tab 切换 -->
-    <div class="flex gap-2 mb-6 border-b border-white/10">
+    <div class="flex gap-1 mb-6 border-b border-gray-200/80">
       <button
         class="px-5 py-3 text-sm font-semibold transition-all relative"
-        :class="activeTab === 'structure' ? 'text-blue-400 font-bold border-b-2 border-blue-400' : 'text-ink-400 hover:text-ink-300'"
+        :class="activeTab === 'structure' ? 'text-purple-600 font-bold border-b-2 border-purple-600' : 'text-gray-500 hover:text-gray-800'"
         @click="activeTab = 'structure'"
       >
         🎨 故事框架拓扑
       </button>
       <button
         class="px-5 py-3 text-sm font-semibold transition-all relative"
-        :class="activeTab === 'knowledge' ? 'text-purple-400 font-bold border-b-2 border-purple-400' : 'text-ink-400 hover:text-ink-300'"
+        :class="activeTab === 'knowledge' ? 'text-purple-600 font-bold border-b-2 border-purple-600' : 'text-gray-500 hover:text-gray-800'"
         @click="switchToKnowledge"
       >
         🧠 活态三层图谱
@@ -29,73 +44,123 @@
     <!-- 故事结构 Tab -->
     <div v-show="activeTab === 'structure'" class="space-y-4">
       <div v-if="loading" class="flex flex-col items-center justify-center py-28 space-y-4">
-        <div class="w-12 h-12 rounded-full border-4 border-blue-500/30 border-t-blue-400 animate-spin"></div>
-        <p class="text-ink-400 text-sm">正在测绘小说故事框架，请稍候...</p>
+        <div class="w-12 h-12 rounded-full border-4 border-purple-500/10 border-t-purple-600 animate-spin"></div>
+        <p class="text-gray-500 text-sm">正在测绘小说故事框架，请稍候...</p>
       </div>
-      <div v-else-if="!hasData" class="glass-panel text-center py-20 rounded-2xl border border-white/5 bg-white/2 backdrop-blur-md">
-        <p class="text-ink-400 mb-4">暂无预设框架，请先去添加故事线、人物弧光或场景情节</p>
-        <router-link :to="`/novels/${novelId}`" class="btn-primary text-sm px-6 py-2.5 rounded-lg">前往添加</router-link>
+      <div v-else-if="!hasData" class="card text-center py-16 px-6 max-w-xl mx-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div class="w-16 h-16 bg-purple-50 text-purple-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">🎨</div>
+        <h3 class="text-base font-bold text-gray-800 mb-2">暂无故事大纲框架</h3>
+        <p class="text-gray-500 text-xs md:text-sm mb-6 max-w-sm mx-auto leading-relaxed">
+          小说尚未生成核心故事主线或人物弧光。请先返回小说详情页面配置故事设定并启动生成。
+        </p>
+        <router-link :to="`/novels/${novelId}`" class="btn-primary text-sm px-6 py-2.5 rounded-lg inline-flex items-center gap-1.5 shadow-sm">
+          <span>前往添加设定</span>
+        </router-link>
       </div>
 
-      <div v-else class="glass-panel p-6 rounded-2xl border border-white/5 bg-white/2 backdrop-blur-md overflow-x-auto shadow-2xl relative">
+      <div v-else class="card p-6 rounded-2xl bg-white overflow-x-auto relative">
         <div ref="treeContainer" class="min-h-[550px] w-full"></div>
       </div>
 
       <!-- Legend -->
-      <div v-if="hasData" class="flex flex-wrap gap-4 px-4 py-3 rounded-xl bg-white/5 border border-white/5 text-xs text-ink-400">
-        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-blue-500/80 shadow-[0_0_8px_#3b82f6]"></span> 故事主线</span>
-        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-emerald-500/80 shadow-[0_0_8px_#10b981]"></span> 角色卡</span>
-        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-purple-500/80 shadow-[0_0_8px_#8b5cf6]"></span> 人物弧光</span>
-        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-amber-500/80 shadow-[0_0_8px_#f59e0b]"></span> 剧情场景</span>
-        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-slate-500/80"></span> 情节事件</span>
+      <div v-if="hasData" class="flex flex-wrap gap-4 px-5 py-3.5 rounded-xl bg-white border border-gray-200 text-xs text-gray-600 shadow-sm">
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-blue-500 shadow-[0_1px_4px_rgba(59,130,246,0.3)]"></span> 故事主线</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-emerald-500 shadow-[0_1px_4px_rgba(16,185,129,0.3)]"></span> 角色卡</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-purple-500 shadow-[0_1px_4px_rgba(139,92,246,0.3)]"></span> 人物弧光</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-amber-500 shadow-[0_1px_4px_rgba(245,158,11,0.3)]"></span> 剧情场景</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-gray-500"></span> 情节事件</span>
       </div>
     </div>
 
     <!-- 活态知识图谱 Tab -->
     <div v-show="activeTab === 'knowledge'" class="space-y-4">
-      <!-- 三层子 Tab 控制 -->
-      <div class="flex items-center justify-between p-1.5 rounded-xl bg-white/5 border border-white/5 max-w-xl">
-        <button
-          v-for="sub in subLayers"
-          :key="sub.id"
-          class="flex-1 py-2 px-3 text-xs font-semibold rounded-lg transition-all"
-          :class="activeSubLayer === sub.id 
-            ? `${sub.activeBg} text-white shadow-lg` 
-            : 'text-ink-400 hover:text-ink-300'"
-          @click="changeSubLayer(sub.id)"
-        >
-          {{ sub.icon }} {{ sub.name }}
-        </button>
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <!-- 三层子 Tab 控制 -->
+        <div class="flex items-center p-1 rounded-xl bg-gray-100 border border-gray-200/60 max-w-md shadow-inner">
+          <button
+            v-for="sub in subLayers"
+            :key="sub.id"
+            class="flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all"
+            :class="activeSubLayer === sub.id 
+              ? `${sub.activeBg} text-white shadow-sm` 
+              : 'text-gray-500 hover:text-gray-800'"
+            @click="changeSubLayer(sub.id)"
+          >
+            {{ sub.icon }} {{ sub.name }}
+          </button>
+        </div>
       </div>
 
       <div v-if="kgLoading" class="flex flex-col items-center justify-center py-28 space-y-4">
-        <div class="w-12 h-12 rounded-full border-4 border-purple-500/30 border-t-purple-400 animate-spin"></div>
-        <p class="text-ink-400 text-sm">正在抽取并编译三层网络图谱中...</p>
+        <div class="w-12 h-12 rounded-full border-4 border-purple-500/10 border-t-purple-600 animate-spin"></div>
+        <p class="text-gray-500 text-sm">正在抽取并编译三层网络图谱中，请稍候...</p>
       </div>
-      <div v-else-if="!kgHasData" class="glass-panel text-center py-20 rounded-2xl border border-white/5 bg-white/2 backdrop-blur-md">
-        <p class="text-ink-400">章节内容尚未产生或尚未触发抽取。请在章节生成完成后重新查看！</p>
+      
+      <!-- Graph Empty state with One-Click Extraction -->
+      <div v-else-if="!kgHasData" class="card text-center py-16 px-6 max-w-xl mx-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div class="w-16 h-16 bg-purple-50 text-purple-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">🧠</div>
+        <h3 class="text-base font-bold text-gray-800 mb-2">暂无三层因果知识图谱</h3>
+        <p class="text-gray-500 text-xs md:text-sm mb-6 max-w-sm mx-auto leading-relaxed">
+          章节正文尚未产生，或尚未触发知识图谱自动解析。如果此小说已经完成生成（或属于导入的已有章节数据），您可以一键重新全量提取图谱。
+        </p>
+        <div class="flex flex-col items-center justify-center gap-3">
+          <button 
+            @click="reExtractKG" 
+            :disabled="extracting"
+            class="btn-primary text-sm px-6 py-2.5 rounded-lg inline-flex items-center gap-2 shadow-sm disabled:opacity-50"
+          >
+            <svg v-if="extracting" class="w-4 h-4 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span v-else>🔮</span>
+            <span>一键全量抽取图谱</span>
+          </button>
+          <p v-if="extractProgress" class="text-xs font-semibold text-purple-700 bg-purple-50 px-3 py-1.5 rounded-lg border border-purple-100/50 animate-pulse mt-2">
+            {{ extractProgress }}
+          </p>
+        </div>
       </div>
 
-      <div v-else class="glass-panel p-4 rounded-2xl border border-white/5 bg-[#0d0f14]/80 backdrop-blur-xl overflow-x-auto shadow-2xl relative">
-        <!-- 图谱画布 -->
-        <div ref="kgContainer" class="min-h-[600px] w-full rounded-xl overflow-hidden bg-radial-glow"></div>
+      <!-- Graph Canvas Panel -->
+      <div v-else class="card p-4 rounded-2xl bg-white shadow-sm overflow-x-auto relative">
+        <!-- Quick manual re-extract button in top-right of canvas panel -->
+        <div class="absolute top-4 right-4 z-10 flex items-center gap-2">
+          <button 
+            @click="reExtractKG" 
+            :disabled="extracting"
+            class="bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm inline-flex items-center gap-1.5 disabled:opacity-50 transition-all"
+          >
+            <svg v-if="extracting" class="w-3 h-3 animate-spin text-purple-600" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span v-else>⚡</span>
+            <span>重新全量提取</span>
+          </button>
+          <span v-if="extractProgress" class="bg-purple-50 text-purple-700 border border-purple-100 rounded-lg px-2.5 py-1 text-[11px] font-medium shadow-sm animate-pulse">
+            {{ extractProgress }}
+          </span>
+        </div>
+
+        <div ref="kgContainer" class="min-h-[600px] w-full rounded-xl overflow-hidden bg-radial-glow-light"></div>
       </div>
 
       <!-- KG Legends based on active sub tab -->
-      <div v-if="kgHasData" class="flex flex-wrap gap-4 px-4 py-3 rounded-xl bg-white/5 border border-white/5 text-xs text-ink-400">
+      <div v-if="kgHasData" class="flex flex-wrap gap-4 px-5 py-3.5 rounded-xl bg-white border border-gray-200 text-xs text-gray-600 shadow-sm">
         <template v-if="activeSubLayer === 'character'">
-          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background:#3b82f6; box-shadow: 0 0 8px #3b82f6"></span> 角色实体</span>
-          <span class="flex items-center gap-1.5"><span class="w-3.5 h-0.5 bg-blue-400/80"></span> 人际关系网络</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-blue-500 shadow-[0_1px_4px_rgba(59,130,246,0.3)]"></span> 角色实体</span>
+          <span class="flex items-center gap-1.5"><span class="w-3.5 h-0.5 bg-blue-400"></span> 人际关系网络</span>
         </template>
         <template v-else-if="activeSubLayer === 'plot'">
-          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background:#f59e0b; box-shadow: 0 0 8px #f59e0b"></span> 剧情事件</span>
-          <span class="flex items-center gap-1.5"><span class="w-3.5 h-0.5 bg-amber-400/80"></span> 显式事件关联</span>
-          <span class="flex items-center gap-1.5"><span class="w-3.5 h-0.5 border-t border-dashed border-amber-500/50"></span> 时序推进流 (Chapter Axis)</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-amber-500 shadow-[0_1px_4px_rgba(245,158,11,0.3)]"></span> 剧情事件</span>
+          <span class="flex items-center gap-1.5"><span class="w-3.5 h-0.5 bg-amber-400"></span> 显式事件关联</span>
+          <span class="flex items-center gap-1.5"><span class="w-3.5 h-0.5 border-t border-dashed border-amber-400"></span> 时序推进流 (Chapter Axis)</span>
         </template>
         <template v-else-if="activeSubLayer === 'foreshadowing'">
-          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background:#a78bfa; box-shadow: 0 0 8px #a78bfa"></span> 伏笔节点 (已埋/未收)</span>
-          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background:#3b82f6"></span> 关联人物/事件</span>
-          <span class="flex items-center gap-1.5"><span class="w-3.5 h-0.5 bg-purple-400/80"></span> 埋藏/回收生命线</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-purple-500 shadow-[0_1px_4px_rgba(139,92,246,0.3)]"></span> 伏笔节点 (已埋/未收)</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-blue-500"></span> 关联人物/事件</span>
+          <span class="flex items-center gap-1.5"><span class="w-3.5 h-0.5 bg-purple-400"></span> 埋藏/回收生命线</span>
         </template>
       </div>
     </div>
@@ -121,9 +186,12 @@ const kgData = ref(null) // holds { character_graph, plot_graph, foreshadowing_g
 const kgContainer = ref(null)
 const activeSubLayer = ref('character')
 
+const extracting = ref(false)
+const extractProgress = ref('')
+
 const subLayers = [
   { id: 'character', name: '角色关系谱', icon: '👥', activeBg: 'bg-blue-600' },
-  { id: 'plot', name: '剧情事件谱', icon: '⏳', activeBg: 'bg-amber-600' },
+  { id: 'plot', name: '剧情事件谱', icon: '⏳', activeBg: 'bg-amber-500' },
   { id: 'foreshadowing', name: '伏笔填坑谱', icon: '🔮', activeBg: 'bg-purple-600' }
 ]
 
@@ -140,13 +208,13 @@ const kgHasData = computed(() => {
 })
 
 const nodeColors = {
-  root: '#1a6dff',
-  category: '#495057',
+  root: '#8b5cf6',
+  category: '#1d1d1f',
   storyline: '#3b82f6',
   character: '#10b981',
   arc: '#8b5cf6',
   scene: '#f59e0b',
-  event: '#6b7280',
+  event: '#8e8e93',
   stage: '#a78bfa',
 }
 
@@ -250,11 +318,11 @@ function renderTree(data) {
 
   container.innerHTML = ''
 
-  const margin = { top: 20, right: 200, bottom: 20, left: 100 }
+  const margin = { top: 20, right: 200, bottom: 20, left: 120 }
   const width = Math.max(container.clientWidth, 800)
 
   const root = d3.hierarchy(data)
-  const treeHeight = Math.max(root.descendants().length * 25, 450)
+  const treeHeight = Math.max(root.descendants().length * 28, 450)
 
   const treeLayout = d3.tree().size([treeHeight, width - margin.left - margin.right])
   treeLayout(root)
@@ -273,7 +341,7 @@ function renderTree(data) {
     .join('path')
     .attr('class', 'link')
     .attr('fill', 'none')
-    .attr('stroke', 'rgba(255, 255, 255, 0.12)')
+    .attr('stroke', '#e5e5ea')
     .attr('stroke-width', 1.5)
     .attr('d', d3.linkHorizontal().x(d => d.y).y(d => d.x))
 
@@ -286,17 +354,20 @@ function renderTree(data) {
 
   node.append('circle')
     .attr('r', d => d.children ? 6 : 4)
-    .attr('fill', d => nodeColors[d.data.type] || '#6b7280')
-    .attr('stroke', 'rgba(13, 15, 20, 0.8)')
+    .attr('fill', d => nodeColors[d.data.type] || '#8e8e93')
+    .attr('stroke', '#ffffff')
     .attr('stroke-width', 1.5)
+    .style('filter', 'drop-shadow(0 1px 2px rgba(0,0,0,0.1))')
 
   node.append('text')
     .attr('dy', '0.35em')
     .attr('x', d => d.children ? -10 : 10)
     .attr('text-anchor', d => d.children ? 'end' : 'start')
-    .attr('font-size', '12px')
-    .attr('fill', '#c3c7d6')
+    .attr('font-size', '11px')
+    .attr('font-weight', '500')
+    .attr('fill', '#1d1d1f')
     .text(d => d.data.name.length > 30 ? d.data.name.slice(0, 30) + '...' : d.data.name)
+    .style('text-shadow', '0 1px 2px #ffffff, 0 0 4px #ffffff')
 
   // Tooltip
   node.append('title')
@@ -330,7 +401,6 @@ async function switchToKnowledge() {
 async function loadThreeLayerGraph() {
   kgLoading.value = true
   try {
-    // 拉取最新的三层关系图谱
     const res = await fetch(`/api/v1/projects/${novelId}/knowledge-graph/three-layer`)
     if (res.ok) {
       kgData.value = await res.json()
@@ -342,6 +412,33 @@ async function loadThreeLayerGraph() {
     }
   } finally {
     kgLoading.value = false
+  }
+}
+
+async function reExtractKG() {
+  if (extracting.value) return
+  extracting.value = true
+  extractProgress.value = '正在读取章节文本并清除旧数据...'
+  try {
+    const res = await fetch(`/api/v1/projects/${novelId}/knowledge-graph/extract-all`, {
+      method: 'POST'
+    })
+    if (res.ok) {
+      const data = await res.json()
+      extractProgress.value = `抽取成功！共重新测绘 ${data.total_entities} 个实体，${data.total_triples} 组三元组。`
+      await loadThreeLayerGraph()
+    } else {
+      const err = await res.json().catch(() => ({}))
+      extractProgress.value = `提取异常：${err.detail || '服务错误'}`
+    }
+  } catch (err) {
+    console.error(err)
+    extractProgress.value = '提取网络通信异常，请重试'
+  } finally {
+    setTimeout(() => {
+      extracting.value = false
+      extractProgress.value = ''
+    }, 4500)
   }
 }
 
@@ -360,64 +457,63 @@ function renderKnowledgeGraph(data) {
     .style('border-radius', '12px')
 
   // Theme customization colors based on active tab
-  let themeColor = '#a78bfa' // Default purple
-  let nodeGlowColor = 'rgba(167, 139, 250, 0.4)'
+  let themeColor = '#8b5cf6' // Purple
   if (activeSubLayer.value === 'character') {
-    themeColor = '#3b82f6'
-    nodeGlowColor = 'rgba(59, 130, 246, 0.4)'
+    themeColor = '#3b82f6' // Blue
   } else if (activeSubLayer.value === 'plot') {
-    themeColor = '#f59e0b'
-    nodeGlowColor = 'rgba(245, 158, 11, 0.4)'
+    themeColor = '#f59e0b' // Amber
   }
 
-  // 1. Defined Arrow Markers for Link Directions
+  // Defined Arrow Markers for Link Directions
   svg.append('defs').append('marker')
     .attr('id', 'arrow')
     .attr('viewBox', '0 -5 10 10')
-    .attr('refX', 22) // node radius (10) + arrow offset
+    .attr('refX', 22) // node radius offset
     .attr('refY', 0)
-    .attr('markerWidth', 5)
-    .attr('markerHeight', 5)
+    .attr('markerWidth', 6)
+    .attr('markerHeight', 6)
     .attr('orient', 'auto')
     .append('path')
     .attr('d', 'M0,-5L10,0L0,5')
-    .attr('fill', '#4b5563')
+    .attr('fill', '#8e8e93')
 
   // Deep clone data to avoid simulation mutating state
   const nodes = data.nodes.map(d => ({ ...d }))
   const edges = data.edges.map(d => ({ ...d }))
 
   const simulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(edges).id(d => d.id).distance(140))
-    .force('charge', d3.forceManyBody().strength(-400))
+    .force('link', d3.forceLink(edges).id(d => d.id).distance(150))
+    .force('charge', d3.forceManyBody().strength(-450))
     .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('collision', d3.forceCollide().radius(25))
+    .force('collision', d3.forceCollide().radius(28))
 
-  // 2. Render Lines
+  // Render Lines
   const link = svg.append('g')
     .selectAll('line')
     .data(edges)
     .join('line')
     .attr('stroke', d => {
-      if (d.type === 'narrative_flow') return 'rgba(245, 158, 11, 0.25)' // dashed temporal flow
-      return 'rgba(255, 255, 255, 0.15)'
+      if (d.type === 'narrative_flow') return 'rgba(245, 158, 11, 0.4)' // dashed temporal flow
+      return 'rgba(0, 0, 0, 0.08)'
     })
     .attr('stroke-width', d => d.type === 'narrative_flow' ? 1.5 : 2)
     .attr('stroke-dasharray', d => d.type === 'narrative_flow' ? '5,5' : '0')
     .attr('marker-end', 'url(#arrow)')
 
-  // 3. Render Link labels
+  // Render Link labels
   const linkLabel = svg.append('g')
     .selectAll('text')
     .data(edges)
     .join('text')
     .attr('font-size', '9px')
-    .attr('fill', '#9ca3af')
+    .attr('font-weight', '500')
+    .attr('fill', '#636366')
     .attr('text-anchor', 'middle')
     .attr('dy', -4)
     .text(d => d.predicate)
+    .style('text-shadow', '0 1px 2px #ffffff, 0 0 4px #ffffff')
 
-  // 4. Render Nodes
+  // Render Nodes
   const node = svg.append('g')
     .selectAll('g')
     .data(nodes)
@@ -440,31 +536,31 @@ function renderKnowledgeGraph(data) {
       })
     )
 
-  // Glowing Outer Halo for nodes
+  // Outer circle node with high contrast drop shadow
   node.append('circle')
-    .attr('r', 12)
+    .attr('r', 11)
     .attr('fill', d => {
       if (d.type === 'foreshadowing') return '#a78bfa'
       if (d.type === 'event') return '#f59e0b'
       return '#3b82f6'
     })
-    .style('filter', `drop-shadow(0px 0px 8px ${themeColor})`)
-    .attr('stroke', 'rgba(255, 255, 255, 0.35)')
-    .attr('stroke-width', 1.5)
+    .style('filter', `drop-shadow(0px 2px 5px ${themeColor})`)
+    .attr('stroke', '#ffffff')
+    .attr('stroke-width', 2)
 
   node.append('circle')
-    .attr('r', 4)
+    .attr('r', 3)
     .attr('fill', '#ffffff')
 
-  // Text labels with drop shadow for premium legibility
+  // Text labels with white shadow drop shadow for outstanding high contrast
   node.append('text')
     .attr('dx', 16)
     .attr('dy', '0.35em')
     .attr('font-size', '12px')
-    .attr('font-weight', 'bold')
-    .attr('fill', '#e5e7eb')
+    .attr('font-weight', '700')
+    .attr('fill', '#1c1c1e')
     .text(d => d.name)
-    .style('text-shadow', '0 2px 4px rgba(0, 0, 0, 0.8)')
+    .style('text-shadow', '0 1px 2px #ffffff, 0 0 4px #ffffff')
 
   node.append('title')
     .text(d => {
@@ -491,13 +587,11 @@ function renderKnowledgeGraph(data) {
         const dx = d.target.x - d.source.x
         const dy = d.target.y - d.source.y
         const angle = Math.atan2(dy, dx) * 180 / Math.PI
-        // Make text readable upright
         const rotation = (angle > 90 || angle < -90) ? angle + 180 : angle
         return `rotate(${rotation}, ${x}, ${y})`
       })
 
     node.attr('transform', d => {
-      // Bounding box constraint to keep nodes in canvas
       d.x = Math.max(20, Math.min(width - 20, d.x))
       d.y = Math.max(20, Math.min(height - 20, d.y))
       return `translate(${d.x},${d.y})`
@@ -509,21 +603,17 @@ onMounted(load)
 </script>
 
 <style scoped>
-.glass-panel {
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-.bg-radial-glow {
-  background: radial-gradient(circle at center, rgba(17, 24, 39, 0.95) 0%, rgba(3, 7, 18, 1) 100%);
+.bg-radial-glow-light {
+  background-color: #f9f9fb;
+  background-image: radial-gradient(#e5e5ea 1.2px, transparent 1.2px);
+  background-size: 20px 20px;
   position: relative;
 }
-.bg-radial-glow::before {
+.bg-radial-glow-light::before {
   content: '';
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.06) 0%, transparent 60%);
+  background: radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.02) 0%, transparent 70%);
   pointer-events: none;
 }
 </style>

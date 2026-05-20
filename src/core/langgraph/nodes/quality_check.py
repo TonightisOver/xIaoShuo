@@ -127,7 +127,7 @@ async def node(state: NovelState) -> NovelState:
             )
             kg_service = get_knowledge_graph_service()
             conflicts = await kg_service.check_consistency(
-                novel_id=state["project_id"],
+                novel_id=state.get("novel_id") or state["project_id"],
                 chapter_number=chapter_number,
                 chapter_text=chapter_content,
             )
