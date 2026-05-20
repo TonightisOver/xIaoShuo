@@ -7,7 +7,7 @@
           <span class="text-sm text-ink-500">AI 创作平台</span>
         </router-link>
         <nav class="flex items-center gap-4">
-          <router-link to="/" class="text-ink-600 hover:text-primary-600 transition-colors text-sm font-medium">
+          <router-link to="/tasks" class="text-ink-600 hover:text-primary-600 transition-colors text-sm font-medium">
             任务列表
           </router-link>
           <router-link to="/create" class="btn-primary text-sm">

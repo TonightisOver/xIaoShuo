@@ -43,9 +43,13 @@ class TaskSummary(BaseModel):
     """任务摘要"""
 
     task_id: str
+    novel_id: str | None = None
     status: str
     created_at: datetime
     completed_at: datetime | None = None
+    novel_type: str | None = None
+    target_words: int | None = None
+    idea: str | None = None
 
 
 class TaskListResponse(BaseModel):

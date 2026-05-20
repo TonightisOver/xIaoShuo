@@ -65,7 +65,7 @@ async def create_novel(
     except (ValidationError, ValueError) as e:
         # 捕获验证错误
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to create novel task")
         raise HTTPException(status_code=500, detail="Internal server error")
 
@@ -133,9 +133,13 @@ async def list_novel_tasks(
     task_summaries = [
         TaskSummary(
             task_id=task["task_id"],
+            novel_id=task.get("novel_id"),
             status=task["status"],
             created_at=task["created_at"],
             completed_at=task.get("completed_at"),
+            novel_type=task.get("novel_type"),
+            target_words=task.get("target_words"),
+            idea=task.get("idea"),
         )
         for task in tasks
     ]
