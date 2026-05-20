@@ -9,6 +9,7 @@ from sqlalchemy import and_, delete, select
 
 from src.api.models.db_models import (
     KnowledgeEntity,
+    KnowledgeEntityState,
     KnowledgeExtractionLog,
     KnowledgeTriple,
 )
@@ -84,6 +85,15 @@ class ConsistencyResult(BaseModel):
     checked_at: str
 
 
+class StateSnapshotResponse(BaseModel):
+    id: str
+    novel_id: str
+    entity_id: str
+    chapter_number: int
+    attributes: dict
+    created_at: str
+
+
 def _entity_to_response(e: KnowledgeEntity) -> EntityResponse:
     return EntityResponse(
         id=e.id, entity_type=e.entity_type, name=e.name,
@@ -129,6 +139,45 @@ async def get_entity(novel_id: str, entity_id: str):
         return _entity_to_response(entity)
 
 
+@router.get("/entities/{entity_id}/history", response_model=list[StateSnapshotResponse])
+async def get_entity_history(novel_id: str, entity_id: str):
+    """查询单个实体的历史状态演化轨迹"""
+    async with get_db_session() as session:
+        # Check if entity exists and is in the current novel project
+        ent_result = await session.execute(
+            select(KnowledgeEntity).where(and_(
+                KnowledgeEntity.id == entity_id,
+                KnowledgeEntity.novel_id == novel_id,
+            ))
+        )
+        entity = ent_result.scalar_one_or_none()
+        if not entity:
+            raise HTTPException(status_code=404, detail="Entity not found")
+
+        # Query all states in ascending order of chapters
+        states_result = await session.execute(
+            select(KnowledgeEntityState)
+            .where(and_(
+                KnowledgeEntityState.entity_id == entity_id,
+                KnowledgeEntityState.novel_id == novel_id,
+            ))
+            .order_by(KnowledgeEntityState.chapter_number.asc())
+        )
+        states = states_result.scalars().all()
+
+        return [
+            StateSnapshotResponse(
+                id=s.id,
+                novel_id=s.novel_id,
+                entity_id=s.entity_id,
+                chapter_number=s.chapter_number,
+                attributes=s.attributes or {},
+                created_at=s.created_at.isoformat()
+            )
+            for s in states
+        ]
+
+
 @router.post("/entities", response_model=EntityResponse, status_code=201)
 async def create_entity(novel_id: str, body: EntityCreate):
     """手动创建实体"""
@@ -141,6 +190,15 @@ async def create_entity(novel_id: str, body: EntityCreate):
             first_chapter=body.first_chapter, source="manual",
         )
         session.add(entity)
+        session.add(
+            KnowledgeEntityState(
+                id=str(uuid.uuid4()),
+                novel_id=novel_id,
+                entity_id=entity_id,
+                chapter_number=body.first_chapter,
+                attributes=body.attributes,
+            )
+        )
     return EntityResponse(
         id=entity_id, entity_type=body.entity_type, name=body.name,
         aliases=body.aliases, attributes=body.attributes,

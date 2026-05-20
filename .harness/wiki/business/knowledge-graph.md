@@ -30,11 +30,18 @@
 - **规则检查**（零成本）: 死亡角色复活、互斥关系矛盾
 - **LLM 语义检查**（仅在规则发现疑似问题时触发）
 
+### 4. 时空与状态追踪（活态记忆）
+
+为防止长文写作中角色“吃设定”或“吃状态”（例如前文受伤、后文瞬间痊愈），系统引入了按章节追踪的实体活态历史：
+- **状态继承与覆盖**: 在章节抽取 Merge 实体时，自动加载该实体在此章节之前的最新历史状态快照作为基底，并与本章 LLM 抽取的最新属性叠加（覆盖或新增），保存为本章节的全新快照并向前推演实体当前状态。
+- **时序演进关系去重**: 人物间恩怨关系随剧情发展多次更新时（如好感度由 10 变为 30），检索时自动按章节降序排列并利用内存 Set 判定，仅向 Prompt 注入最新的演化关系，排除老旧干扰。
+
 ## 数据模型
 
 | 表 | 说明 |
 |----|------|
 | `knowledge_entities` | 实体（UUID PK, novel_id, entity_type, name, aliases, attributes, first/last_chapter） |
+| `knowledge_entity_states` | 实体章节历史状态快照表（UUID PK, novel_id, entity_id, chapter_number, attributes, created_at） |
 | `knowledge_triples` | 三元组（UUID PK, subject_id, predicate, object_id, chapter_number, confidence, status） |
 | `knowledge_extraction_logs` | 抽取日志（novel_id + chapter_number 唯一） |
 
@@ -46,6 +53,7 @@
 |------|------|------|
 | GET | `/entities` | 查询实体列表 |
 | GET/POST/PUT/DELETE | `/entities/{id}` | 实体 CRUD |
+| GET | `/entities/{id}/history` | 查询单个实体的时序状态轨迹快照 |
 | GET | `/triples` | 查询三元组 |
 | POST/PUT/DELETE | `/triples/{id}` | 三元组 CRUD |
 | POST | `/extract/{chapter_number}` | 手动触发单章抽取 |

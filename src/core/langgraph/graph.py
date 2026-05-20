@@ -1,9 +1,8 @@
 """LangGraph 流程图定义"""
 
-from typing import TYPE_CHECKING
-
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from src.core.langgraph.nodes import (
     chapter_generation,
@@ -15,9 +14,6 @@ from src.core.langgraph.nodes import (
     world_building,
 )
 from src.core.langgraph.state import NovelState
-
-if TYPE_CHECKING:
-    from langgraph.graph.state import CompiledStateGraph
 
 
 def should_continue(state: NovelState) -> str:

@@ -9,10 +9,12 @@ import uuid
 from typing import Any
 
 import structlog
-from sqlalchemy import and_, delete, select, update
+from sqlalchemy import and_, delete, select
 
 from src.api.models.db_models import (
+    Character,
     KnowledgeEntity,
+    KnowledgeEntityState,
     KnowledgeExtractionLog,
     KnowledgeTriple,
 )
@@ -163,36 +165,158 @@ class KnowledgeGraphService:
     async def retrieve_context(
         self, novel_id: str, chapter_outline: dict[str, Any]
     ) -> str:
-        """根据章节大纲检索相关图谱上下文"""
+        """根据章节大纲检索相关图谱上下文，支持状态继承合并与最新双向关系演化去重"""
         settings = get_settings()
         if not settings.KNOWLEDGE_GRAPH_ENABLED:
             return ""
 
         try:
-            # 从大纲提取关键词（人物名、地点名）
+            current_ch = chapter_outline.get("chapter", 1)
             outline_text = json.dumps(chapter_outline, ensure_ascii=False)
-            entities = await self._get_existing_entities(novel_id)
-            names = [e.name for e in entities]
-            # 匹配大纲中出现的实体名
-            mentioned = [n for n in names if n in outline_text]
 
-            if not mentioned:
+            # 1. 精准匹配大纲中提到的实体名称（包含别名）
+            entities = await self._get_existing_entities(novel_id)
+            mentioned_entities = []
+            for e in entities:
+                mentioned = False
+                if e.name and e.name in outline_text:
+                    mentioned = True
+                else:
+                    for alias in (e.aliases or []):
+                        if alias and alias in outline_text:
+                            mentioned = True
+                            break
+                if mentioned:
+                    mentioned_entities.append(e)
+
+            if not mentioned_entities:
                 return ""
 
-            # 查询相关三元组
-            triples = await self._get_triples_by_names(novel_id, mentioned)
+            entity_ids = [e.id for e in mentioned_entities]
+            entity_map = {e.id: e for e in entities}
 
-            # 查询悬挂伏笔
+            # 2. 获取这些实体在当前章节之前的最新状态快照
+            entity_states = {}
+            async with get_db_session() as session:
+                if entity_ids:
+                    state_result = await session.execute(
+                        select(KnowledgeEntityState)
+                        .where(
+                            and_(
+                                KnowledgeEntityState.entity_id.in_(entity_ids),
+                                KnowledgeEntityState.chapter_number < current_ch
+                            )
+                        )
+                        .order_by(
+                            KnowledgeEntityState.entity_id,
+                            KnowledgeEntityState.chapter_number.desc(),
+                        )
+                    )
+                    all_states = list(state_result.scalars().all())
+
+                    for s in all_states:
+                        if s.entity_id not in entity_states:
+                            entity_states[s.entity_id] = s.attributes or {}
+
+            # 如果没有历史状态，则使用实体的基础/最新 attributes 作为默认
+            for e in mentioned_entities:
+                if e.id not in entity_states:
+                    entity_states[e.id] = e.attributes or {}
+
+            # 3. 合并读取 Character 表中正式的人设设定
+            character_details = {}
+            async with get_db_session() as session:
+                char_names = [
+                    e.name for e in mentioned_entities
+                    if e.entity_type == "character"
+                ]
+                if char_names:
+                    char_result = await session.execute(
+                        select(Character).where(
+                            and_(
+                                Character.novel_id == novel_id,
+                                Character.name.in_(char_names)
+                            )
+                        )
+                    )
+                    chars = list(char_result.scalars().all())
+                    for c in chars:
+                        character_details[c.name] = {
+                            "personality": c.personality,
+                            "background": c.background_story,
+                            "abilities": c.abilities,
+                            "role": c.role,
+                            "description": c.description
+                        }
+
+            # 4. 检索这些实体在当前章节前的最新 active 三元组关系，并去重保留最新演化
+            triples_data = []
+            async with get_db_session() as session:
+                if entity_ids:
+                    triples_result = await session.execute(
+                        select(KnowledgeTriple)
+                        .where(
+                            and_(
+                                KnowledgeTriple.novel_id == novel_id,
+                                KnowledgeTriple.status == "active",
+                                KnowledgeTriple.chapter_number < current_ch,
+                                (
+                                    KnowledgeTriple.subject_id.in_(entity_ids)
+                                    | KnowledgeTriple.object_id.in_(entity_ids)
+                                )
+                            )
+                        )
+                        .order_by(KnowledgeTriple.chapter_number.desc())
+                    )
+                    triples_list = list(triples_result.scalars().all())
+
+                    seen_triples = set()
+                    for t in triples_list:
+                        subj_ent = entity_map.get(t.subject_id)
+                        obj_ent = entity_map.get(t.object_id)
+                        subj_name = subj_ent.name if subj_ent else "unknown"
+                        obj_name = obj_ent.name if obj_ent else "unknown"
+
+                        # 仅保留最新（第一条被扫描到，因有序降序）
+                        key = (t.subject_id, t.predicate, t.object_id)
+                        if key not in seen_triples:
+                            seen_triples.add(key)
+
+                            metadata_str = ""
+                            if t.metadata_ and isinstance(t.metadata_, dict):
+                                meta_parts = []
+                                for k, v in t.metadata_.items():
+                                    meta_parts.append(f"{k}: {v}")
+                                if meta_parts:
+                                    metadata_str = f" ({', '.join(meta_parts)})"
+
+                            triples_data.append({
+                                "subject": subj_name,
+                                "predicate": t.predicate,
+                                "object": obj_name,
+                                "chapter": t.chapter_number,
+                                "metadata_str": metadata_str
+                            })
+
+            # 5. 查询悬挂伏笔
             foreshadowings = await self._get_hanging_foreshadowings(novel_id)
 
-            # 查询最近事件
-            current_ch = chapter_outline.get("chapter", 1)
+            # 6. 查询最近事件
             recent_events = await self._get_recent_events(novel_id, current_ch)
 
-            # 格式化上下文
-            return self._format_context(
-                triples, foreshadowings, recent_events, entities
+            # 7. 格式化生成高质量记忆 Prompt
+            context = self._format_rich_context(
+                mentioned_entities=mentioned_entities,
+                entity_states=entity_states,
+                character_details=character_details,
+                triples_data=triples_data,
+                foreshadowings=foreshadowings,
+                recent_events=recent_events,
             )
+            if len(context) > 1500:
+                context = context[:1500].rsplit("\n", 1)[0]
+            return context
+
 
         except Exception as e:
             logger.warning("knowledge_retrieve_context_failed", error=str(e))
@@ -253,7 +377,7 @@ class KnowledgeGraphService:
         new_entities: list[dict],
         existing: list[KnowledgeEntity] | None = None,
     ) -> dict[str, str]:
-        """合并实体，返回 name -> entity_id 映射"""
+        """合并实体，返回 name -> entity_id 映射，并实现属性的继承合并和状态历史记录"""
         if existing is None:
             existing = await self._get_existing_entities(novel_id)
         name_map: dict[str, str] = {e.name: e.id for e in existing}
@@ -268,36 +392,99 @@ class KnowledgeGraphService:
                 if not ent_name:
                     continue
 
-                # 精确匹配
+                extracted_attrs = ent.get("attributes", {})
+
+                matched_id = None
+                matched_entity = None
+
+                # 别名或精确名称匹配
                 if ent_name in name_map:
-                    # 更新 last_chapter
-                    await session.execute(
-                        update(KnowledgeEntity)
-                        .where(KnowledgeEntity.id == name_map[ent_name])
-                        .values(last_chapter=chapter_number)
+                    matched_id = name_map[ent_name]
+                elif ent_name in alias_map:
+                    matched_id = alias_map[ent_name]
+                    name_map[ent_name] = matched_id
+
+                if matched_id:
+                    result = await session.execute(
+                        select(KnowledgeEntity).where(KnowledgeEntity.id == matched_id)
                     )
-                    continue
+                    matched_entity = result.scalar_one_or_none()
 
-                # 别名匹配
-                if ent_name in alias_map:
-                    name_map[ent_name] = alias_map[ent_name]
-                    continue
+                if matched_entity:
+                    # 1. 查询在此章节前的最新历史状态
+                    hist_result = await session.execute(
+                        select(KnowledgeEntityState)
+                        .where(
+                            and_(
+                                KnowledgeEntityState.entity_id == matched_entity.id,
+                                KnowledgeEntityState.chapter_number < chapter_number
+                            )
+                        )
+                        .order_by(KnowledgeEntityState.chapter_number.desc())
+                        .limit(1)
+                    )
+                    latest_state = hist_result.scalar_one_or_none()
 
-                # 新建实体
-                entity_id = str(uuid.uuid4())
-                entity = KnowledgeEntity(
-                    id=entity_id,
-                    novel_id=novel_id,
-                    entity_type=ent.get("type", "character"),
-                    name=ent_name,
-                    aliases=ent.get("aliases", []),
-                    attributes=ent.get("attributes", {}),
-                    first_chapter=chapter_number,
-                    last_chapter=chapter_number,
-                    source="extracted",
-                )
-                session.add(entity)
-                name_map[ent_name] = entity_id
+                    previous_attributes = {}
+                    if latest_state:
+                        previous_attributes = latest_state.attributes or {}
+                    elif matched_entity.attributes:
+                        previous_attributes = matched_entity.attributes
+
+                    # 2. 执行继承合并属性
+                    merged_attributes = {**previous_attributes, **extracted_attrs}
+
+                    # 3. 更新主实体字段
+                    matched_entity.attributes = merged_attributes
+                    matched_entity.last_chapter = chapter_number
+
+                    # 4. 判断并记录/覆盖该章节的历史快照
+                    state_result = await session.execute(
+                        select(KnowledgeEntityState)
+                        .where(
+                            and_(
+                                KnowledgeEntityState.entity_id == matched_entity.id,
+                                KnowledgeEntityState.chapter_number == chapter_number
+                            )
+                        )
+                    )
+                    existing_state = state_result.scalar_one_or_none()
+                    if existing_state:
+                        existing_state.attributes = merged_attributes
+                    else:
+                        new_state = KnowledgeEntityState(
+                            id=str(uuid.uuid4()),
+                            novel_id=novel_id,
+                            entity_id=matched_entity.id,
+                            chapter_number=chapter_number,
+                            attributes=merged_attributes
+                        )
+                        session.add(new_state)
+                else:
+                    # 新建实体与初始状态记录
+                    entity_id = str(uuid.uuid4())
+                    entity = KnowledgeEntity(
+                        id=entity_id,
+                        novel_id=novel_id,
+                        entity_type=ent.get("type", "character"),
+                        name=ent_name,
+                        aliases=ent.get("aliases", []),
+                        attributes=extracted_attrs,
+                        first_chapter=chapter_number,
+                        last_chapter=chapter_number,
+                        source="extracted",
+                    )
+                    session.add(entity)
+
+                    new_state = KnowledgeEntityState(
+                        id=str(uuid.uuid4()),
+                        novel_id=novel_id,
+                        entity_id=entity_id,
+                        chapter_number=chapter_number,
+                        attributes=extracted_attrs
+                    )
+                    session.add(new_state)
+                    name_map[ent_name] = entity_id
 
         return name_map
 
@@ -435,7 +622,8 @@ class KnowledgeGraphService:
                 select(KnowledgeEntity).where(and_(
                     KnowledgeEntity.novel_id == novel_id,
                     KnowledgeEntity.entity_type == "foreshadowing",
-                    KnowledgeEntity.attributes["foreshadowing_status"].as_string() == "planted",
+                    KnowledgeEntity.attributes["foreshadowing_status"]
+                    .as_string() == "planted",
                 ))
             )
             return list(result.scalars().all())
@@ -579,6 +767,84 @@ class KnowledgeGraphService:
         if len(context) > 1500:
             context = context[:1500].rsplit("\n", 1)[0]
         return context
+
+    def _format_rich_context(
+        self,
+        mentioned_entities: list[KnowledgeEntity],
+        entity_states: dict[str, dict],
+        character_details: dict[str, dict],
+        triples_data: list[dict[str, Any]],
+        foreshadowings: list[KnowledgeEntity],
+        recent_events: list[KnowledgeEntity],
+    ) -> str:
+        """将活态实体记忆格式化为结构化 Markdown Prompt 上下文"""
+        parts = []
+        parts.append("## 已知实体记忆与动态设定（来自活态知识图谱，请严格遵守）")
+
+        # 1. 实体最新状态与背景
+        parts.append("\n### 1. 实体当前状态与人物档案")
+        for ent in mentioned_entities:
+            state_attrs = entity_states.get(ent.id, {})
+
+            # Format attributes string
+            attr_lines = []
+            for k, v in state_attrs.items():
+                attr_lines.append(f"{k}: {v}")
+            attrs_str = "; ".join(attr_lines) if attr_lines else "默认状态"
+
+            if ent.entity_type == "character":
+                char_info = character_details.get(ent.name, {})
+                parts.append(f"\n#### 角色：{ent.name}")
+                if char_info.get("role"):
+                    parts.append(f"- **身份角色**: {char_info['role']}")
+                parts.append(f"- **当前状态/属性**: {attrs_str}")
+                if char_info.get("personality"):
+                    parts.append(f"- **性格特征**: {char_info['personality']}")
+                if char_info.get("abilities"):
+                    parts.append(f"- **特殊能力**: {char_info['abilities']}")
+                if char_info.get("background"):
+                    parts.append(f"- **背景故事**: {char_info['background']}")
+            else:
+                ent_type_map = {
+                    "location": "地点",
+                    "item": "道具/物品",
+                    "organization": "势力/组织",
+                    "event": "事件",
+                    "foreshadowing": "伏笔"
+                }
+                type_name = ent_type_map.get(ent.entity_type, ent.entity_type)
+                parts.append(f"\n#### {type_name}：{ent.name}")
+                parts.append(f"- **当前属性**: {attrs_str}")
+
+        # 2. 角色恩怨与双向关系演化
+        if triples_data:
+            parts.append("\n### 2. 人物恩怨与双向关系演化")
+            for t in triples_data[:20]:  # Cap at 20 relationships
+                parts.append(
+                    f"- **{t['subject']}** ──({t['predicate']})──> **{t['object']}** "
+                    f"(第 {t['chapter']} 章确立{t['metadata_str']})"
+                )
+
+        # 3. 悬挂伏笔
+        if foreshadowings:
+            parts.append("\n### 3. 悬挂伏笔（请根据剧情节奏适时回收）")
+            for f in foreshadowings[:10]:
+                foreshadowing_desc = (f.attributes or {}).get(
+                    "description", "已埋设的伏笔设定"
+                )
+                parts.append(
+                    f"- **{f.name}**：{foreshadowing_desc} "
+                    f"(第 {f.first_chapter} 章埋设，尚未回收)"
+                )
+
+        # 4. 最近历史事件
+        if recent_events:
+            parts.append("\n### 4. 最近历史事件")
+            for ev in recent_events[:5]:
+                ch_num = ev.last_chapter or ev.first_chapter
+                parts.append(f"- **第 {ch_num} 章**: {ev.name}")
+
+        return "\n".join(parts)
 
 
 # 全局服务实例

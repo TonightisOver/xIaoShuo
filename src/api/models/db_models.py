@@ -464,3 +464,28 @@ class KnowledgeExtractionLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class KnowledgeEntityState(Base):
+    """知识图谱实体状态历史（时空与状态追踪）"""
+
+    __tablename__ = "knowledge_entity_states"
+    __table_args__ = (
+        UniqueConstraint("entity_id", "chapter_number", name="uq_kes_entity_chapter"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    entity_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("knowledge_entities.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    chapter_number: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    attributes: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+

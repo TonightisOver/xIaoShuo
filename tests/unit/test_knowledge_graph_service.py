@@ -9,11 +9,9 @@ Tests cover:
 
 import json
 import uuid
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -339,27 +337,37 @@ class TestRetrieveContext:
         entity_zhang = _make_entity("张三", attributes={"status": "alive"})
         entity_li = _make_entity("李四", attributes={"status": "alive"})
 
-        # Mock _get_existing_entities
-        # Mock _get_triples_by_names
-        # Mock _get_hanging_foreshadowings
-        # Mock _get_recent_events
+        mock_session = AsyncMock()
 
         with (
             patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings,
-            patch.object(
-                __import__("src.api.services.knowledge_graph_service", fromlist=["KnowledgeGraphService"]).KnowledgeGraphService,
-                "_get_existing_entities",
-                new_callable=lambda: lambda self=None: AsyncMock(return_value=[entity_zhang, entity_li]),
-            ) as mock_get_entities,
+            patch("src.api.services.knowledge_graph_service.get_db_session") as mock_db,
         ):
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
 
             from src.api.services.knowledge_graph_service import KnowledgeGraphService
             service = KnowledgeGraphService()
             service._get_existing_entities = AsyncMock(return_value=[entity_zhang, entity_li])
-            service._get_triples_by_names = AsyncMock(return_value=[
-                {"subject": "张三", "predicate": "师徒", "object": "李四", "chapter": 1, "confidence": 1.0},
-            ])
+
+            mock_triple_obj = _make_triple(entity_zhang.id, "师徒", entity_li.id, chapter_number=1)
+
+            states_result = MagicMock()
+            states_result.scalars.return_value.all.return_value = []
+
+            chars_result = MagicMock()
+            chars_result.scalars.return_value.all.return_value = []
+
+            triples_result = MagicMock()
+            triples_result.scalars.return_value.all.return_value = [mock_triple_obj]
+
+            mock_session.execute.side_effect = [
+                states_result,
+                chars_result,
+                triples_result,
+            ]
+
             service._get_hanging_foreshadowings = AsyncMock(return_value=[])
             service._get_recent_events = AsyncMock(return_value=[])
 
@@ -369,23 +377,46 @@ class TestRetrieveContext:
 
             assert "张三" in result
             assert "师徒" in result
-            assert "已知设定" in result
+            assert "已知实体记忆" in result
 
     @pytest.mark.asyncio
     async def test_context_truncated_at_1500_chars(self):
         """Context is truncated to 1500 characters."""
         entities = [_make_entity(f"角色{i}", attributes={"status": "alive"}) for i in range(50)]
 
-        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+        mock_session = AsyncMock()
+
+        with (
+            patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings,
+            patch("src.api.services.knowledge_graph_service.get_db_session") as mock_db,
+        ):
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
 
             from src.api.services.knowledge_graph_service import KnowledgeGraphService
             service = KnowledgeGraphService()
             service._get_existing_entities = AsyncMock(return_value=entities)
-            service._get_triples_by_names = AsyncMock(return_value=[
-                {"subject": f"角色{i}", "predicate": "认识", "object": f"角色{i+1}", "chapter": 1, "confidence": 1.0}
-                for i in range(40)
-            ])
+
+            mock_triples = []
+            for i in range(40):
+                mock_triples.append(_make_triple(entities[i].id, "认识", entities[i+1].id, chapter_number=1))
+
+            states_result = MagicMock()
+            states_result.scalars.return_value.all.return_value = []
+
+            chars_result = MagicMock()
+            chars_result.scalars.return_value.all.return_value = []
+
+            triples_result = MagicMock()
+            triples_result.scalars.return_value.all.return_value = mock_triples
+
+            mock_session.execute.side_effect = [
+                states_result,
+                chars_result,
+                triples_result,
+            ]
+
             service._get_hanging_foreshadowings = AsyncMock(return_value=[])
             service._get_recent_events = AsyncMock(return_value=[])
 
@@ -396,6 +427,7 @@ class TestRetrieveContext:
             )
 
             assert len(result) <= 1500
+            assert len(result) > 0
 
     @pytest.mark.asyncio
     async def test_retrieve_context_includes_foreshadowings(self):
@@ -407,13 +439,35 @@ class TestRetrieveContext:
         )
         entity_char = _make_entity("张三")
 
-        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+        mock_session = AsyncMock()
+
+        with (
+            patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings,
+            patch("src.api.services.knowledge_graph_service.get_db_session") as mock_db,
+        ):
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
 
             from src.api.services.knowledge_graph_service import KnowledgeGraphService
             service = KnowledgeGraphService()
             service._get_existing_entities = AsyncMock(return_value=[entity_char, entity_fs])
-            service._get_triples_by_names = AsyncMock(return_value=[])
+
+            states_result = MagicMock()
+            states_result.scalars.return_value.all.return_value = []
+
+            chars_result = MagicMock()
+            chars_result.scalars.return_value.all.return_value = []
+
+            triples_result = MagicMock()
+            triples_result.scalars.return_value.all.return_value = []
+
+            mock_session.execute.side_effect = [
+                states_result,
+                chars_result,
+                triples_result,
+            ]
+
             service._get_hanging_foreshadowings = AsyncMock(return_value=[entity_fs])
             service._get_recent_events = AsyncMock(return_value=[])
 
@@ -423,6 +477,7 @@ class TestRetrieveContext:
 
             assert "伏笔" in result
             assert "神秘宝箱" in result
+
 
     @pytest.mark.asyncio
     async def test_retrieve_context_exception_returns_empty(self):
