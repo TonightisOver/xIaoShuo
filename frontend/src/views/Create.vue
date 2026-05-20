@@ -1,111 +1,153 @@
 <template>
-  <div class="max-w-2xl mx-auto px-6 py-10">
-    <h1 class="text-2xl font-bold text-ink-900 mb-2">开始创作</h1>
-    <p class="text-ink-500 mb-8">输入你的小说创意，AI 将为你生成完整的中文小说</p>
+  <div class="max-w-3xl mx-auto px-6 py-10">
+    <div class="mb-10 text-center">
+      <h1 class="text-3xl font-extrabold tracking-tight text-slate-100 flex items-center justify-center gap-2 mb-2.5">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-8 h-8 text-purple-400">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+        </svg>
+        <span class="bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-indigo-400">开启新篇章</span>
+      </h1>
+      <p class="text-slate-400 text-sm font-medium">输入你的小说创意与文风设定，让 AI 为你雕琢专属大作</p>
+    </div>
 
-    <form @submit.prevent="submit" class="space-y-6">
-      <div>
-        <label class="block text-sm font-medium text-ink-700 mb-2">小说标题</label>
+    <form @submit.prevent="submit" class="space-y-8 glass-panel rounded-3xl p-6 md:p-8 border border-slate-900 shadow-2xl relative overflow-hidden">
+      <!-- Background Ambient Glow -->
+      <div class="absolute -top-24 -left-24 w-48 h-48 rounded-full bg-purple-500/5 blur-3xl"></div>
+      <div class="absolute -bottom-24 -right-24 w-48 h-48 rounded-full bg-indigo-500/5 blur-3xl"></div>
+
+      <div class="space-y-2 relative z-10">
+        <label class="block text-sm font-bold text-slate-300">小说标题</label>
         <input
           v-model="form.title"
-          class="input"
-          placeholder="给你的小说起个名字（可选，默认从创意生成）"
+          class="input bg-slate-950/40 border-slate-800"
+          placeholder="给你的小说起个震撼的名字（可选，默认从创意生成）"
           maxlength="200"
         />
       </div>
 
-      <div>
-        <label class="block text-sm font-medium text-ink-700 mb-2">小说创意</label>
+      <div class="space-y-2 relative z-10">
+        <label class="block text-sm font-bold text-slate-300">小说核心创意</label>
         <textarea
           v-model="form.idea"
-          class="input min-h-[120px] resize-y"
-          placeholder="描述你的小说创意，例如：一个现代程序员穿越到修仙世界，用编程思维修炼..."
+          class="input min-h-[140px] resize-y bg-slate-950/40 border-slate-800 text-sm leading-relaxed"
+          placeholder="尽情描述你的核心梗或小说创意。例如：一个现代游戏程序员意外穿越到诸神修仙世界，发现可以通过编写灵力算法和自动化仙法修炼程序来逆天改命..."
           maxlength="1000"
         ></textarea>
-        <p class="text-xs text-ink-400 mt-1">{{ form.idea.length }} / 1000 字符（最少 10 字）</p>
+        <div class="flex justify-between items-center text-xs text-slate-500 font-medium">
+          <span>最少 10 个字</span>
+          <span>{{ form.idea.length }} / 1000 字符</span>
+        </div>
       </div>
 
-      <div>
-        <label class="block text-sm font-medium text-ink-700 mb-2">小说类型</label>
-        <div class="grid grid-cols-4 gap-2">
+      <div class="space-y-3 relative z-10">
+        <label class="block text-sm font-bold text-slate-300">小说类型</label>
+        <div class="grid grid-cols-3 sm:grid-cols-4 gap-2">
           <button
             v-for="t in novelTypes"
             :key="t"
             type="button"
             :class="[
-              'px-4 py-2 rounded-lg text-sm font-medium border transition-all',
+              'px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all duration-200',
               form.novel_type === t
-                ? 'border-primary-500 bg-primary-50 text-primary-700'
-                : 'border-ink-200 text-ink-600 hover:border-ink-400'
+                ? 'border-purple-500 bg-purple-500/10 text-purple-300 shadow-inner'
+                : 'border-slate-800 bg-slate-900/20 text-slate-400 hover:border-slate-700 hover:text-slate-200'
             ]"
             @click="form.novel_type = t"
           >{{ t }}</button>
         </div>
       </div>
 
-      <div>
-        <label class="block text-sm font-medium text-ink-700 mb-2">文风风格</label>
-        <div class="grid grid-cols-4 gap-2">
+      <div class="space-y-3 relative z-10">
+        <label class="block text-sm font-bold text-slate-300">文风与风格特征</label>
+        <div class="grid grid-cols-3 sm:grid-cols-4 gap-2">
           <button
             v-for="s in writingStyles"
             :key="s"
             type="button"
             :class="[
-              'px-4 py-2 rounded-lg text-sm font-medium border transition-all',
+              'px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all duration-200',
               form.writing_style === s
-                ? 'border-primary-500 bg-primary-50 text-primary-700'
-                : 'border-ink-200 text-ink-600 hover:border-ink-400'
+                ? 'border-purple-500 bg-purple-500/10 text-purple-300 shadow-inner'
+                : 'border-slate-800 bg-slate-900/20 text-slate-400 hover:border-slate-700 hover:text-slate-200'
             ]"
             @click="form.writing_style = s"
           >{{ s }}</button>
         </div>
-        <div v-if="form.writing_style === '自定义'" class="mt-3 space-y-2">
+
+        <div v-if="form.writing_style === '自定义'" class="mt-4 space-y-3 p-4 bg-slate-950/30 rounded-2xl border border-slate-900">
           <textarea
             v-model="form.custom_style_description"
-            class="input min-h-[60px] resize-y text-sm"
-            placeholder="描述你想要的风格，如：江南的文风，带一点灰色幽默..."
+            class="input min-h-[70px] resize-y text-xs bg-slate-950/40 border-slate-800"
+            placeholder="请细化描述您所追求的文体，例如：类似于猫腻的半文言文风，注重角色对白，偏向灰色幽默与宿命感..."
           ></textarea>
-          <div class="flex gap-2 items-start">
-            <button type="button" @click="generateStyle" class="btn-secondary text-xs" :disabled="generatingStyle || !form.custom_style_description">
-              {{ generatingStyle ? '生成中...' : '生成风格指令' }}
+          <div class="flex gap-2">
+            <button 
+              type="button" 
+              @click="generateStyle" 
+              class="btn-secondary text-xs px-4 py-2 flex items-center gap-1" 
+              :disabled="generatingStyle || !form.custom_style_description"
+            >
+              <svg v-if="generatingStyle" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5 animate-spin">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+              </svg>
+              <span>{{ generatingStyle ? '生成中...' : 'AI 提炼风格指令' }}</span>
             </button>
           </div>
-          <div v-if="form.writing_style_prompt" class="p-3 bg-ink-50 rounded-lg text-xs text-ink-700 whitespace-pre-wrap">
-            <p class="text-ink-400 text-[10px] mb-1">生成的风格指令（可编辑）：</p>
-            <textarea v-model="form.writing_style_prompt" class="w-full bg-transparent border-0 text-xs resize-y min-h-[60px] focus:outline-none"></textarea>
+          <div v-if="form.writing_style_prompt" class="p-4 bg-slate-950/60 rounded-xl border border-slate-800/60 text-xs text-slate-300">
+            <p class="text-slate-500 font-bold mb-1.5 text-[10px] tracking-wider uppercase">生成的风格指令（您可以自由编辑微调）：</p>
+            <textarea 
+              v-model="form.writing_style_prompt" 
+              class="w-full bg-transparent border-0 text-xs resize-y min-h-[80px] focus:outline-none focus:ring-0 text-slate-300 leading-relaxed font-mono"
+            ></textarea>
           </div>
         </div>
       </div>
 
-      <div>
-        <label class="block text-sm font-medium text-ink-700 mb-2">
-          目标字数：<span class="text-primary-600">{{ (form.target_words / 10000).toFixed(0) }} 万字</span>
-        </label>
+      <div class="space-y-3 relative z-10">
+        <div class="flex justify-between text-sm font-bold text-slate-300">
+          <span>长篇字数目标</span>
+          <span class="text-purple-400 font-mono">{{ (form.target_words / 10000).toFixed(0) }} 万字</span>
+        </div>
         <input
           type="range"
           v-model.number="form.target_words"
           min="10000"
           max="500000"
           step="10000"
-          class="w-full accent-primary-600"
+          class="w-full h-2 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-purple-500"
         />
-        <div class="flex justify-between text-xs text-ink-400 mt-1">
-          <span>1 万</span>
-          <span>50 万</span>
+        <div class="flex justify-between text-[10px] text-slate-500 font-bold font-mono">
+          <span>1 万字</span>
+          <span>50 万字</span>
         </div>
       </div>
 
-      <div class="pt-4 flex gap-3">
-        <button type="submit" class="btn-primary flex-1" :disabled="!canSubmit || submitting || fullGenerating">
-          {{ submitting ? '提交中...' : '开始生成' }}
+      <div class="pt-4 flex flex-col sm:flex-row gap-3 relative z-10">
+        <button 
+          type="button" 
+          class="btn-secondary sm:flex-1 py-3" 
+          :disabled="!canSubmit || submitting || fullGenerating" 
+          @click="submit"
+        >
+          {{ submitting ? '创建中...' : '生成小说设定 (分步)' }}
         </button>
-        <button type="button" class="btn-primary flex-1 bg-emerald-600 hover:bg-emerald-700" :disabled="!canSubmit || submitting || fullGenerating" @click="fullGenerate">
-          {{ fullGenerating ? '启动中...' : '一键全功能生成' }}
+        
+        <button 
+          type="button" 
+          class="btn-primary sm:flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 py-3 shadow-lg shadow-emerald-500/10 flex items-center justify-center gap-1.5" 
+          :disabled="!canSubmit || submitting || fullGenerating" 
+          @click="fullGenerate"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+          </svg>
+          <span>{{ fullGenerating ? '启动流水线...' : '一键全自动生成' }}</span>
         </button>
-        <router-link to="/" class="btn-secondary">取消</router-link>
+
+        <router-link to="/" class="btn-secondary text-center py-3">取消</router-link>
       </div>
 
-      <div v-if="error" class="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+      <div v-if="error" class="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-xs text-rose-400 font-medium relative z-10 leading-relaxed">
         {{ error }}
       </div>
     </form>

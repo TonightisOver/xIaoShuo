@@ -97,6 +97,7 @@ class NovelSummaryResponse(BaseModel):
     writing_style: str
     created_at: datetime
     updated_at: datetime
+    active_task_id: str | None = None
 
 
 class NovelDetailResponse(NovelSummaryResponse):

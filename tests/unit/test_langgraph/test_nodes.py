@@ -95,10 +95,11 @@ async def test_chapter_generation_node():
     assert result["current_stage"] == "chapter_generation_completed"
 
 
-def test_quality_check_node():
+@pytest.mark.asyncio
+async def test_quality_check_node():
     """测试质量检查节点"""
     state = create_initial_state()
-    result = quality_check.node(state)
+    result = await quality_check.node(state)
 
     assert "overall" in result["quality_scores"]
     assert result["quality_scores"]["overall"] > 0

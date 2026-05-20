@@ -12,6 +12,7 @@ from src.api.models.db_models import (
     Character,
     Novel,
     PowerSystem,
+    Task,
     Volume,
     WorldSetting,
 )
@@ -60,10 +61,23 @@ class NovelManager:
             novel = result.scalar_one_or_none()
             if not novel:
                 return None
-            return self._novel_to_dict(novel)
+
+            task_id = None
+            if novel.status == "generating":
+                task_res = await session.execute(
+                    select(Task.task_id)
+                    .where(Task.novel_id == novel_id)
+                    .order_by(Task.created_at.desc())
+                    .limit(1)
+                )
+                task_id = task_res.scalar_one_or_none()
+
+            data = self._novel_to_dict(novel)
+            data["active_task_id"] = task_id
+            return data
 
     async def list_novels(self, novel_type: str | None = None,
-                          limit: int = 20, offset: int = 0):
+                           limit: int = 20, offset: int = 0):
         # No N+1 issue here: _novel_summary() only accesses scalar columns on Novel
         # itself and does not traverse any relationship, so no lazy-load is triggered.
         async with get_db_session() as session:
@@ -77,7 +91,22 @@ class NovelManager:
             query = query.order_by(Novel.updated_at.desc()).limit(limit).offset(offset)
             novels = (await session.execute(query)).scalars().all()
 
-            return [self._novel_summary(n) for n in novels], total
+            summaries = []
+            for n in novels:
+                summary = self._novel_summary(n)
+                task_id = None
+                if n.status == "generating":
+                    task_res = await session.execute(
+                        select(Task.task_id)
+                        .where(Task.novel_id == n.novel_id)
+                        .order_by(Task.created_at.desc())
+                        .limit(1)
+                    )
+                    task_id = task_res.scalar_one_or_none()
+                summary["active_task_id"] = task_id
+                summaries.append(summary)
+
+            return summaries, total
 
     async def update_novel(self, novel_id: str, **kwargs) -> bool:
         async with get_db_session() as session:

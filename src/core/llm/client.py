@@ -9,7 +9,7 @@ from langchain_openai import ChatOpenAI
 from tenacity import (
     AsyncRetrying,
     RetryError,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
@@ -26,10 +26,19 @@ def _is_retryable_http_error(exc: BaseException) -> bool:
     return False
 
 
+def _should_retry(exc: BaseException) -> bool:
+    """Determine if the exception should trigger a retry."""
+    if isinstance(exc, TimeoutError | ConnectionError):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        return _is_retryable_http_error(exc)
+    return False
+
+
 class LLMClient:
     """LLM 客户端封装
 
-    封装 DeepSeek API 调用，提供重试机制和错误处理
+    封装 DeepSeek API 调用，提供重试机制 and 错误处理
     """
 
     def __init__(self) -> None:
@@ -67,9 +76,7 @@ class LLMClient:
         retry_policy = AsyncRetrying(
             stop=stop_after_attempt(self.max_retries),
             wait=wait_exponential(multiplier=1, min=2, max=30),
-            retry=retry_if_exception_type(
-                (TimeoutError, ConnectionError, httpx.HTTPStatusError)
-            ),
+            retry=retry_if_exception(_should_retry),
             reraise=True,
         )
 

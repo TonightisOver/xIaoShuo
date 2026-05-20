@@ -128,6 +128,12 @@ async def generate_novel_background(
             event_type=EventType.ERROR,
             data={"error": str(e)},
         ))
+        if novel_id:
+            try:
+                from src.api.services.novel_manager import get_novel_manager
+                await get_novel_manager().update_novel(novel_id, status="failed")
+            except Exception as ne:
+                logger.error("failed_to_update_novel_status", novel_id=novel_id, error=str(ne))
 
 
 FULL_GENERATE_STAGES = [
@@ -341,6 +347,12 @@ async def generate_novel_full_background(
             event_type=EventType.ERROR,
             data={"error": str(e)},
         ))
+        if novel_id:
+            try:
+                from src.api.services.novel_manager import get_novel_manager
+                await get_novel_manager().update_novel(novel_id, status="failed")
+            except Exception as ne:
+                logger.error("failed_to_update_novel_status", novel_id=novel_id, error=str(ne))
 
 
 async def _run_sub_feature(
