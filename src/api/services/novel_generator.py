@@ -559,7 +559,15 @@ async def generate_volume_background(
 
         generated_chapters = []
         for i, ch_outline in enumerate(chapters_data):
-            previous_chapter = prev_context if i == 0 else (generated_chapters[-1].get("content", "")[:500] if generated_chapters else "")
+            if i == 0:
+                previous_chapter = prev_context
+            else:
+                last_content = (
+                    generated_chapters[-1].get("content") or ""
+                    if generated_chapters
+                    else ""
+                )
+                previous_chapter = last_content[:500]
 
             chapter_result = await generate_single_chapter(
                 client=client,
@@ -699,7 +707,11 @@ async def generate_chapters_background(
                 {"chapter": ch_num, "title": f"第{ch_num}章", "plot": "续写情节", "words": 5000}
             )
 
-            previous = prev_context if not generated_chapters else (generated_chapters[-1].get("content", "")[:500])
+            if not generated_chapters:
+                previous = prev_context
+            else:
+                last_content = generated_chapters[-1].get("content") or ""
+                previous = last_content[:500]
 
             chapter_result = await generate_single_chapter(
                 client=client,
@@ -820,7 +832,7 @@ async def _persist_to_novel(novel_id: str, result: dict[str, Any]) -> None:
 
         # Chapters
         chapters = result.get("chapters", [])
-        from datetime import datetime, timezone
+        from datetime import UTC, datetime
 
         from src.api.models.db_models import Chapter
         from src.core.database import get_db_session
@@ -836,7 +848,7 @@ async def _persist_to_novel(novel_id: str, result: dict[str, Any]) -> None:
                         content=ch.get("content", ""),
                         word_count=ch.get("word_count", 0),
                         status="generated",
-                        updated_at=datetime.now(timezone.utc),
+                        updated_at=datetime.now(UTC),
                     )
                     session.add(chapter)
 

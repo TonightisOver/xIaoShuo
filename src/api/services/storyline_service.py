@@ -256,7 +256,8 @@ class StorylineService:
         world = await manager.get_world_setting(novel_id)
         characters = await manager.list_characters(novel_id)
 
-        context = f"小说类型：{novel.get('novel_type', '')}\n创意：{novel.get('idea', '')[:200]}\n"
+        idea_part = (novel.get('idea') or '')[:200]
+        context = f"小说类型：{novel.get('novel_type', '')}\n创意：{idea_part}\n"
         if world and world.get("background"):
             context += f"世界观：{world['background'][:200]}\n"
         if characters:
@@ -299,7 +300,11 @@ class StorylineService:
             raise ValueError("小说不存在")
         world = await manager.get_world_setting(novel_id)
 
-        context_parts = [f"小说类型：{novel.get('novel_type', '')}", f"创意：{novel.get('idea', '')[:300]}"]
+        idea_part = (novel.get('idea') or '')[:300]
+        context_parts = [
+            f"小说类型：{novel.get('novel_type', '')}",
+            f"创意：{idea_part}",
+        ]
         if world:
             if world.get("background"):
                 context_parts.append(f"世界背景：{world['background'][:300]}")
@@ -353,21 +358,29 @@ class StorylineService:
 
         novel = await manager.get_novel(novel_id)
         world = await manager.get_world_setting(novel_id)
-        storylines = await self.list_storylines(novel_id)
+        try:
+            storylines = await self.list_storylines(novel_id)
+        except Exception:
+            logger.warning(
+                "storyline_context_unavailable_for_arc_generation",
+                novel_id=novel_id,
+                exc_info=True,
+            )
+            storylines = []
 
         # Build rich context
         context_parts = []
-        if novel:
+        if isinstance(novel, dict):
             context_parts.append(f"小说类型：{novel.get('novel_type', '')}")
-            context_parts.append(f"核心创意：{novel.get('idea', '')[:500]}")
-        if world:
+            context_parts.append(f"核心创意：{(novel.get('idea') or '')[:500]}")
+        if isinstance(world, dict):
             if world.get("background"):
                 context_parts.append(f"世界背景：{world['background'][:300]}")
             if world.get("rules"):
                 context_parts.append(f"世界规则：{world['rules'][:200]}")
         if storylines:
             sl_text = "\n".join(
-                f"- [{sl['type']}] {sl['name']}: {sl.get('description', '')[:100]}"
+                f"- [{sl['type']}] {sl['name']}: {(sl.get('description') or '')[:100]}"
                 for sl in storylines[:5]
             )
             context_parts.append(f"已有故事线：\n{sl_text}")
@@ -386,7 +399,8 @@ class StorylineService:
             pass
 
         char_info = "\n".join(
-            f"- {c['name']}({c.get('role', '未知')}): {c.get('description', '')[:100]}"
+            f"- {c['name']}({c.get('role', '未知')}): "
+            f"{(c.get('description') or '')[:100]}"
             for c in characters[:10]
         )
 
