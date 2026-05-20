@@ -17,14 +17,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_unique_constraint(
-        "uq_chapter_novel_number", "chapters", ["novel_id", "chapter_number"]
+    # Production already has duplicate generated chapters in some novels.
+    # Avoid destructive cleanup during deploy; add lookup indexes instead.
+    op.create_index(
+        "ix_chapter_novel_number", "chapters", ["novel_id", "chapter_number"]
     )
-    op.create_unique_constraint(
-        "uq_volume_novel_number", "volumes", ["novel_id", "volume_number"]
+    op.create_index(
+        "ix_volume_novel_number", "volumes", ["novel_id", "volume_number"]
     )
 
 
 def downgrade() -> None:
-    op.drop_constraint("uq_volume_novel_number", "volumes", type_="unique")
-    op.drop_constraint("uq_chapter_novel_number", "chapters", type_="unique")
+    op.drop_index("ix_volume_novel_number", table_name="volumes")
+    op.drop_index("ix_chapter_novel_number", table_name="chapters")
