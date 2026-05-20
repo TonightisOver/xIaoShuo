@@ -363,7 +363,167 @@ class KnowledgeGraphService:
             return []
 
 
+    async def get_three_layer_graph(self, novel_id: str) -> dict[str, Any]:
+        """获取三层关系图谱数据"""
+        async with get_db_session() as session:
+            # 1. 查询所有实体和有效三元组
+            entities_result = await session.execute(
+                select(KnowledgeEntity).where(KnowledgeEntity.novel_id == novel_id)
+            )
+            entities = list(entities_result.scalars().all())
+            entity_map = {e.id: e for e in entities}
+
+            triples_result = await session.execute(
+                select(KnowledgeTriple).where(
+                    and_(
+                        KnowledgeTriple.novel_id == novel_id,
+                        KnowledgeTriple.status == "active"
+                    )
+                )
+            )
+            triples = list(triples_result.scalars().all())
+
+        # 2. 抽取并封装第一层：人物关系网络 (character_graph)
+        character_nodes = []
+        character_edges = []
+        char_ids = set()
+
+        for e in entities:
+            if e.entity_type == "character":
+                char_ids.add(e.id)
+                character_nodes.append({
+                    "id": e.id,
+                    "name": e.name,
+                    "type": e.entity_type,
+                    "attributes": e.attributes or {},
+                    "first_chapter": e.first_chapter,
+                    "last_chapter": e.last_chapter
+                })
+
+        for t in triples:
+            if t.subject_id in char_ids and t.object_id in char_ids:
+                character_edges.append({
+                    "id": t.id,
+                    "source": t.subject_id,
+                    "target": t.object_id,
+                    "predicate": t.predicate,
+                    "chapter": t.chapter_number,
+                    "confidence": t.confidence
+                })
+
+        # 3. 抽取并封装第二层：剧情事件推进因果树 (plot_graph)
+        event_nodes = []
+        event_edges = []
+        event_ids = set()
+
+        for e in entities:
+            if e.entity_type == "event":
+                event_ids.add(e.id)
+                event_nodes.append({
+                    "id": e.id,
+                    "name": e.name,
+                    "type": e.entity_type,
+                    "attributes": e.attributes or {},
+                    "first_chapter": e.first_chapter,
+                    "last_chapter": e.last_chapter
+                })
+
+        # 按首发章节升序对事件排序，穿织时间线
+        event_nodes.sort(key=lambda x: x["first_chapter"])
+
+        # 显式三元组因果关系
+        for t in triples:
+            if t.subject_id in event_ids and t.object_id in event_ids:
+                event_edges.append({
+                    "id": t.id,
+                    "source": t.subject_id,
+                    "target": t.object_id,
+                    "predicate": t.predicate,
+                    "chapter": t.chapter_number,
+                    "confidence": t.confidence,
+                    "type": "explicit"
+                })
+
+        # 隐式因果/时序流：如果存在相邻章节的事件，穿织一条时序流连线，predicate为 "后续章节"
+        for i in range(len(event_nodes) - 1):
+            event_edges.append({
+                "id": f"flow_{event_nodes[i]['id']}_{event_nodes[i+1]['id']}",
+                "source": event_nodes[i]["id"],
+                "target": event_nodes[i+1]["id"],
+                "predicate": "后续章节",
+                "chapter": event_nodes[i+1]["first_chapter"],
+                "confidence": 1.0,
+                "type": "narrative_flow"
+            })
+
+        # 4. 抽取并封装第三层：伏笔填坑生命周期图 (foreshadowing_graph)
+        foreshadowing_nodes = []
+        foreshadowing_edges = []
+        foreshadowing_ids = set()
+
+        for e in entities:
+            if e.entity_type == "foreshadowing":
+                foreshadowing_ids.add(e.id)
+                status = (e.attributes or {}).get("foreshadowing_status", "planted")
+                foreshadowing_nodes.append({
+                    "id": e.id,
+                    "name": e.name,
+                    "type": e.entity_type,
+                    "attributes": e.attributes or {},
+                    "first_chapter": e.first_chapter,
+                    "last_chapter": e.last_chapter,
+                    "foreshadowing_status": status
+                })
+
+        # 捞取与伏笔相关的显式三元组
+        for t in triples:
+            if t.subject_id in foreshadowing_ids or t.object_id in foreshadowing_ids:
+                foreshadowing_edges.append({
+                    "id": t.id,
+                    "source": t.subject_id,
+                    "target": t.object_id,
+                    "predicate": t.predicate,
+                    "chapter": t.chapter_number,
+                    "confidence": t.confidence,
+                    "type": "explicit"
+                })
+
+        # 补充被引用的节点，防止孤立
+        extra_nodes_map = {}
+        for edge in foreshadowing_edges:
+            for node_id in (edge["source"], edge["target"]):
+                if node_id not in foreshadowing_ids and node_id not in extra_nodes_map:
+                    ent = entity_map.get(node_id)
+                    if ent:
+                        extra_nodes_map[node_id] = {
+                            "id": ent.id,
+                            "name": ent.name,
+                            "type": ent.entity_type,
+                            "attributes": ent.attributes or {},
+                            "first_chapter": ent.first_chapter,
+                            "last_chapter": ent.last_chapter
+                        }
+
+        foreshadowing_nodes.extend(extra_nodes_map.values())
+
+        return {
+            "character_graph": {
+                "nodes": character_nodes,
+                "edges": character_edges
+            },
+            "plot_graph": {
+                "nodes": event_nodes,
+                "edges": event_edges
+            },
+            "foreshadowing_graph": {
+                "nodes": foreshadowing_nodes,
+                "edges": foreshadowing_edges
+            }
+        }
+
+
     # --- Private helpers ---
+
 
     async def _get_existing_entities(self, novel_id: str) -> list[KnowledgeEntity]:
         async with get_db_session() as session:

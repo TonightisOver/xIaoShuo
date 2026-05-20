@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Harness Pipeline · Subagent Context Architecture</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Outfit', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #030712;
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(139, 92, 246, 0.15) 0px, transparent 50%),
+        radial-gradient(at 50% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 50%),
+        radial-gradient(at 100% 0%, rgba(236, 72, 153, 0.08) 0px, transparent 50%),
+        radial-gradient(at 50% 100%, rgba(17, 24, 39, 0.95) 0px, transparent 100%);
+      background-attachment: fixed;
+      color: #f3f4f6;
+    }
+    
+    .glass-panel {
+      background: rgba(17, 24, 39, 0.45);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    
+    .glass-card {
+      background: rgba(17, 24, 39, 0.3);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    
+    .glass-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(139, 92, 246, 0.3);
+      box-shadow: 0 10px 30px -10px rgba(139, 92, 246, 0.15);
+    }
+
+    .glow-purple {
+      box-shadow: 0 0 40px -5px rgba(139, 92, 246, 0.2);
+    }
+    
+    .glow-indigo {
+      box-shadow: 0 0 40px -5px rgba(99, 102, 241, 0.2);
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(139, 92, 246, 0.3);
+    }
+
+    /* CSS Animations */
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.5; }
+      50% { transform: scale(1.05); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.5; }
+    }
+    .neon-pulse {
+      animation: pulse-ring 2s infinite ease-in-out;
+    }
+
+    @keyframes flow-line {
+      0% { stroke-dashoffset: 24; }
+      100% { stroke-dashoffset: 0; }
+    }
+    .animated-flow {
+      stroke-dasharray: 8, 4;
+      animation: flow-line 1.5s infinite linear;
+    }
+  </style>
+</head>
+<body class="min-h-screen py-10 px-4 md:px-8 overflow-x-hidden font-sans">
+
+  <!-- Main Container -->
+  <div class="max-w-7xl mx-auto space-y-10">
+
+    <!-- Header Section -->
+    <header class="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-8 border-b border-white/5">
+      <div class="space-y-2">
+        <div class="inline-flex items-center gap-2 px-3 py-1 bg-violet-500/10 text-violet-400 border border-violet-500/25 rounded-full text-xs font-semibold tracking-wider uppercase">
+          Harness Flow Pipeline
+        </div>
+        <h1 class="text-3xl md:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-violet-400 via-indigo-200 to-pink-300 bg-clip-text text-transparent">
+          Subagent 上下文继承与隔离架构
+        </h1>
+        <p class="text-sm md:text-base text-slate-400 max-w-2xl font-medium leading-relaxed">
+          深入解构子智能体在并发流水线中的环境沙箱隔离（Workspace Isolation）与上游数据级联继承（Context Inheritance）设计系统。
+        </p>
+      </div>
+      <div class="flex items-center gap-3 shrink-0">
+        <a href="../README.md" class="px-5 py-2.5 bg-slate-900/60 hover:bg-slate-800/80 text-sm font-semibold rounded-xl border border-white/5 transition-all flex items-center gap-2">
+          <span>返回项目主页</span>
+        </a>
+      </div>
+    </header>
+
+    <!-- Top Core concepts grid -->
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <!-- Architecture 1: Physical isolation -->
+      <div class="glass-panel p-6 rounded-2xl glow-purple relative overflow-hidden flex flex-col justify-between">
+        <div class="space-y-4">
+          <div class="w-12 h-12 rounded-xl bg-violet-600/10 border border-violet-500/20 flex items-center justify-center text-violet-400 text-xl font-bold mb-6">
+            1
+          </div>
+          <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+            <span>物理沙箱级环境隔离</span>
+            <span class="text-xs font-normal text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded border border-violet-500/20">System Layer</span>
+          </h2>
+          <p class="text-sm text-slate-400 leading-relaxed font-medium">
+            利用底层 Antigravity Workspace 调度层。在调用 Subagent 时支持三种模式（<code class="text-violet-300 font-bold font-mono">inherit</code>, <code class="text-violet-300 font-bold font-mono">branch</code>, <code class="text-violet-300 font-bold font-mono">share</code>），可在不破坏开发工作区的前提下，并发克隆独立工作目录作为沙箱，保障代码安全。
+          </p>
+        </div>
+        <div class="mt-6 pt-6 border-t border-white/5 flex items-center justify-between text-xs text-slate-500">
+          <span>防污染机制 · 零溢出</span>
+          <span class="font-mono">Isolation Rate: 100%</span>
+        </div>
+      </div>
+
+      <!-- Architecture 2: Orchestrated State Machine -->
+      <div class="glass-panel p-6 rounded-2xl glow-indigo relative overflow-hidden flex flex-col justify-between">
+        <div class="space-y-4">
+          <div class="w-12 h-12 rounded-xl bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 text-xl font-bold mb-6">
+            2
+          </div>
+          <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+            <span>编排状态机级数据继承</span>
+            <span class="text-xs font-normal text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">Application Layer</span>
+          </h2>
+          <p class="text-sm text-slate-400 leading-relaxed font-medium">
+            由主编排器 <code class="text-indigo-300 font-bold font-mono">Orchestrator</code> 通过流程网闸控制，从物理工作区统一读取变更目录下的历史文档（如需求分析、技术设计），并以摘要和指令拼接的形式级联注入下流子智能体 Prompt，实现业务链条完整传承。
+          </p>
+        </div>
+        <div class="mt-6 pt-6 border-t border-white/5 flex items-center justify-between text-xs text-slate-500">
+          <span>门禁审批机制 · 级联依赖</span>
+          <span class="font-mono">Data Lineage: Strict</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Interactive Workspace Simulator Section -->
+    <section class="glass-panel p-8 rounded-3xl space-y-6">
+      <div class="space-y-1">
+        <h2 class="text-2xl font-bold text-slate-100 flex items-center gap-2">
+          <span>工作区调度交互模拟器</span>
+          <span class="text-xs bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 px-2 py-0.5 rounded-full font-semibold uppercase">Interactive</span>
+        </h2>
+        <p class="text-xs text-slate-400 font-medium">
+          点击下方切换工作区模式，观察底层文件目录如何分配与隔离。
+        </p>
+      </div>
+
+      <!-- Mode selection tabs -->
+      <div class="grid grid-cols-3 gap-2 bg-slate-950/80 p-1.5 rounded-2xl border border-white/5">
+        <button onclick="switchWorkspaceMode('inherit')" id="tab-inherit" class="py-3 px-4 rounded-xl text-sm font-semibold transition-all duration-200 bg-violet-600/20 text-violet-300 border border-violet-500/30">
+          Inherit 模式 (继承)
+        </button>
+        <button onclick="switchWorkspaceMode('branch')" id="tab-branch" class="py-3 px-4 rounded-xl text-sm font-semibold transition-all duration-200 text-slate-400 hover:bg-white/5">
+          Branch 模式 (隔离)
+        </button>
+        <button onclick="switchWorkspaceMode('share')" id="tab-share" class="py-3 px-4 rounded-xl text-sm font-semibold transition-all duration-200 text-slate-400 hover:bg-white/5">
+          Share 模式 (共享)
+        </button>
+      </div>
+
+      <!-- Simulator details area -->
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+        <!-- Visual graph on the left -->
+        <div class="lg:col-span-3 bg-slate-950/50 p-6 rounded-2xl border border-white/5 flex flex-col items-center justify-center min-h-[350px] relative overflow-hidden">
+          
+          <!-- Inherit layout graphic -->
+          <div id="sim-graphic-inherit" class="w-full flex flex-col items-center gap-8 py-6">
+            <div class="flex items-center justify-center gap-12 w-full">
+              <div class="w-32 py-4 bg-slate-900 border border-slate-700/80 text-center rounded-xl font-bold text-slate-300">
+                Parent Workspace
+                <div class="text-[9px] text-slate-500 font-mono mt-1">/workspace</div>
+              </div>
+              <div class="relative">
+                <svg class="w-24 h-12" viewBox="0 0 100 50">
+                  <path d="M 0,25 L 100,25" stroke="rgba(139, 92, 246, 0.4)" stroke-width="2.5" class="animated-flow" />
+                </svg>
+                <div class="absolute -top-4 left-1/2 -translate-x-1/2 text-[9px] bg-slate-900 border border-violet-500/20 px-2 py-0.5 rounded text-violet-300 font-bold">Same Path</div>
+              </div>
+              <div class="w-32 py-4 bg-violet-950/30 border border-violet-500/30 text-center rounded-xl font-bold text-violet-300 glow-purple">
+                Subagent Run
+                <div class="text-[9px] text-violet-500 font-mono mt-1">/workspace</div>
+              </div>
+            </div>
+            <p class="text-xs text-center text-slate-500 font-medium max-w-md">
+              子智能体与主工程工作区物理路径完全相同，任何代码变动、测试数据、任务日志读写相互同步，实时可见，极度适合高效率流水作业。
+            </p>
+          </div>
+
+          <!-- Branch layout graphic -->
+          <div id="sim-graphic-branch" class="w-full flex flex-col items-center gap-8 py-6 hidden">
+            <div class="flex flex-col gap-6 w-full items-center">
+              <div class="flex items-center justify-between w-full max-w-md bg-slate-900/60 p-4 border border-white/5 rounded-2xl">
+                <div class="w-28 py-3 bg-slate-900 border border-slate-700/80 text-center rounded-lg text-xs font-bold text-slate-300">
+                  Parent Workspace
+                  <div class="text-[9px] text-slate-500 font-mono mt-1">/workspace</div>
+                </div>
+                <div class="text-slate-600 font-extrabold font-serif">⛔ 物理物理隔离</div>
+                <div class="w-28 py-3 bg-rose-950/30 border border-rose-500/30 text-center rounded-lg text-xs font-bold text-rose-300 glow-purple">
+                  Subagent Sandbox
+                  <div class="text-[9px] text-rose-500 font-mono mt-1">/workspace-cloned</div>
+                </div>
+              </div>
+              <p class="text-xs text-center text-slate-500 font-medium max-w-md">
+                底层克隆整个主目录到全新的孤立路径，在该工作区中执行高危的代码修改、冗长的构建和打包过程，彻底隔断污染漏斗，保证工作区绝对安全。
+              </p>
+            </div>
+          </div>
+
+          <!-- Share layout graphic -->
+          <div id="sim-graphic-share" class="w-full flex flex-col items-center gap-8 py-6 hidden">
+            <div class="flex flex-col gap-6 w-full items-center">
+              <div class="w-full max-w-md p-4 bg-slate-900/40 border border-white/5 rounded-2xl flex flex-col gap-4">
+                <div class="text-center text-xs font-bold text-slate-400 bg-slate-950 border border-white/5 py-2 rounded-lg">
+                  Shared Git Git Database (.git repository)
+                </div>
+                <div class="flex justify-between items-center gap-6">
+                  <div class="flex-1 py-3 bg-slate-900 border border-slate-700/80 text-center rounded-lg text-xs font-bold text-slate-300">
+                    Parent (master)
+                    <div class="text-[9px] text-slate-500 font-mono mt-1">Worktree A</div>
+                  </div>
+                  <div class="relative py-3 flex-1 bg-indigo-950/30 border border-indigo-500/30 text-center rounded-lg text-xs font-bold text-indigo-300 glow-indigo">
+                    Subagent (feature/A)
+                    <div class="text-[9px] text-indigo-500 font-mono mt-1">Worktree B</div>
+                    <div class="absolute -top-2 -right-2 w-4 h-4 bg-indigo-500 text-slate-950 font-bold rounded-full text-[9px] flex items-center justify-center">Shared</div>
+                  </div>
+                </div>
+              </div>
+              <p class="text-xs text-center text-slate-500 font-medium max-w-md">
+                类似 <code class="font-mono bg-slate-950 px-1 py-0.5 rounded text-[10px] text-slate-400">git worktree</code> 共享底层仓库元数据。支持独立切换分支开发且不占用双倍物理存储空间，结合了隔离的安全与极高的存储效率。
+              </p>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Terminal / JSON viewer on the right -->
+        <div class="lg:col-span-2 flex flex-col bg-slate-950 p-6 rounded-2xl border border-white/5 justify-between">
+          <div class="space-y-4">
+            <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-violet-400 neon-pulse"></span>
+              <span>调度参数 payload 配置</span>
+            </h3>
+            
+            <pre class="bg-black/50 p-4 rounded-xl text-xs font-mono text-violet-300 overflow-x-auto border border-white/5 leading-relaxed" id="sim-payload">
+{
+  "Subagents": [{
+    "TypeName": "research",
+    "Role": "Codebase Researcher",
+    "Prompt": "分析当前项目结构设计...",
+    "Workspace": "inherit"
+  }]
+}</pre>
+          </div>
+
+          <div class="mt-6 space-y-2 text-xs">
+            <div class="font-bold text-slate-300">模式特点优势：</div>
+            <div class="text-slate-400 flex items-start gap-1.5" id="sim-advantage">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4 text-violet-400 shrink-0 mt-0.5">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+              </svg>
+              <span id="sim-advantage-text">父子空间实时穿透，文件即时共用，无需打包克隆，开发响应度最高。</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Interactive Pipeline Step Flow Section -->
+    <section class="glass-panel p-8 rounded-3xl space-y-8">
+      <div class="space-y-1">
+        <h2 class="text-2xl font-bold text-slate-100 flex items-center gap-2">
+          <span>Harness 阶段级级联流转面板</span>
+          <span class="text-xs bg-indigo-500/15 text-indigo-400 border border-indigo-500/25 px-2 py-0.5 rounded-full font-semibold uppercase">Step-by-Step</span>
+        </h2>
+        <p class="text-xs text-slate-400 font-medium">
+          点击下方流水线阶段，查看 Orchestrator 在每次调度子 Agent 时如何执行上下文的“隔离与注入”。
+        </p>
+      </div>
+
+      <!-- Horizontal progress steps -->
+      <div class="overflow-x-auto pb-4">
+        <div class="flex items-center min-w-[700px] gap-2 px-1">
+          <!-- Step 1 -->
+          <div onclick="switchStep(1)" id="step-btn-1" class="flex-1 py-3 px-4 bg-violet-600/20 text-violet-300 border border-violet-500/30 rounded-xl cursor-pointer text-center text-xs font-bold transition-all">
+            1. Analyst (设计)
+          </div>
+          <!-- Line -->
+          <div class="w-6 h-0.5 bg-slate-800 shrink-0" id="step-line-1"></div>
+          <!-- Step 2 -->
+          <div onclick="switchStep(2)" id="step-btn-2" class="flex-1 py-3 px-4 bg-slate-900 border border-white/5 text-slate-400 rounded-xl cursor-pointer text-center text-xs font-bold hover:bg-white/5 transition-all">
+            2. Gate 1 (设计审批)
+          </div>
+          <!-- Line -->
+          <div class="w-6 h-0.5 bg-slate-800 shrink-0" id="step-line-2"></div>
+          <!-- Step 3 -->
+          <div onclick="switchStep(3)" id="step-btn-3" class="flex-1 py-3 px-4 bg-slate-900 border border-white/5 text-slate-400 rounded-xl cursor-pointer text-center text-xs font-bold hover:bg-white/5 transition-all">
+            3. Implementer (编码)
+          </div>
+          <!-- Line -->
+          <div class="w-6 h-0.5 bg-slate-800 shrink-0" id="step-line-3"></div>
+          <!-- Step 4 -->
+          <div onclick="switchStep(4)" id="step-btn-4" class="flex-1 py-3 px-4 bg-slate-900 border border-white/5 text-slate-400 rounded-xl cursor-pointer text-center text-xs font-bold hover:bg-white/5 transition-all">
+            4. Tester (测试)
+          </div>
+          <!-- Line -->
+          <div class="w-6 h-0.5 bg-slate-800 shrink-0" id="step-line-4"></div>
+          <!-- Step 5 -->
+          <div onclick="switchStep(5)" id="step-btn-5" class="flex-1 py-3 px-4 bg-slate-900 border border-white/5 text-slate-400 rounded-xl cursor-pointer text-center text-xs font-bold hover:bg-white/5 transition-all">
+            5. Gate 2 (交付审批)
+          </div>
+        </div>
+      </div>
+
+      <!-- Step Content Details Card -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 bg-slate-950/40 p-6 rounded-2xl border border-white/5">
+        <!-- Stage Persona Card (Left Column) -->
+        <div class="space-y-6 lg:col-span-1 border-b lg:border-b-0 lg:border-r border-white/5 pb-6 lg:pb-0 lg:pr-8">
+          <div class="space-y-2">
+            <div class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">执行角色</div>
+            <h3 class="text-xl font-bold text-slate-100 flex items-center gap-2" id="card-persona-title">
+              Analyst Agent
+            </h3>
+            <p class="text-xs text-slate-400 font-medium" id="card-persona-desc">
+              系统分析师 — 专职负责将用户粗糙的需求细化转化为高可靠性、高边界对齐的技术方案设计。
+            </p>
+          </div>
+
+          <div class="space-y-3">
+            <div class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">隔离限制 (Permissions)</div>
+            <div class="flex flex-wrap gap-1.5" id="card-persona-perms">
+              <span class="text-[10px] bg-slate-900 border border-white/5 px-2.5 py-1 rounded text-slate-400 font-bold">文件读取: 开启</span>
+              <span class="text-[10px] bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded text-emerald-400 font-bold">设计生成: 开启</span>
+              <span class="text-[10px] bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded text-rose-400 font-bold">代码写入: 禁用</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Upper Context Injection (Center Column) -->
+        <div class="space-y-4 lg:col-span-1">
+          <div class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">级联注入的上下文 (Context Input)</div>
+          <div class="bg-slate-950 p-4 rounded-xl border border-white/5 text-xs font-mono text-indigo-300 leading-relaxed overflow-y-auto max-h-[180px] custom-scrollbar" id="card-context-input">
+<!-- analyst input -->
+项目路径: {project_root}
+变更目录: .harness/changes/{CHANGE_ID}/
+用户需求描述: "另外，阅读小说的时候，应该能出现小说目录，前后章的切换功能按钮"
+[系统模板]: analyst.md 全文</div>
+        </div>
+
+        <!-- Outputs (Right Column) -->
+        <div class="space-y-4 lg:col-span-1">
+          <div class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">产出产物 (Artifact Outputs)</div>
+          <div class="space-y-2" id="card-outputs">
+            <div class="p-3 bg-slate-900/60 border border-white/5 rounded-xl flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>
+                <span class="text-xs font-semibold text-slate-200">01-需求分析.md</span>
+              </div>
+              <span class="text-[9px] text-slate-500 font-mono">100% Write</span>
+            </div>
+            <div class="p-3 bg-slate-900/60 border border-white/5 rounded-xl flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>
+                <span class="text-xs font-semibold text-slate-200">02-技术设计.md</span>
+              </div>
+              <span class="text-[9px] text-slate-500 font-mono">100% Write</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer section -->
+    <footer class="text-center py-10 border-t border-white/5 text-xs text-slate-600 space-y-1.5 font-medium">
+      <div>Harness Pipeline Flow &middot; Antigravity Engineering</div>
+      <div class="font-mono">Compiled At: 2026-05-20T15:21:00Z</div>
+    </footer>
+
+  </div>
+
+  <script>
+    // Workspace mode switcher
+    function switchWorkspaceMode(mode) {
+      // 1. Reset buttons
+      ['inherit', 'branch', 'share'].forEach(m => {
+        const btn = document.getElementById(`tab-${m}`);
+        if (btn) {
+          btn.className = "py-3 px-4 rounded-xl text-sm font-semibold transition-all duration-200 text-slate-400 hover:bg-white/5";
+        }
+      });
+      // Set active button
+      document.getElementById(`tab-${mode}`).className = "py-3 px-4 rounded-xl text-sm font-semibold transition-all duration-200 bg-violet-600/20 text-violet-300 border border-violet-500/30";
+
+      // 2. Switch graphic
+      ['inherit', 'branch', 'share'].forEach(m => {
+        document.getElementById(`sim-graphic-` + m).classList.add('hidden');
+      });
+      document.getElementById(`sim-graphic-` + mode).classList.remove('hidden');
+
+      // 3. Switch Payload JSON & description
+      const payloadElement = document.getElementById('sim-payload');
+      const advantageText = document.getElementById('sim-advantage-text');
+      
+      if (mode === 'inherit') {
+        payloadElement.textContent = JSON.stringify({
+          "Subagents": [{
+            "TypeName": "research",
+            "Role": "Codebase Researcher",
+            "Prompt": "分析当前项目结构设计...",
+            "Workspace": "inherit"
+          }]
+        }, null, 2);
+        advantageText.textContent = "父子空间实时穿透，文件即时共用，无需打包克隆，开发响应度最高。";
+      } else if (mode === 'branch') {
+        payloadElement.textContent = JSON.stringify({
+          "Subagents": [{
+            "TypeName": "implementer",
+            "Role": "Dangerous Refactor Executer",
+            "Prompt": "执行底层模块的全量重构...",
+            "Workspace": "branch"
+          }]
+        }, null, 2);
+        advantageText.textContent = "完全隔离出独立路径，支持重置、覆盖、冗长构建测试，100%隔断环境污染。";
+      } else if (mode === 'share') {
+        payloadElement.textContent = JSON.stringify({
+          "Subagents": [{
+            "TypeName": "tester",
+            "Role": "Parallel Branch Tester",
+            "Prompt": "对 feature/B 分支进行打包分析...",
+            "Workspace": "share"
+          }]
+        }, null, 2);
+        advantageText.textContent = "共享底层 Git database 实现多工作区极速映射，免去双倍体积冗余，极其高效。";
+      }
+    }
+
+    // Step Flow switcher
+    const stepData = {
+      1: {
+        title: "Analyst Agent",
+        desc: "系统分析师 — 专职负责将用户粗糙的需求细化转化为高可靠性、高边界对齐的技术方案设计。",
+        perms: `
+          <span class="text-[10px] bg-slate-900 border border-white/5 px-2.5 py-1 rounded text-slate-400 font-bold">文件读取: 开启</span>
+          <span class="text-[10px] bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded text-emerald-400 font-bold">设计生成: 开启</span>
+          <span class="text-[10px] bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded text-rose-400 font-bold">代码写入: 禁用</span>
+        `,
+        context: `项目路径: {project_root}
+变更目录: .harness/changes/{CHANGE_ID}/
+用户需求描述: "另外，阅读小说的时候，应该能出现小说目录，前后章的切换功能按钮"
+[系统模板]: analyst.md 全文`,
+        outputs: `
+          <div class="p-3 bg-slate-900/60 border border-white/5 rounded-xl flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>
+              <span class="text-xs font-semibold text-slate-200">01-需求分析.md</span>
+            </div>
+            <span class="text-[9px] text-slate-500 font-mono">100% Write</span>
+          </div>
+          <div class="p-3 bg-slate-900/60 border border-white/5 rounded-xl flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>
+              <span class="text-xs font-semibold text-slate-200">02-技术设计.md</span>
+            </div>
+            <span class="text-[9px] text-slate-500 font-mono">100% Write</span>
+          </div>
+        `
+      },
+      2: {
+        title: "Gate 1 (技术设计网闸)",
+        desc: "硬审批机制 — 阻断设计方案直接带入编码。Orchestrator 流程挂起，向用户呈现一句话概括、关键决策亮点与 02 文件连接，等待回复批准。",
+        perms: `
+          <span class="text-[10px] bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded text-rose-400 font-bold">代码更改: 阻断</span>
+          <span class="text-[10px] bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded text-amber-400 font-bold">流程状态: Halted (等待审批)</span>
+        `,
+        context: `[审批卡片 payload]:
+变更编号: CHANGE-034
+架构简述: "极奢高斯模糊小说阅读器及双栏分卷导航"
+待审设计: .harness/changes/CHANGE-034/02-技术设计.md`,
+        outputs: `
+          <div class="p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-xl flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              <span class="text-xs font-semibold text-slate-200">.gate1-approved 确认章</span>
+            </div>
+            <span class="text-[9px] text-emerald-400 font-semibold font-mono">Approved</span>
+          </div>
+        `
+      },
+      3: {
+        title: "Implementer Agent",
+        desc: "核心编码智能体 — 专注于高容灾、严格对齐技术设计文档的生产代码编写，确保 Ruff 及 Mypy 静态检测 100% 合规通过。",
+        perms: `
+          <span class="text-[10px] bg-slate-900 border border-white/5 px-2.5 py-1 rounded text-slate-400 font-bold">设计读取: 开启</span>
+          <span class="text-[10px] bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded text-emerald-400 font-bold">代码重构/写入: 开启</span>
+          <span class="text-[10px] bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded text-rose-400 font-bold">发布生产: 禁用</span>
+        `,
+        context: `项目路径: {project_root}
+设计摘要: [来自 02-技术设计.md] 对 Chapters/Volumes 分卷架构的详细规划
+[系统模板]: implementer.md 全文`,
+        outputs: `
+          <div class="p-3 bg-slate-900/60 border border-white/5 rounded-xl flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>
+              <span class="text-xs font-semibold text-slate-200">03-编码计划.md</span>
+            </div>
+            <span class="text-[9px] text-slate-500 font-mono">100% Write</span>
+          </div>
+          <div class="p-3 bg-slate-900/60 border border-white/5 rounded-xl flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>
+              <span class="text-xs font-semibold text-slate-200">ChapterEdit.vue / VolumeList.vue</span>
+            </div>
+            <span class="text-[9px] text-slate-500 font-mono">Modifications</span>
+          </div>
+        `
+      },
+      4: {
+        title: "Tester Agent",
+        desc: "质量测试保障智能体 — 负责代码审阅、测试用例编写，长跑单元测试与集成测试，给出覆盖率等关键考查指标报告。",
+        perms: `
+          <span class="text-[10px] bg-slate-900 border border-white/5 px-2.5 py-1 rounded text-slate-400 font-bold">代码审阅: 开启</span>
+          <span class="text-[10px] bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded text-emerald-400 font-bold">单元/集成测试运行: 开启</span>
+        `,
+        context: `项目路径: {project_root}
+修改的代码文件列表: ChapterEdit.vue, VolumeList.vue
+[系统模板]: tester.md 全文`,
+        outputs: `
+          <div class="p-3 bg-slate-900/60 border border-white/5 rounded-xl flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>
+              <span class="text-xs font-semibold text-slate-200">07-单元测试报告.md</span>
+            </div>
+            <span class="text-[9px] text-slate-500 font-mono">158 passed (100%)</span>
+          </div>
+          <div class="p-3 bg-slate-900/60 border border-white/5 rounded-xl flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>
+              <span class="text-xs font-semibold text-slate-200">08-集成测试报告.md</span>
+            </div>
+            <span class="text-[9px] text-slate-500 font-mono">100% Pass</span>
+          </div>
+        `
+      },
+      5: {
+        title: "Gate 2 (交付与部署审核网闸)",
+        desc: "终期网闸 — 在变更合流和上线之前封锁。Orchestrator 读取 tester 产出的全量单元/集成测试通过率和 CI 验证状态反馈用户，等待终审确认合流。",
+        perms: `
+          <span class="text-[10px] bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded text-rose-400 font-bold">主干合流: 阻断</span>
+          <span class="text-[10px] bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded text-amber-400 font-bold">流程状态: Halted (等待终期网闸审批)</span>
+        `,
+        context: `[交付卡片 payload]:
+测试指标: "158Passed / 0Failed"
+代码静态检查: "ESLint passed, Ruff passed, Mypy passed"
+文档路径: .harness/changes/CHANGE-034/`,
+        outputs: `
+          <div class="p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-xl flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              <span class="text-xs font-semibold text-slate-200">.gate2-approved 最终放行章</span>
+            </div>
+            <span class="text-[9px] text-emerald-400 font-semibold font-mono">Approved</span>
+          </div>
+        `
+      }
+    };
+
+    function switchStep(stepNum) {
+      // 1. Reset step buttons and line colors
+      for(let i=1; i<=5; i++) {
+        const btn = document.getElementById(`step-btn-${i}`);
+        if(btn) {
+          btn.className = "flex-1 py-3 px-4 bg-slate-900 border border-white/5 text-slate-400 rounded-xl cursor-pointer text-center text-xs font-bold hover:bg-white/5 transition-all";
+        }
+        const line = document.getElementById(`step-line-${i}`);
+        if(line) {
+          line.className = "w-6 h-0.5 bg-slate-800 shrink-0";
+        }
+      }
+      
+      // Set active step button and dynamic path coloring
+      document.getElementById(`step-btn-${stepNum}`).className = "flex-1 py-3 px-4 bg-violet-600/20 text-violet-300 border border-violet-500/30 rounded-xl cursor-pointer text-center text-xs font-bold transition-all";
+      for(let i=1; i<stepNum; i++) {
+        const line = document.getElementById(`step-line-${i}`);
+        if(line) {
+          line.className = "w-6 h-0.5 bg-violet-500/40 shrink-0";
+        }
+      }
+
+      // 2. Load step dynamic data
+      const data = stepData[stepNum];
+      document.getElementById('card-persona-title').textContent = data.title;
+      document.getElementById('card-persona-desc').textContent = data.desc;
+      document.getElementById('card-persona-perms').innerHTML = data.perms;
+      document.getElementById('card-context-input').textContent = data.context;
+      document.getElementById('card-outputs').innerHTML = data.outputs;
+    }
+  </script>
+</body>
+</html>

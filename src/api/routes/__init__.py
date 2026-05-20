@@ -9,9 +9,10 @@ from .projects import router as projects_router
 from .storylines import router as storylines_router
 from .style import router as style_router
 from .ws import router as ws_router
+from .story_bible import router as story_bible_router
 
 __all__ = [
     "novels_router", "health_router", "projects_router", "ws_router",
     "conversations_router", "style_router", "outlines_router",
-    "storylines_router", "knowledge_graph_router",
+    "storylines_router", "knowledge_graph_router", "story_bible_router",
 ]

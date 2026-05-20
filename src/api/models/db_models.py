@@ -67,6 +67,9 @@ class Novel(Base):
         back_populates="novel", cascade="all, delete-orphan",
         order_by="Volume.volume_number"
     )
+    story_bible: Mapped["StoryBible | None"] = relationship(
+        back_populates="novel", uselist=False, cascade="all, delete-orphan"
+    )
 
 
 class WorldSetting(Base):
@@ -489,3 +492,27 @@ class KnowledgeEntityState(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
+
+class StoryBible(Base):
+    """故事圣经 (Novel Bible)"""
+
+    __tablename__ = "story_bibles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        unique=True, nullable=False
+    )
+    worldview_rules: Mapped[str | None] = mapped_column(Text, default="")
+    character_cards: Mapped[list[dict] | None] = mapped_column(JSON, default=list)
+    faction_relations: Mapped[str | None] = mapped_column(Text, default="")
+    location_settings: Mapped[str | None] = mapped_column(Text, default="")
+    prop_settings: Mapped[str | None] = mapped_column(Text, default="")
+    foreshadowing_list: Mapped[list[dict] | None] = mapped_column(JSON, default=list)
+    hard_settings: Mapped[str | None] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now()
+    )
+
+    novel: Mapped["Novel"] = relationship(back_populates="story_bible")

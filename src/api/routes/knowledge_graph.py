@@ -501,3 +501,11 @@ async def run_consistency_check(novel_id: str, chapter_number: int):
         conflicts=conflicts,
         checked_at=datetime.now(UTC).isoformat(),
     )
+
+
+@router.get("/three-layer")
+async def get_three_layer_graph(novel_id: str):
+    """获取三层关系图谱数据"""
+    service = get_knowledge_graph_service()
+    data = await service.get_three_layer_graph(novel_id)
+    return data

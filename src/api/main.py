@@ -16,6 +16,7 @@ from src.api.routes import (
     novels_router,
     outlines_router,
     projects_router,
+    story_bible_router,
     storylines_router,
     style_router,
     ws_router,
@@ -83,6 +84,7 @@ app.include_router(outlines_router)
 app.include_router(storylines_router)
 app.include_router(knowledge_graph_router)
 app.include_router(ws_router)
+app.include_router(story_bible_router)
 
 # 挂载前端静态文件
 if FRONTEND_DIR.exists():

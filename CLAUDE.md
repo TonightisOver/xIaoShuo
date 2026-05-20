@@ -25,3 +25,7 @@
 - Python 3.11 · FastAPI · LangGraph · DeepSeek API
 - PostgreSQL + SQLAlchemy · Redis · Celery
 - pytest · ruff · mypy
+
+## Subagent 调度与交互规范
+
+- **显式调用提示**：每次显式或隐式唤醒/调用/委派子智能体（Subagent）执行特定任务时，**必须在交互界面显式打印出调用了哪一个 Agent（角色名称）及其具体的职责范畴**（例如：“*正在调用 [Analyst Agent] 开展需求分解与方案设计...*”）。这是确保多 Agent 调度可见性与可追踪性的核心原则。
