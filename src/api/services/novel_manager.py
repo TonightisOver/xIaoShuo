@@ -432,6 +432,7 @@ class NovelManager:
             "novel_type": novel.novel_type,
             "status": novel.status,
             "target_words": novel.target_words,
+            "writing_style": novel.writing_style,
             "created_at": novel.created_at,
             "updated_at": novel.updated_at,
         }
