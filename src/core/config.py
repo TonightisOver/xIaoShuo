@@ -33,8 +33,8 @@ class Settings(BaseSettings):
 
     # Database configuration
     DATABASE_URL: str = "postgresql+asyncpg://xiaoshuo:password@localhost:5432/xiaoshuo"
-    DATABASE_POOL_SIZE: int = 5
-    DATABASE_MAX_OVERFLOW: int = 10
+    DATABASE_POOL_SIZE: int = 10
+    DATABASE_MAX_OVERFLOW: int = 20
     DATABASE_ECHO: bool = False
 
     # Knowledge Graph

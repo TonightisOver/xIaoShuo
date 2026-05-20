@@ -34,6 +34,8 @@ def get_engine() -> AsyncEngine:
             max_overflow=settings.DATABASE_MAX_OVERFLOW,
             echo=settings.DATABASE_ECHO,
             pool_pre_ping=True,
+            pool_timeout=30,
+            pool_recycle=1800,
         )
         logger.info("Database engine created")
     return _engine

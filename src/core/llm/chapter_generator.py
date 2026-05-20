@@ -1,5 +1,6 @@
 """单章生成共享逻辑"""
 
+import asyncio
 import json
 from typing import Any
 
@@ -9,8 +10,52 @@ from src.core.llm.prompts import CHAPTER_GENERATION_PROMPT, CHAPTER_PLANNING_PRO
 
 logger = structlog.get_logger(__name__)
 
+CHAPTER_TIMEOUT_SECONDS = 300
+
 
 async def generate_single_chapter(
+    client: Any,
+    chapter_outline: dict[str, Any],
+    previous_chapter: str,
+    characters_json: str,
+    world_setting_json: str,
+    storylines_json: str = "",
+    style_instruction: str = "",
+    kg_service: Any | None = None,
+    novel_id: str | None = None,
+) -> dict[str, Any]:
+    """生成单章内容。
+
+    Returns:
+        {"chapter": int, "title": str, "content": str, "word_count": int}
+    """
+    try:
+        return await asyncio.wait_for(
+            _generate_single_chapter_inner(
+                client=client,
+                chapter_outline=chapter_outline,
+                previous_chapter=previous_chapter,
+                characters_json=characters_json,
+                world_setting_json=world_setting_json,
+                storylines_json=storylines_json,
+                style_instruction=style_instruction,
+                kg_service=kg_service,
+                novel_id=novel_id,
+            ),
+            timeout=CHAPTER_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        chapter_num = chapter_outline.get("chapter", 0)
+        logger.error("chapter_generation_timeout", chapter=chapter_num, timeout=CHAPTER_TIMEOUT_SECONDS)
+        return {
+            "chapter": chapter_num,
+            "title": chapter_outline.get("title", f"第{chapter_num}章"),
+            "content": "[生成超时，请重试]",
+            "word_count": 0,
+        }
+
+
+async def _generate_single_chapter_inner(
     client: Any,
     chapter_outline: dict[str, Any],
     previous_chapter: str,
