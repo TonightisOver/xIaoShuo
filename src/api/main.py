@@ -45,6 +45,26 @@ async def lifespan(app: FastAPI):
     logger.info("xIaoShuo API starting up...")
     await init_db()
     logger.info("Database initialized")
+
+    # Validate API Key at startup
+    _PLACEHOLDER_KEYS = {
+        "",
+        "dummy_key_for_compilation",
+        "your-api-key-here",
+        "your_api_key_here",
+        "sk-placeholder",
+    }
+    api_key = (settings.DEEPSEEK_API_KEY or "").strip()
+    if not api_key or api_key.lower() in _PLACEHOLDER_KEYS:
+        logger.warning(
+            "api_key_not_configured",
+            message=(
+                "DEEPSEEK_API_KEY is a placeholder or empty. "
+                "Chapter generation will fail. "
+                "Please set a valid API key in .env and restart."
+            ),
+        )
+
     logger.info("API documentation available at http://localhost:8000/docs")
 
     yield

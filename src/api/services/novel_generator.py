@@ -192,12 +192,16 @@ async def _run_langgraph_pipeline(
     async def _chapter_progress_callback(data: dict[str, Any]) -> None:
         total = max(data.get("total_chapters", 1), 1)
         completed = data.get("completed_chapters", 0)
+        successful = data.get("successful_chapters", completed)
+        failed = data.get("failed_chapters", 0)
         base = _full_generate_percentage(stage_offset + 3, total_stages)
         span = _full_generate_percentage(stage_offset + 4, total_stages) - base
         pct = base + int((completed / total) * span)
         progress_data = {
             "current_stage": "chapter_generation",
             "completed_chapters": completed,
+            "successful_chapters": successful,
+            "failed_chapters": failed,
             "total_chapters": total,
             "percentage": pct,
         }

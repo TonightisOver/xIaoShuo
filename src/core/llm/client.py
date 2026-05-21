@@ -3,6 +3,7 @@
 from typing import Any
 
 import httpx
+import openai
 import structlog
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
@@ -28,6 +29,9 @@ def _is_retryable_http_error(exc: BaseException) -> bool:
 
 def _should_retry(exc: BaseException) -> bool:
     """Determine if the exception should trigger a retry."""
+    # openai SDK connection/timeout errors (not Python builtins)
+    if isinstance(exc, openai.APIConnectionError | openai.APITimeoutError):
+        return True
     if isinstance(exc, TimeoutError | ConnectionError):
         return True
     if isinstance(exc, httpx.HTTPStatusError):

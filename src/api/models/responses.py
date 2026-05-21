@@ -67,6 +67,7 @@ class HealthResponse(BaseModel):
     status: str = Field(..., description="服务状态")
     version: str = Field(..., description="API 版本")
     timestamp: datetime = Field(..., description="当前时间")
+    api_key_configured: bool = Field(True, description="API Key 是否已配置（非占位符）")
 
 
 class ErrorDetail(BaseModel):
