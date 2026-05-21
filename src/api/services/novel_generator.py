@@ -790,6 +790,21 @@ async def generate_chapters_background(
                 )
                 session.add(chapter)
 
+        # Auto-create version records
+        for ch in generated_chapters:
+            if ch.get("content"):
+                try:
+                    await novel_manager.create_chapter_version(
+                        novel_id=novel_id,
+                        chapter_number=ch["chapter"],
+                        content=ch["content"],
+                        source="generation",
+                        model_name="deepseek",
+                        is_active=True,
+                    )
+                except (ValueError, Exception):
+                    pass
+
         await task_manager.complete_task(task_id, {"chapters": generated_chapters})
         await event_bus.publish(ProgressEvent(
             task_id=task_id,
@@ -898,6 +913,21 @@ async def _persist_to_novel(novel_id: str, result: dict[str, Any]) -> None:
                         updated_at=datetime.now(UTC),
                     )
                     session.add(chapter)
+
+        # Auto-create version records for generated chapters
+        for ch in chapters:
+            if isinstance(ch, dict) and ch.get("content"):
+                try:
+                    await manager.create_chapter_version(
+                        novel_id=novel_id,
+                        chapter_number=ch.get("chapter", 0),
+                        content=ch.get("content", ""),
+                        source="generation",
+                        model_name="deepseek",
+                        is_active=True,
+                    )
+                except (ValueError, Exception):
+                    pass
 
         # Update novel status
         await manager.update_novel(novel_id, status="completed")

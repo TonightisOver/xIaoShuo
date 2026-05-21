@@ -1,0 +1,10 @@
+{
+  "mode": 10,
+  "current_stage": 10,
+  "stage_name": "用户确认",
+  "awaiting_gate": true,
+  "gate_number": 2,
+  "auto_gate": false,
+  "started_at": "2026-05-21T12:00:00Z",
+  "stages_completed": ["1-需求分析", "2-需求评审(auto)", "3-编码实现", "4-编码评审(auto)"]
+}

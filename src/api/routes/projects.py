@@ -605,6 +605,18 @@ async def list_chapter_versions(novel_id: str, chapter_number: int):
     return await manager.list_chapter_versions(novel_id, chapter_number)
 
 
+@router.get("/{novel_id}/chapters/{chapter_number}/versions/compare")
+async def compare_chapter_versions(
+    novel_id: str, chapter_number: int, v1: int, v2: int
+):
+    """对比两个版本的内容差异。"""
+    manager = get_novel_manager()
+    result = await manager.compare_chapter_versions(novel_id, chapter_number, v1, v2)
+    if result is None:
+        raise HTTPException(status_code=404, detail="One or both versions not found")
+    return result
+
+
 @router.get("/{novel_id}/chapters/{chapter_number}/versions/{version_number}")
 async def get_chapter_version(novel_id: str, chapter_number: int, version_number: int):
     """返回单个版本完整内容。"""
@@ -646,3 +658,21 @@ async def rollback_chapter_version(novel_id: str, chapter_number: int, version_n
     if new_version is None:
         raise HTTPException(status_code=404, detail="Version not found")
     return {"status": "rolled_back", "new_version_number": new_version}
+
+
+@router.post("/{novel_id}/chapters/{chapter_number}/versions/{version_number}/activate")
+async def activate_chapter_version(novel_id: str, chapter_number: int, version_number: int):
+    """将指定版本设为活跃版本（更新章节正文为该版本内容）。"""
+    manager = get_novel_manager()
+    result = await manager.activate_chapter_version(novel_id, chapter_number, version_number)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+    return {"status": "activated", "version_number": version_number}
+
+
+@router.post("/{novel_id}/fix-volume-numbers")
+async def fix_volume_numbers(novel_id: str):
+    """根据卷的章节范围为已有章节补充 volume_number。"""
+    manager = get_novel_manager()
+    fixed_count = await manager.fix_volume_numbers(novel_id)
+    return {"status": "fixed", "chapters_updated": fixed_count}

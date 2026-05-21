@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     CheckConstraint,
     DateTime,
     Float,
@@ -527,7 +528,10 @@ class ChapterVersion(Base):
     __table_args__ = (
         UniqueConstraint("novel_id", "chapter_number", "version_number", name="uq_chapter_version"),
         Index("ix_chapter_versions_novel_chapter", "novel_id", "chapter_number"),
-        CheckConstraint("source IN ('manual', 'ai_rewrite', 'rollback')", name="ck_chapter_version_source"),
+        CheckConstraint(
+            "source IN ('manual', 'ai_rewrite', 'rollback', 'generation')",
+            name="ck_chapter_version_source",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -541,6 +545,13 @@ class ChapterVersion(Base):
     word_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     source: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
     rewrite_instruction: Mapped[str | None] = mapped_column(Text)
+    quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    model_name: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    prompt_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    diff_from_previous: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kg_conflicts: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    user_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

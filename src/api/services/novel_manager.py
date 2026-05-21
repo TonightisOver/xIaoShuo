@@ -366,6 +366,13 @@ class NovelManager:
         content: str,
         source: str = "manual",
         rewrite_instruction: str | None = None,
+        quality_score: float | None = None,
+        model_name: str | None = None,
+        prompt_summary: str | None = None,
+        diff_from_previous: str | None = None,
+        kg_conflicts: dict | None = None,
+        user_notes: str | None = None,
+        is_active: bool = False,
     ) -> int:
         """创建章节版本快照，同时更新 Chapter.content 和 Chapter.word_count。
 
@@ -404,9 +411,26 @@ class NovelManager:
                 word_count=word_count,
                 source=source,
                 rewrite_instruction=rewrite_instruction,
+                quality_score=quality_score,
+                model_name=model_name,
+                prompt_summary=prompt_summary,
+                diff_from_previous=diff_from_previous,
+                kg_conflicts=kg_conflicts,
+                user_notes=user_notes,
+                is_active=is_active,
                 created_at=datetime.now(timezone.utc),
             )
             session.add(version)
+
+            if is_active:
+                await session.execute(
+                    select(ChapterVersion)
+                    .where(
+                        ChapterVersion.novel_id == novel_id,
+                        ChapterVersion.chapter_number == chapter_number,
+                        ChapterVersion.version_number != new_version,
+                    )
+                )
 
             ch.content = content
             ch.word_count = word_count
@@ -433,6 +457,9 @@ class NovelManager:
                     "word_count": v.word_count,
                     "source": v.source,
                     "rewrite_instruction": v.rewrite_instruction,
+                    "quality_score": v.quality_score,
+                    "model_name": v.model_name,
+                    "is_active": v.is_active,
                     "created_at": v.created_at,
                 }
                 for v in result.scalars().all()
@@ -460,6 +487,13 @@ class NovelManager:
                 "word_count": v.word_count,
                 "source": v.source,
                 "rewrite_instruction": v.rewrite_instruction,
+                "quality_score": v.quality_score,
+                "model_name": v.model_name,
+                "prompt_summary": v.prompt_summary,
+                "diff_from_previous": v.diff_from_previous,
+                "kg_conflicts": v.kg_conflicts,
+                "user_notes": v.user_notes,
+                "is_active": v.is_active,
                 "created_at": v.created_at,
             }
 
@@ -482,6 +516,102 @@ class NovelManager:
             rewrite_instruction=f"回滚自版本 {version_number}",
         )
         return new_version
+
+    async def activate_chapter_version(
+        self, novel_id: str, chapter_number: int, version_number: int
+    ) -> bool | None:
+        """将指定版本设为活跃版本，更新章节正文。"""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(ChapterVersion).where(
+                    ChapterVersion.novel_id == novel_id,
+                    ChapterVersion.chapter_number == chapter_number,
+                    ChapterVersion.version_number == version_number,
+                )
+            )
+            target = result.scalar_one_or_none()
+            if not target:
+                return None
+
+            await session.execute(
+                select(ChapterVersion)
+                .where(
+                    ChapterVersion.novel_id == novel_id,
+                    ChapterVersion.chapter_number == chapter_number,
+                )
+            )
+            for v in (await session.execute(
+                select(ChapterVersion).where(
+                    ChapterVersion.novel_id == novel_id,
+                    ChapterVersion.chapter_number == chapter_number,
+                )
+            )).scalars().all():
+                v.is_active = (v.version_number == version_number)
+
+            ch_res = await session.execute(
+                select(Chapter).where(
+                    Chapter.novel_id == novel_id,
+                    Chapter.chapter_number == chapter_number,
+                )
+            )
+            ch = ch_res.scalar_one_or_none()
+            if ch and target.content:
+                ch.content = target.content
+                ch.word_count = target.word_count
+                ch.updated_at = datetime.now(timezone.utc)
+
+        return True
+
+    async def compare_chapter_versions(
+        self, novel_id: str, chapter_number: int, v1: int, v2: int
+    ) -> dict | None:
+        """对比两个版本，返回两者内容和基本 diff 信息。"""
+        ver1 = await self.get_chapter_version(novel_id, chapter_number, v1)
+        ver2 = await self.get_chapter_version(novel_id, chapter_number, v2)
+        if not ver1 or not ver2:
+            return None
+
+        import difflib
+        content1 = ver1["content"] or ""
+        content2 = ver2["content"] or ""
+        diff = list(difflib.unified_diff(
+            content1.splitlines(keepends=True),
+            content2.splitlines(keepends=True),
+            fromfile=f"v{v1}",
+            tofile=f"v{v2}",
+            lineterm="",
+        ))
+        return {
+            "v1": {"version_number": v1, "word_count": ver1["word_count"], "source": ver1["source"], "created_at": ver1["created_at"]},
+            "v2": {"version_number": v2, "word_count": ver2["word_count"], "source": ver2["source"], "created_at": ver2["created_at"]},
+            "diff": "\n".join(diff),
+            "word_count_change": ver2["word_count"] - ver1["word_count"],
+        }
+
+    async def fix_volume_numbers(self, novel_id: str) -> int:
+        """根据卷的 chapter_start/chapter_end 为章节补充 volume_number。"""
+        volumes = await self.list_volumes(novel_id)
+        fixed = 0
+        async with get_db_session() as session:
+            for vol in volumes:
+                ch_start = vol.get("chapter_start")
+                ch_end = vol.get("chapter_end")
+                vol_num = vol.get("volume_number")
+                if ch_start is None or ch_end is None or vol_num is None:
+                    continue
+                from sqlalchemy import update
+                result = await session.execute(
+                    update(Chapter)
+                    .where(
+                        Chapter.novel_id == novel_id,
+                        Chapter.chapter_number >= ch_start,
+                        Chapter.chapter_number <= ch_end,
+                        Chapter.volume_number.is_(None),
+                    )
+                    .values(volume_number=vol_num)
+                )
+                fixed += result.rowcount
+        return fixed
 
     # --- Volumes ---
 

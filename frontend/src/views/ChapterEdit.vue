@@ -220,18 +220,26 @@
                     :key="ver.version_number"
                     @click="previewVersion(ver)"
                     class="px-2.5 py-2 rounded-lg text-[11px] cursor-pointer transition-all border border-transparent hover:bg-slate-800/50 hover:border-slate-700/50"
+                    :class="{ 'border-indigo-500/40 bg-indigo-500/5': ver.is_active }"
                   >
                     <div class="flex items-center justify-between">
-                      <span class="font-semibold text-slate-300">v{{ ver.version_number }}</span>
+                      <span class="font-semibold text-slate-300 flex items-center gap-1">
+                        v{{ ver.version_number }}
+                        <span v-if="ver.is_active" class="text-[9px] bg-indigo-500/20 text-indigo-400 px-1 py-0.5 rounded">活跃</span>
+                      </span>
                       <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
                         :class="{
                           'bg-blue-500/20 text-blue-400': ver.source === 'ai_rewrite',
                           'bg-amber-500/20 text-amber-400': ver.source === 'rollback',
                           'bg-slate-700/50 text-slate-400': ver.source === 'manual',
+                          'bg-emerald-500/20 text-emerald-400': ver.source === 'generation',
                         }"
                       >{{ sourceLabel(ver.source) }}</span>
                     </div>
-                    <div class="text-slate-500 mt-0.5">{{ ver.word_count }} 字 · {{ formatDate(ver.created_at) }}</div>
+                    <div class="text-slate-500 mt-0.5 flex items-center gap-2">
+                      <span>{{ ver.word_count }} 字 · {{ formatDate(ver.created_at) }}</span>
+                      <span v-if="ver.quality_score" class="text-amber-400">★ {{ ver.quality_score.toFixed(1) }}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -386,16 +394,20 @@
                 'bg-blue-500/20 text-blue-400': previewVersionData.source === 'ai_rewrite',
                 'bg-amber-500/20 text-amber-400': previewVersionData.source === 'rollback',
                 'bg-slate-700/50 text-slate-400': previewVersionData.source === 'manual',
+                'bg-emerald-500/20 text-emerald-400': previewVersionData.source === 'generation',
               }"
             >{{ sourceLabel(previewVersionData.source) }}</span>
             <span>{{ previewVersionData.word_count }} 字</span>
             <span>{{ formatDate(previewVersionData.created_at) }}</span>
+            <span v-if="previewVersionData.quality_score" class="text-amber-400">★ {{ previewVersionData.quality_score.toFixed(1) }}</span>
+            <span v-if="previewVersionData.model_name" class="text-slate-500">{{ previewVersionData.model_name }}</span>
           </div>
           <div class="bg-slate-800/40 rounded-xl px-4 py-3 text-sm text-slate-300 leading-relaxed border border-slate-700/30 max-h-64 overflow-y-auto custom-scrollbar whitespace-pre-wrap">
             {{ previewVersionData.content }}
           </div>
           <div class="flex justify-end gap-3">
             <button @click="previewVersionData = null" class="btn-secondary text-sm px-4 py-2">关闭</button>
+            <button @click="doActivate(previewVersionData.version_number)" class="btn-secondary text-sm px-4 py-2 border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10">设为正式版本</button>
             <button @click="doRollback(previewVersionData.version_number)" class="btn-primary text-sm px-5 py-2">回滚到此版本</button>
           </div>
         </div>
@@ -575,8 +587,19 @@ async function doRollback(versionNumber) {
   }
 }
 
+async function doActivate(versionNumber) {
+  const res = await fetch(`/api/v1/projects/${novelId.value}/chapters/${chapterNum.value}/versions/${versionNumber}/activate`, {
+    method: 'POST',
+  })
+  if (res.ok) {
+    previewVersionData.value = null
+    await load()
+    await loadVersions()
+  }
+}
+
 function sourceLabel(source) {
-  const map = { manual: '手动', ai_rewrite: 'AI改写', rollback: '回滚' }
+  const map = { manual: '手动', ai_rewrite: 'AI改写', rollback: '回滚', generation: '生成' }
   return map[source] || source
 }
 

@@ -304,35 +304,71 @@
           :chapters="chapters"
           :novel-id="novelId"
           @generate-volume="handleGenerateVolume"
+          @delete-chapter="handleDeleteChapter"
         />
 
         <!-- Unassigned Chapters List -->
-        <div v-if="unassignedChapters.length" class="space-y-2">
-          <h3 v-if="volumes.length" class="text-sm font-bold text-slate-400 mt-6 pl-1">未分卷正文章节</h3>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <router-link v-for="ch in unassignedChapters" :key="ch.id"
-              :to="`/novels/${novelId}/chapters/${ch.chapter_number}`"
-              class="card p-4 block bg-slate-900/30 hover:bg-slate-900/60 border border-slate-800/80 hover:border-purple-500/20 hover:shadow-lg transition-all duration-300"
+        <div v-if="unassignedChapters.length" class="mt-6">
+          <h3 v-if="volumes.length" class="text-sm font-medium text-gray-400 mb-3 pl-1">未分卷章节</h3>
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-50">
+            <div v-for="ch in unassignedChapters" :key="ch.id"
+              class="flex items-center justify-between px-6 py-3.5 hover:bg-gray-50/50 transition-colors group"
             >
-              <div class="flex justify-between items-center gap-2">
-                <span class="font-bold text-slate-200 text-sm truncate pr-2">第{{ ch.chapter_number }}章：{{ ch.title }}</span>
-                <span class="text-[10px] text-slate-500 font-mono font-bold shrink-0 bg-slate-950/40 px-2 py-0.5 rounded border border-slate-900">{{ ch.word_count || 0 }} 字</span>
+              <router-link
+                :to="`/novels/${novelId}/chapters/${ch.chapter_number}`"
+                class="flex-1 flex items-center gap-3 min-w-0"
+              >
+                <span class="text-sm text-gray-400 font-mono w-6 shrink-0">{{ ch.chapter_number }}</span>
+                <span class="text-sm font-medium text-gray-800 truncate">{{ ch.title }}</span>
+              </router-link>
+              <div class="flex items-center gap-3 shrink-0">
+                <span class="text-xs text-gray-400 font-mono">{{ ch.word_count || 0 }} 字</span>
+                <button
+                  @click="confirmDeleteUnassigned(ch)"
+                  class="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all p-1 rounded"
+                  title="删除章节"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                  </svg>
+                </button>
               </div>
-            </router-link>
+            </div>
           </div>
         </div>
 
         <!-- Empty Chapters -->
-        <div v-if="!volumes.length && !chapters.length" class="card p-8 text-center text-slate-500 bg-slate-900/40">
-          尚未开始正文章节的生成。您可以点击右上角“一键全功能生成”或进行分步设定创建。
+        <div v-if=”!volumes.length && !chapters.length” class=”bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center text-gray-400”>
+          尚未开始正文章节的生成。您可以点击右上角”一键全功能生成”或进行分步设定创建。
         </div>
 
         <!-- Chapter Range Selector Modal Dialog -->
         <ChapterRangeDialog
-          :visible="showRangeDialog"
-          @close="showRangeDialog = false"
-          @generate="handleGenerateChapters"
+          :visible=”showRangeDialog”
+          @close=”showRangeDialog = false”
+          @generate=”handleGenerateChapters”
         />
+
+        <!-- Delete Confirmation Modal for Unassigned Chapters -->
+        <Teleport to=”body”>
+          <div v-if=”deleteTargetUnassigned” class=”fixed inset-0 z-50 flex items-center justify-center”>
+            <div class=”absolute inset-0 bg-black/20 backdrop-blur-sm” @click=”deleteTargetUnassigned = null”></div>
+            <div class=”relative bg-white rounded-2xl shadow-xl p-6 w-80 mx-4”>
+              <h3 class=”text-base font-semibold text-gray-900 mb-2”>确认删除</h3>
+              <p class=”text-sm text-gray-500 mb-5”>
+                确定要删除「第{{ deleteTargetUnassigned.chapter_number }}章：{{ deleteTargetUnassigned.title }}」吗？此操作不可撤销。
+              </p>
+              <div class=”flex gap-3 justify-end”>
+                <button @click=”deleteTargetUnassigned = null” class=”px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100 transition-colors”>
+                  取消
+                </button>
+                <button @click=”doDeleteUnassigned” class=”px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors”>
+                  删除
+                </button>
+              </div>
+            </div>
+          </div>
+        </Teleport>
       </div>
 
       <!-- Tab Content: Storylines / Relations -->
@@ -610,6 +646,29 @@ async function handleGenerateChapters({ chapter_start, chapter_end }) {
   if (res.ok) {
     const data = await res.json()
     router.push(`/task/${data.task_id}`)
+  }
+}
+
+const deleteTargetUnassigned = ref(null)
+
+function handleDeleteChapter(chapterNumber) {
+  chapters.value = chapters.value.filter(c => c.chapter_number !== chapterNumber)
+}
+
+function confirmDeleteUnassigned(ch) {
+  deleteTargetUnassigned.value = ch
+}
+
+async function doDeleteUnassigned() {
+  const ch = deleteTargetUnassigned.value
+  if (!ch) return
+  try {
+    const res = await fetch(`/api/v1/projects/${novelId}/chapters/${ch.chapter_number}`, { method: 'DELETE' })
+    if (res.ok) {
+      chapters.value = chapters.value.filter(c => c.chapter_number !== ch.chapter_number)
+    }
+  } finally {
+    deleteTargetUnassigned.value = null
   }
 }
 
