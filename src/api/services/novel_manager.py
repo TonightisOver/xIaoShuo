@@ -244,6 +244,21 @@ class NovelManager:
             await session.flush()
             return char.id
 
+    async def get_character_by_name(self, novel_id: str, name: str) -> dict | None:
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(Character).where(
+                    Character.novel_id == novel_id,
+                    Character.name == name,
+                )
+            )
+            char = result.scalar_one_or_none()
+            if not char:
+                return None
+            return {"id": char.id, "name": char.name, "role": char.role,
+                    "description": char.description, "personality": char.personality,
+                    "abilities": char.abilities, "background_story": char.background_story}
+
     async def update_character(self, novel_id: str, char_id: int, **kwargs) -> bool:
         async with get_db_session() as session:
             result = await session.execute(
@@ -296,7 +311,7 @@ class NovelManager:
                 select(Chapter).where(
                     Chapter.novel_id == novel_id,
                     Chapter.chapter_number == chapter_number
-                )
+                ).order_by(Chapter.id.desc()).limit(1)
             )
             c = result.scalar_one_or_none()
             if not c:

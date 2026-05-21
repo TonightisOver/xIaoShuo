@@ -762,6 +762,14 @@ async def generate_chapters_background(
                 data=progress_data,
             ))
 
+        def _find_volume_number(ch_num: int) -> int | None:
+            for vol in volumes:
+                outline = vol.get("outline") or {}
+                for ch in outline.get("chapters", []):
+                    if ch.get("chapter") == ch_num:
+                        return vol.get("volume_number")
+            return None
+
         async with get_db_session() as session:
             await session.execute(
                 delete(Chapter).where(
@@ -774,6 +782,7 @@ async def generate_chapters_background(
                 chapter = Chapter(
                     novel_id=novel_id,
                     chapter_number=ch["chapter"],
+                    volume_number=_find_volume_number(ch["chapter"]),
                     title=ch["title"],
                     content=ch["content"],
                     word_count=ch["word_count"],
@@ -824,12 +833,11 @@ async def _persist_to_novel(novel_id: str, result: dict[str, Any]) -> None:
                                     "世界背景", "地理环境", "文化体系", "世界规则")},
             )
 
-        # Characters
+        # Characters (upsert: update existing by name, insert new)
         characters = result.get("characters", [])
         for char in characters:
             if isinstance(char, dict) and char.get("name"):
-                await manager.create_character(
-                    novel_id,
+                char_data = dict(
                     name=char.get("name", ""),
                     role=char.get("role") or char.get("角色"),
                     description=char.get("description") or char.get("描述"),
@@ -837,6 +845,11 @@ async def _persist_to_novel(novel_id: str, result: dict[str, Any]) -> None:
                     abilities=char.get("abilities") or char.get("能力"),
                     background_story=char.get("background_story") or char.get("背景"),
                 )
+                existing = await manager.get_character_by_name(novel_id, char_data["name"])
+                if existing:
+                    await manager.update_character(novel_id, existing["id"], **char_data)
+                else:
+                    await manager.create_character(novel_id, **char_data)
 
         # Volumes
         volumes = result.get("volumes", [])
@@ -859,16 +872,25 @@ async def _persist_to_novel(novel_id: str, result: dict[str, Any]) -> None:
         chapters = result.get("chapters", [])
         from datetime import UTC, datetime
 
+        from sqlalchemy import delete
+
         from src.api.models.db_models import Chapter
         from src.core.database import get_db_session
 
         async with get_db_session() as session:
             for ch in chapters:
                 if isinstance(ch, dict):
+                    ch_num = ch.get("chapter", 0)
+                    await session.execute(
+                        delete(Chapter).where(
+                            Chapter.novel_id == novel_id,
+                            Chapter.chapter_number == ch_num,
+                        )
+                    )
                     chapter = Chapter(
                         novel_id=novel_id,
                         volume_number=ch.get("volume_number"),
-                        chapter_number=ch.get("chapter", 0),
+                        chapter_number=ch_num,
                         title=ch.get("title", ""),
                         content=ch.get("content", ""),
                         word_count=ch.get("word_count", 0),

@@ -10,7 +10,7 @@ from src.core.llm.prompts import CHAPTER_GENERATION_PROMPT, CHAPTER_PLANNING_PRO
 
 logger = structlog.get_logger(__name__)
 
-CHAPTER_TIMEOUT_SECONDS = 300
+CHAPTER_TIMEOUT_SECONDS = 600
 
 
 async def generate_single_chapter(
@@ -50,7 +50,7 @@ async def generate_single_chapter(
         return {
             "chapter": chapter_num,
             "title": chapter_outline.get("title", f"第{chapter_num}章"),
-            "content": f"[章节生成失败：生成超时（{CHAPTER_TIMEOUT_SECONDS}s），请检查 API Key 配置后重试]",
+            "content": f"[章节生成失败：生成超时（{CHAPTER_TIMEOUT_SECONDS}s），可能是模型响应较慢，请稍后重试]",
             "word_count": 0,
             "generation_failed": True,
         }

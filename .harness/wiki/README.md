@@ -21,3 +21,4 @@
 - [故事线与图谱系统](business/storyline-system.md)
 - [大纲体系](business/outline-system.md)
 - [知识图谱系统](business/knowledge-graph.md)
+- [Story Bible 故事圣经](business/story-bible.md)

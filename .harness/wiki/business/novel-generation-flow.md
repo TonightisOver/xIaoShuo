@@ -39,11 +39,24 @@ LangGraph 编排的 7 阶段顺序流程：
 **LLM 调用**: N 次（每章 1 次）  
 **进度回调**: 每章完成后推送 chapter_progress 事件
 
-### 6. 质量检查 (quality_check)
+## 质量检查 8 维度评估（CHANGE-033）
 
-**输入**: 生成的章节内容  
-**输出**: quality_scores（各维度评分）  
-**条件路由**: 分数 ≥ 0.8 → 人工审核；< 0.8 → 重新生成
+`quality_check` 节点使用 AI 对每章进行多维度评分（0.0-1.0）：
+
+| 维度 | 说明 |
+|------|------|
+| advancement | 主线推进度 |
+| conflict | 冲突与悬念度 |
+| character_consistency | 角色一致性 |
+| world_consistency | 世界观一致性 |
+| foreshadowing | 伏笔与回收 |
+| pacing | 叙事节奏控制 |
+| readability | 表达精炼度 |
+| trope_alignment | 网络爽点题材契合度 |
+
+AI 返回 JSON 格式，包含每维度评分、反馈意见和修改建议。overall_score ≥ 0.8 → 通过；< 0.8 → 重新生成。
+
+
 
 ### 7. 人工审核 (human_review)
 
@@ -51,11 +64,13 @@ LangGraph 编排的 7 阶段顺序流程：
 **输出**: approval_status  
 **当前状态**: 占位实现（自动通过）
 
-## 错误处理
+## 错误处理（CHANGE-036 更新）
 
-每个节点都有 fallback 机制：
-- LLM API 失败 → 使用预设的 mock 数据继续流程
-- 确保流程不会因单次 API 失败而中断
+- LLM API 失败 → 失败章节打 `generation_failed: True` 标记，内容显示 `[章节生成失败：{error}]`，不再 fallback 硬编码内容
+- 单章失败不影响其他章节继续生成（try/except 在 for 循环内逐章捕获）
+- 章节生成超时（300s）→ 返回 `[生成超时，请重试]` + `generation_failed: True`
+- 连接错误自动重试最多 3 次（识别 `openai.APIConnectionError`）
+- 进度回调包含 `successful_chapters` / `failed_chapters` 字段，前端可区分真实生成数
 
 ## 进度推送
 
