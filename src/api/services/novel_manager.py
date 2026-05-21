@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from src.api.models.db_models import (
     Chapter,
     Character,
+    ChapterVersion,
     Novel,
     PowerSystem,
     Task,
@@ -340,6 +341,132 @@ class NovelManager:
                 return False
             await session.delete(ch)
         return True
+
+    # --- Chapter Versions ---
+
+    async def create_chapter_version(
+        self,
+        novel_id: str,
+        chapter_number: int,
+        content: str,
+        source: str = "manual",
+        rewrite_instruction: str | None = None,
+    ) -> int:
+        """创建章节版本快照，同时更新 Chapter.content 和 Chapter.word_count。
+
+        Returns:
+            新版本号 version_number
+        """
+        async with get_db_session() as session:
+            ch_res = await session.execute(
+                select(Chapter)
+                .where(
+                    Chapter.novel_id == novel_id,
+                    Chapter.chapter_number == chapter_number,
+                )
+                .with_for_update()
+            )
+            ch = ch_res.scalar_one_or_none()
+            if not ch:
+                raise ValueError("Chapter not found")
+
+            max_ver_res = await session.execute(
+                select(func.max(ChapterVersion.version_number)).where(
+                    ChapterVersion.novel_id == novel_id,
+                    ChapterVersion.chapter_number == chapter_number,
+                )
+            )
+            max_ver = max_ver_res.scalar_one_or_none() or 0
+            new_version = max_ver + 1
+
+            word_count = len(content)
+
+            version = ChapterVersion(
+                novel_id=novel_id,
+                chapter_number=chapter_number,
+                version_number=new_version,
+                content=content,
+                word_count=word_count,
+                source=source,
+                rewrite_instruction=rewrite_instruction,
+                created_at=datetime.now(timezone.utc),
+            )
+            session.add(version)
+
+            ch.content = content
+            ch.word_count = word_count
+            ch.updated_at = datetime.now(timezone.utc)
+
+            await session.flush()
+            return new_version
+
+    async def list_chapter_versions(self, novel_id: str, chapter_number: int) -> list[dict]:
+        """返回版本列表（不含 content），按 version_number 降序。"""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(ChapterVersion)
+                .where(
+                    ChapterVersion.novel_id == novel_id,
+                    ChapterVersion.chapter_number == chapter_number,
+                )
+                .order_by(ChapterVersion.version_number.desc())
+            )
+            return [
+                {
+                    "id": v.id,
+                    "version_number": v.version_number,
+                    "word_count": v.word_count,
+                    "source": v.source,
+                    "rewrite_instruction": v.rewrite_instruction,
+                    "created_at": v.created_at,
+                }
+                for v in result.scalars().all()
+            ]
+
+    async def get_chapter_version(
+        self, novel_id: str, chapter_number: int, version_number: int
+    ) -> dict | None:
+        """返回单个版本完整内容。"""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(ChapterVersion).where(
+                    ChapterVersion.novel_id == novel_id,
+                    ChapterVersion.chapter_number == chapter_number,
+                    ChapterVersion.version_number == version_number,
+                )
+            )
+            v = result.scalar_one_or_none()
+            if not v:
+                return None
+            return {
+                "id": v.id,
+                "version_number": v.version_number,
+                "content": v.content,
+                "word_count": v.word_count,
+                "source": v.source,
+                "rewrite_instruction": v.rewrite_instruction,
+                "created_at": v.created_at,
+            }
+
+    async def rollback_chapter_version(
+        self, novel_id: str, chapter_number: int, version_number: int
+    ) -> int | None:
+        """将指定版本内容写回 Chapter.content，并创建 source=rollback 的新版本。
+
+        Returns:
+            新版本号，若目标版本不存在则返回 None
+        """
+        target = await self.get_chapter_version(novel_id, chapter_number, version_number)
+        if not target:
+            return None
+        new_version = await self.create_chapter_version(
+            novel_id=novel_id,
+            chapter_number=chapter_number,
+            content=target["content"] or "",
+            source="rollback",
+            rewrite_instruction=f"回滚自版本 {version_number}",
+        )
+        return new_version
 
     # --- Volumes ---
 

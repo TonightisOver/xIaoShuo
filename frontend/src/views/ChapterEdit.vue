@@ -173,14 +173,14 @@
                 </span>
                 <span class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full font-semibold">TOC</span>
               </h2>
-              
+
               <div class="overflow-y-auto flex-1 space-y-4 pr-1.5 custom-scrollbar">
                 <div v-for="group in groupedChapters" :key="group.title" class="space-y-1.5">
                   <div class="text-[11px] font-bold text-slate-500 tracking-wider uppercase pl-1 pt-2 pb-1 border-b border-slate-800/40">
                     {{ group.title }}
                   </div>
-                  <div 
-                    v-for="ch in group.chapters" 
+                  <div
+                    v-for="ch in group.chapters"
                     :key="ch.chapter_number"
                     @click="goToChapter(ch.chapter_number)"
                     :class="[
@@ -195,14 +195,70 @@
                   </div>
                 </div>
               </div>
+
+              <!-- Version History Collapsible -->
+              <div class="mt-4 border-t border-slate-800/60 pt-3">
+                <button
+                  @click="showVersionHistory = !showVersionHistory"
+                  class="w-full flex items-center justify-between text-xs font-bold text-slate-400 hover:text-slate-200 transition-colors py-1"
+                >
+                  <span class="flex items-center gap-1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5 text-purple-400">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    版本历史
+                    <span class="text-[10px] bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-full">{{ versions.length }}</span>
+                  </span>
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3 h-3 transition-transform" :class="showVersionHistory ? 'rotate-180' : ''">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                  </svg>
+                </button>
+                <div v-if="showVersionHistory" class="mt-2 space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar">
+                  <div v-if="versions.length === 0" class="text-[11px] text-slate-600 text-center py-2">暂无版本记录</div>
+                  <div
+                    v-for="ver in versions"
+                    :key="ver.version_number"
+                    @click="previewVersion(ver)"
+                    class="px-2.5 py-2 rounded-lg text-[11px] cursor-pointer transition-all border border-transparent hover:bg-slate-800/50 hover:border-slate-700/50"
+                  >
+                    <div class="flex items-center justify-between">
+                      <span class="font-semibold text-slate-300">v{{ ver.version_number }}</span>
+                      <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+                        :class="{
+                          'bg-blue-500/20 text-blue-400': ver.source === 'ai_rewrite',
+                          'bg-amber-500/20 text-amber-400': ver.source === 'rollback',
+                          'bg-slate-700/50 text-slate-400': ver.source === 'manual',
+                        }"
+                      >{{ sourceLabel(ver.source) }}</span>
+                    </div>
+                    <div class="text-slate-500 mt-0.5">{{ ver.word_count }} 字 · {{ formatDate(ver.created_at) }}</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
           <!-- Editor Area -->
           <div class="lg:col-span-3 space-y-6">
+            <!-- AI Rewrite Bubble Button -->
+            <div
+              v-if="selectionText"
+              class="flex justify-end"
+            >
+              <button
+                @click="openRewriteModal"
+                class="btn-secondary text-sm flex items-center gap-1.5 px-4 py-2 border border-white/10 rounded-lg text-ink-300 bg-purple-600/20 hover:bg-purple-600/40 border-purple-500/40"
+              >
+                ✦ AI 改写
+              </button>
+            </div>
+
             <div class="card p-1 bg-[#090b11]/80 border-slate-800/60 shadow-inner rounded-2xl overflow-hidden border">
               <textarea
+                ref="textareaRef"
                 v-model="content"
+                @mouseup="onSelectionChange"
+                @keyup="onSelectionChange"
                 class="w-full min-h-[600px] p-6 md:p-8 text-base leading-relaxed font-sans bg-transparent text-slate-100 resize-y border-0 focus:outline-none focus:ring-0 focus:border-0"
                 placeholder="开始书写或重新生成章节正文..."
               ></textarea>
@@ -252,6 +308,100 @@
       </div>
     </template>
   </div>
+
+  <!-- ==================== AI 改写 Modal ==================== -->
+  <Teleport to="body">
+    <div v-if="showRewriteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="closeRewriteModal">
+      <div class="bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+          <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">✦ AI 改写</h3>
+          <button @click="closeRewriteModal" class="text-slate-500 hover:text-slate-300 transition-colors text-lg leading-none">✕</button>
+        </div>
+
+        <!-- 未生成结果时：输入面板 -->
+        <div v-if="!rewriteResult" class="p-6 space-y-4">
+          <div>
+            <div class="text-xs font-semibold text-slate-400 mb-2">选中文本预览</div>
+            <div class="bg-slate-800/60 rounded-xl px-4 py-3 text-sm text-slate-300 leading-relaxed border border-slate-700/50 line-clamp-3">
+              {{ selectionText.length > 100 ? selectionText.slice(0, 100) + '...' : selectionText }}
+            </div>
+          </div>
+          <div>
+            <div class="text-xs font-semibold text-slate-400 mb-2">改写指令</div>
+            <textarea
+              v-model="rewriteInstruction"
+              class="w-full bg-slate-800/60 border border-slate-700/50 rounded-xl px-4 py-3 text-sm text-slate-100 resize-none focus:outline-none focus:border-purple-500/60 transition-colors"
+              rows="3"
+              placeholder="例如：改成更有张力的描写、增加环境渲染、调整节奏使其更紧凑..."
+            ></textarea>
+          </div>
+          <div v-if="rewriteError" class="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">{{ rewriteError }}</div>
+          <div class="flex justify-end gap-3">
+            <button @click="closeRewriteModal" class="btn-secondary text-sm px-4 py-2">取消</button>
+            <button @click="doRewrite" :disabled="rewriting || !rewriteInstruction.trim()" class="btn-primary text-sm px-5 py-2 flex items-center gap-2">
+              <svg v-if="rewriting" class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+              </svg>
+              <span>{{ rewriting ? '生成中...' : '生成改写' }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 生成结果面板 -->
+        <div v-else class="p-6 space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <div class="text-xs font-semibold text-slate-400 mb-2">原文</div>
+              <div class="bg-slate-800/40 rounded-xl px-4 py-3 text-sm text-slate-400 leading-relaxed border border-slate-700/30 max-h-48 overflow-y-auto custom-scrollbar">{{ rewriteResult.original }}</div>
+            </div>
+            <div>
+              <div class="text-xs font-semibold text-purple-400 mb-2">AI 改写结果</div>
+              <div class="bg-purple-500/5 rounded-xl px-4 py-3 text-sm text-slate-200 leading-relaxed border border-purple-500/20 max-h-48 overflow-y-auto custom-scrollbar">{{ rewriteResult.rewritten }}</div>
+            </div>
+          </div>
+          <div v-if="rewriteError" class="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">{{ rewriteError }}</div>
+          <div class="flex justify-end gap-3">
+            <button @click="rewriteResult = null; rewriteError = ''" class="btn-secondary text-sm px-4 py-2">重新生成</button>
+            <button @click="closeRewriteModal" class="btn-secondary text-sm px-4 py-2">放弃</button>
+            <button @click="acceptRewrite" class="btn-primary text-sm px-5 py-2">采纳改写</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- ==================== 版本预览 Modal ==================== -->
+  <Teleport to="body">
+    <div v-if="previewVersionData" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="previewVersionData = null">
+      <div class="bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+          <h3 class="text-sm font-bold text-slate-200">版本 v{{ previewVersionData.version_number }} 预览</h3>
+          <button @click="previewVersionData = null" class="text-slate-500 hover:text-slate-300 transition-colors text-lg leading-none">✕</button>
+        </div>
+        <div class="p-6 space-y-4">
+          <div class="flex items-center gap-3 text-xs text-slate-400">
+            <span class="px-2 py-0.5 rounded-full font-medium"
+              :class="{
+                'bg-blue-500/20 text-blue-400': previewVersionData.source === 'ai_rewrite',
+                'bg-amber-500/20 text-amber-400': previewVersionData.source === 'rollback',
+                'bg-slate-700/50 text-slate-400': previewVersionData.source === 'manual',
+              }"
+            >{{ sourceLabel(previewVersionData.source) }}</span>
+            <span>{{ previewVersionData.word_count }} 字</span>
+            <span>{{ formatDate(previewVersionData.created_at) }}</span>
+          </div>
+          <div class="bg-slate-800/40 rounded-xl px-4 py-3 text-sm text-slate-300 leading-relaxed border border-slate-700/30 max-h-64 overflow-y-auto custom-scrollbar whitespace-pre-wrap">
+            {{ previewVersionData.content }}
+          </div>
+          <div class="flex justify-end gap-3">
+            <button @click="previewVersionData = null" class="btn-secondary text-sm px-4 py-2">关闭</button>
+            <button @click="doRollback(previewVersionData.version_number)" class="btn-primary text-sm px-5 py-2">回滚到此版本</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup>
@@ -278,6 +428,22 @@ const fontSize = ref(20) // Default 20px
 const activeFont = ref('serif') // Default 宋体 (serif)
 const activeTheme = ref('parchment') // Default parchment
 
+// AI Rewrite state
+const textareaRef = ref(null)
+const selectionText = ref('')
+const selectionStart = ref(0)
+const selectionEnd = ref(0)
+const showRewriteModal = ref(false)
+const rewriteInstruction = ref('')
+const rewriting = ref(false)
+const rewriteResult = ref(null) // { original, rewritten }
+const rewriteError = ref('')
+
+// Version history state
+const versions = ref([])
+const showVersionHistory = ref(false)
+const previewVersionData = ref(null)
+
 const themeClasses = {
   parchment: 'bg-[#f4ecd8] text-[#3c2f1f]',
   green: 'bg-[#dfedd6] text-[#2c3d27]',
@@ -295,6 +461,132 @@ function toggleReadMode() {
 function adjustFontSize(delta) {
   fontSize.value = Math.max(14, Math.min(32, fontSize.value + delta))
 }
+
+// --- Selection detection ---
+
+function onSelectionChange() {
+  const el = textareaRef.value
+  if (!el) return
+  const start = el.selectionStart
+  const end = el.selectionEnd
+  if (start !== end) {
+    selectionText.value = content.value.slice(start, end)
+    selectionStart.value = start
+    selectionEnd.value = end
+  } else {
+    selectionText.value = ''
+  }
+}
+
+// --- AI Rewrite ---
+
+function openRewriteModal() {
+  rewriteInstruction.value = ''
+  rewriteResult.value = null
+  rewriteError.value = ''
+  showRewriteModal.value = true
+}
+
+function closeRewriteModal() {
+  showRewriteModal.value = false
+  rewriteResult.value = null
+  rewriteError.value = ''
+}
+
+async function doRewrite() {
+  if (!rewriteInstruction.value.trim()) return
+  rewriting.value = true
+  rewriteError.value = ''
+  try {
+    const res = await fetch(`/api/v1/projects/${novelId.value}/chapters/${chapterNum.value}/rewrite`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        full_content: content.value,
+        selected_text: selectionText.value,
+        selection_start: selectionStart.value,
+        selection_end: selectionEnd.value,
+        instruction: rewriteInstruction.value,
+      }),
+    })
+    if (res.status === 504) {
+      rewriteError.value = 'AI 改写超时，请稍后重试'
+    } else if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      rewriteError.value = data.detail || '改写失败，请重试'
+    } else {
+      const data = await res.json()
+      rewriteResult.value = { original: data.original_text, rewritten: data.rewritten_text }
+    }
+  } catch (e) {
+    rewriteError.value = '网络错误，请重试'
+  } finally {
+    rewriting.value = false
+  }
+}
+
+async function acceptRewrite() {
+  if (!rewriteResult.value) return
+  // Replace selected text in content
+  const newContent = content.value.slice(0, selectionStart.value) + rewriteResult.value.rewritten + content.value.slice(selectionEnd.value)
+  content.value = newContent
+  closeRewriteModal.value = false
+  showRewriteModal.value = false
+  selectionText.value = ''
+
+  // Save version
+  await fetch(`/api/v1/projects/${novelId.value}/chapters/${chapterNum.value}/versions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      content: newContent,
+      source: 'ai_rewrite',
+      rewrite_instruction: rewriteInstruction.value,
+    }),
+  })
+  await loadVersions()
+}
+
+// --- Version History ---
+
+async function loadVersions() {
+  const res = await fetch(`/api/v1/projects/${novelId.value}/chapters/${chapterNum.value}/versions`)
+  if (res.ok) {
+    versions.value = await res.json()
+  }
+}
+
+async function previewVersion(ver) {
+  const res = await fetch(`/api/v1/projects/${novelId.value}/chapters/${chapterNum.value}/versions/${ver.version_number}`)
+  if (res.ok) {
+    previewVersionData.value = await res.json()
+  }
+}
+
+async function doRollback(versionNumber) {
+  if (!confirm(`确定回滚到版本 v${versionNumber}？当前未保存的内容将丢失。`)) return
+  const res = await fetch(`/api/v1/projects/${novelId.value}/chapters/${chapterNum.value}/versions/${versionNumber}/rollback`, {
+    method: 'POST',
+  })
+  if (res.ok) {
+    previewVersionData.value = null
+    await load()
+    await loadVersions()
+  }
+}
+
+function sourceLabel(source) {
+  const map = { manual: '手动', ai_rewrite: 'AI改写', rollback: '回滚' }
+  return map[source] || source
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+// --- Data loading ---
 
 async function load() {
   const res = await fetch(`/api/v1/projects/${novelId.value}/chapters/${chapterNum.value}`)
@@ -330,7 +622,7 @@ const sortedChapters = computed(() => {
 const groupedChapters = computed(() => {
   const groups = []
   const sorted = sortedChapters.value
-  
+
   if (allVolumes.value.length === 0) {
     groups.push({
       title: '正文目录',
@@ -338,15 +630,15 @@ const groupedChapters = computed(() => {
     })
     return groups
   }
-  
+
   const volMap = new Map()
   for (const vol of allVolumes.value) {
     volMap.set(vol.volume_number, vol)
   }
-  
+
   const volumeGroups = {}
   const unassigned = []
-  
+
   for (const ch of sorted) {
     const volNum = ch.volume_number
     if (volNum && volMap.has(volNum)) {
@@ -358,7 +650,7 @@ const groupedChapters = computed(() => {
       unassigned.push(ch)
     }
   }
-  
+
   const sortedVolNums = Object.keys(volumeGroups).map(Number).sort((a, b) => a - b)
   for (const volNum of sortedVolNums) {
     const vol = volMap.get(volNum)
@@ -368,14 +660,14 @@ const groupedChapters = computed(() => {
       chapters: volumeGroups[volNum]
     })
   }
-  
+
   if (unassigned.length > 0) {
     groups.push({
       title: '未分卷章节',
       chapters: unassigned
     })
   }
-  
+
   return groups
 })
 
@@ -411,7 +703,7 @@ async function save() {
   saving.value = false
   saved.value = true
   setTimeout(() => { saved.value = false }, 2000)
-  
+
   // Reload all chapters to update word counts in sidebar
   loadAllChapters()
 }
@@ -448,6 +740,7 @@ watch(novelId, (newId) => {
 // Watch route params changes to load the correct chapter content
 watch([novelId, chapterNum], () => {
   load()
+  loadVersions()
 }, { immediate: true })
 </script>
 

@@ -5,9 +5,11 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -516,3 +518,29 @@ class StoryBible(Base):
     )
 
     novel: Mapped["Novel"] = relationship(back_populates="story_bible")
+
+
+class ChapterVersion(Base):
+    """章节版本历史"""
+
+    __tablename__ = "chapter_versions"
+    __table_args__ = (
+        UniqueConstraint("novel_id", "chapter_number", "version_number", name="uq_chapter_version"),
+        Index("ix_chapter_versions_novel_chapter", "novel_id", "chapter_number"),
+        CheckConstraint("source IN ('manual', 'ai_rewrite', 'rollback')", name="ck_chapter_version_source"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        nullable=False
+    )
+    chapter_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str | None] = mapped_column(Text)
+    word_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
+    rewrite_instruction: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

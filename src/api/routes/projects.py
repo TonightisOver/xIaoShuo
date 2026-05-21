@@ -1,7 +1,10 @@
 """小说项目管理 API 路由"""
 
+import asyncio
 import structlog
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from src.api.models.requests import CreateNovelRequest
@@ -546,3 +549,100 @@ async def delete_chapter(novel_id: str, chapter_number: int):
     if not deleted:
         raise HTTPException(status_code=404, detail="Chapter not found")
     return {"status": "deleted"}
+
+
+# --- Chapter AI Rewrite ---
+
+class RewriteRequest(BaseModel):
+    full_content: str
+    selected_text: str = Field(..., min_length=1)
+    selection_start: int
+    selection_end: int
+    instruction: str = Field(..., min_length=1)
+
+
+@router.post("/{novel_id}/chapters/{chapter_number}/rewrite")
+async def rewrite_chapter_segment(novel_id: str, chapter_number: int, request: RewriteRequest):
+    """对章节中选中的文本片段进行 AI 改写。"""
+    manager = get_novel_manager()
+    chapter = await manager.get_chapter(novel_id, chapter_number)
+    if not chapter:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+
+    from src.core.llm.chapter_rewriter import rewrite_chapter_segment as do_rewrite
+    try:
+        rewritten = await do_rewrite(
+            novel_id=novel_id,
+            chapter_number=chapter_number,
+            full_content=request.full_content,
+            selected_text=request.selected_text,
+            instruction=request.instruction,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="AI rewrite timed out")
+    except Exception as e:
+        logger.error("rewrite_chapter_segment_failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Rewrite failed")
+
+    return {"rewritten_text": rewritten, "original_text": request.selected_text}
+
+
+# --- Chapter Version Management ---
+
+class CreateVersionRequest(BaseModel):
+    content: str
+    source: Literal["manual", "ai_rewrite", "rollback"] = "manual"
+    rewrite_instruction: str | None = None
+
+
+@router.get("/{novel_id}/chapters/{chapter_number}/versions")
+async def list_chapter_versions(novel_id: str, chapter_number: int):
+    """返回章节版本列表（不含 content）。"""
+    manager = get_novel_manager()
+    chapter = await manager.get_chapter(novel_id, chapter_number)
+    if not chapter:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    return await manager.list_chapter_versions(novel_id, chapter_number)
+
+
+@router.get("/{novel_id}/chapters/{chapter_number}/versions/{version_number}")
+async def get_chapter_version(novel_id: str, chapter_number: int, version_number: int):
+    """返回单个版本完整内容。"""
+    manager = get_novel_manager()
+    chapter = await manager.get_chapter(novel_id, chapter_number)
+    if not chapter:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    version = await manager.get_chapter_version(novel_id, chapter_number, version_number)
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+    return version
+
+
+@router.post("/{novel_id}/chapters/{chapter_number}/versions", status_code=201)
+async def create_chapter_version(novel_id: str, chapter_number: int, request: CreateVersionRequest):
+    """手动创建章节版本快照。"""
+    manager = get_novel_manager()
+    chapter = await manager.get_chapter(novel_id, chapter_number)
+    if not chapter:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    version_number = await manager.create_chapter_version(
+        novel_id=novel_id,
+        chapter_number=chapter_number,
+        content=request.content,
+        source=request.source,
+        rewrite_instruction=request.rewrite_instruction,
+    )
+    return {"version_number": version_number, "status": "created"}
+
+
+@router.post("/{novel_id}/chapters/{chapter_number}/versions/{version_number}/rollback")
+async def rollback_chapter_version(novel_id: str, chapter_number: int, version_number: int):
+    """回滚到指定版本。"""
+    manager = get_novel_manager()
+    chapter = await manager.get_chapter(novel_id, chapter_number)
+    if not chapter:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    new_version = await manager.rollback_chapter_version(novel_id, chapter_number, version_number)
+    if new_version is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+    return {"status": "rolled_back", "new_version_number": new_version}
