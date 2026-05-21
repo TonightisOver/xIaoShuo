@@ -338,31 +338,31 @@
         </div>
 
         <!-- Empty Chapters -->
-        <div v-if=”!volumes.length && !chapters.length” class=”bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center text-gray-400”>
-          尚未开始正文章节的生成。您可以点击右上角”一键全功能生成”或进行分步设定创建。
+        <div v-if="!volumes.length && !chapters.length" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center text-gray-400">
+          尚未开始正文章节的生成。您可以点击右上角"一键全功能生成"或进行分步设定创建。
         </div>
 
         <!-- Chapter Range Selector Modal Dialog -->
         <ChapterRangeDialog
-          :visible=”showRangeDialog”
-          @close=”showRangeDialog = false”
-          @generate=”handleGenerateChapters”
+          :visible="showRangeDialog"
+          @close="showRangeDialog = false"
+          @generate="handleGenerateChapters"
         />
 
         <!-- Delete Confirmation Modal for Unassigned Chapters -->
-        <Teleport to=”body”>
-          <div v-if=”deleteTargetUnassigned” class=”fixed inset-0 z-50 flex items-center justify-center”>
-            <div class=”absolute inset-0 bg-black/20 backdrop-blur-sm” @click=”deleteTargetUnassigned = null”></div>
-            <div class=”relative bg-white rounded-2xl shadow-xl p-6 w-80 mx-4”>
-              <h3 class=”text-base font-semibold text-gray-900 mb-2”>确认删除</h3>
-              <p class=”text-sm text-gray-500 mb-5”>
+        <Teleport to="body">
+          <div v-if="deleteTargetUnassigned" class="fixed inset-0 z-50 flex items-center justify-center">
+            <div class="absolute inset-0 bg-black/20 backdrop-blur-sm" @click="deleteTargetUnassigned = null"></div>
+            <div class="relative bg-white rounded-2xl shadow-xl p-6 w-80 mx-4">
+              <h3 class="text-base font-semibold text-gray-900 mb-2">确认删除</h3>
+              <p class="text-sm text-gray-500 mb-5">
                 确定要删除「第{{ deleteTargetUnassigned.chapter_number }}章：{{ deleteTargetUnassigned.title }}」吗？此操作不可撤销。
               </p>
-              <div class=”flex gap-3 justify-end”>
-                <button @click=”deleteTargetUnassigned = null” class=”px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100 transition-colors”>
+              <div class="flex gap-3 justify-end">
+                <button @click="deleteTargetUnassigned = null" class="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100 transition-colors">
                   取消
                 </button>
-                <button @click=”doDeleteUnassigned” class=”px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors”>
+                <button @click="doDeleteUnassigned" class="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors">
                   删除
                 </button>
               </div>
