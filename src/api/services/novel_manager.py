@@ -357,6 +357,20 @@ class NovelManager:
             await session.delete(ch)
         return True
 
+    async def delete_failed_chapters(self, novel_id: str, min_words: int = 100) -> int:
+        """批量删除 word_count < min_words 的失败章节"""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(Chapter).where(
+                    Chapter.novel_id == novel_id,
+                    Chapter.word_count < min_words,
+                )
+            )
+            failed = result.scalars().all()
+            for ch in failed:
+                await session.delete(ch)
+            return len(failed)
+
     # --- Chapter Versions ---
 
     async def create_chapter_version(

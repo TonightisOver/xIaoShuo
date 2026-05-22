@@ -194,6 +194,28 @@ class TaskManager:
             await session.commit()
             logger.error(f"Task {task_id} failed: {error}")
 
+    async def expire_stale_tasks(self, hours: int = 2) -> int:
+        """将超时未完成的任务标记为失败"""
+        cutoff = datetime.now() - timedelta(hours=hours)
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(Task).where(
+                    Task.status.in_(["running", "pending"]),
+                    Task.created_at < cutoff,
+                )
+            )
+            stale_tasks = result.scalars().all()
+            for task in stale_tasks:
+                task.status = "failed"
+                task.completed_at = datetime.now()
+                current_errors = task.errors or []
+                current_errors.append(f"系统自动标记：任务创建超过{hours}小时未完成")
+                task.errors = current_errors
+            await session.commit()
+            if stale_tasks:
+                logger.info(f"Expired {len(stale_tasks)} stale tasks")
+            return len(stale_tasks)
+
 
 # 全局任务管理器实例
 _task_manager: TaskManager | None = None

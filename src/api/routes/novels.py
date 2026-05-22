@@ -150,3 +150,24 @@ async def list_novel_tasks(
         limit=limit,
         offset=offset,
     )
+
+
+@router.post("/cleanup/stale")
+async def cleanup_stale_tasks():
+    """自动将超过2小时未完成的任务标记为失败"""
+    task_manager = get_task_manager()
+    count = await task_manager.expire_stale_tasks(hours=2)
+    return {"expired_count": count}
+
+
+@router.post("/{task_id}/cancel")
+async def cancel_task(task_id: str):
+    """将卡住的任务标记为失败"""
+    task_manager = get_task_manager()
+    task = await task_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task["status"] in ("completed", "failed"):
+        raise HTTPException(status_code=400, detail="Task already finished")
+    await task_manager.fail_task(task_id, "用户手动取消：任务超时未完成")
+    return {"status": "cancelled"}

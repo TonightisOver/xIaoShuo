@@ -539,6 +539,17 @@ async def update_chapter(novel_id: str, chapter_number: int, request: ChapterUpd
     return {"status": "updated"}
 
 
+@router.delete("/{novel_id}/chapters/cleanup")
+async def cleanup_failed_chapters(novel_id: str, min_words: int = Query(default=100, ge=1)):
+    """批量删除生成失败的章节（word_count < min_words）"""
+    manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
+    deleted_count = await manager.delete_failed_chapters(novel_id, min_words=min_words)
+    return {"deleted_count": deleted_count}
+
+
 @router.delete("/{novel_id}/chapters/{chapter_number}")
 async def delete_chapter(novel_id: str, chapter_number: int):
     manager = get_novel_manager()

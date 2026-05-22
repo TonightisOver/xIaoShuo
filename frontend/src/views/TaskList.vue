@@ -7,7 +7,11 @@
       </div>
       
       <!-- Filter Tabs -->
-      <div class="flex items-center self-start bg-ink-50 p-1 rounded-xl border border-ink-200 shadow-sm">
+      <div class="flex items-center gap-3">
+        <button @click="cleanupStaleTasks" class="text-xs font-medium text-ink-500 hover:text-red-500 border border-ink-200 rounded-lg px-3 py-1.5 transition-colors">
+          清理过期任务
+        </button>
+        <div class="flex items-center bg-ink-50 p-1 rounded-xl border border-ink-200 shadow-sm">
         <button
           v-for="tab in filterTabs"
           :key="tab.value"
@@ -21,6 +25,7 @@
         >
           {{ tab.label }}
         </button>
+        </div>
       </div>
     </div>
 
@@ -93,6 +98,13 @@
               {{ formatTime(task.created_at) }}
             </p>
             <div class="flex gap-3">
+              <button
+                v-if="task.status === 'running' || task.status === 'pending'"
+                @click.stop="cancelTask(task.task_id)"
+                class="text-xs font-bold text-red-400 hover:text-red-600 transition-colors"
+              >
+                标记失败
+              </button>
               <router-link
                 v-if="task.novel_id && task.status === 'completed'"
                 :to="`/novels/${task.novel_id}`"
@@ -235,6 +247,35 @@ onMounted(() => {
 onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval)
 })
+
+async function cancelTask(taskId) {
+  if (!confirm('确定要将此任务标记为失败吗？')) return
+  try {
+    const res = await fetch(`/api/v1/novels/${taskId}/cancel`, { method: 'POST' })
+    if (res.ok) {
+      await fetchTasks()
+    }
+  } catch (e) {
+    console.error('Cancel task failed', e)
+  }
+}
+
+async function cleanupStaleTasks() {
+  try {
+    const res = await fetch('/api/v1/novels/cleanup/stale', { method: 'POST' })
+    if (res.ok) {
+      const data = await res.json()
+      if (data.expired_count > 0) {
+        alert(`已清理 ${data.expired_count} 个过期任务`)
+      } else {
+        alert('没有需要清理的过期任务')
+      }
+      await fetchTasks()
+    }
+  } catch (e) {
+    console.error('Cleanup failed', e)
+  }
+}
 </script>
 
 <style scoped>
