@@ -275,7 +275,7 @@ class TestGetChapterVolumeNumber:
             result = await manager.get_chapter("novel-8", 3)
 
         expected_keys = {
-            "id", "chapter_number", "volume_number",
+            "id", "novel_id", "chapter_number", "volume_number",
             "title", "content", "word_count", "status", "updated_at",
         }
         assert set(result.keys()) == expected_keys

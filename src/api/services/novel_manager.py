@@ -316,7 +316,8 @@ class NovelManager:
             c = result.scalar_one_or_none()
             if not c:
                 return None
-            return {"id": c.id, "chapter_number": c.chapter_number,
+            return {"id": c.id, "novel_id": c.novel_id,
+                    "chapter_number": c.chapter_number,
                     "volume_number": c.volume_number,
                     "title": c.title, "content": c.content,
                     "word_count": c.word_count, "status": c.status,
@@ -329,7 +330,7 @@ class NovelManager:
                 select(Chapter).where(
                     Chapter.novel_id == novel_id,
                     Chapter.chapter_number == chapter_number
-                )
+                ).order_by(Chapter.id.desc()).limit(1)
             )
             ch = result.scalar_one_or_none()
             if not ch:
