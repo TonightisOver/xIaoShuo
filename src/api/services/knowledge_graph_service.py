@@ -363,7 +363,7 @@ class KnowledgeGraphService:
             return []
 
 
-    async def get_three_layer_graph(self, novel_id: str, min_frequency: int = 2) -> dict[str, Any]:
+    async def get_three_layer_graph(self, novel_id: str, min_frequency: int = 1) -> dict[str, Any]:
         """获取三层关系图谱数据"""
         async with get_db_session() as session:
             # 1. 查询所有实体和有效三元组
@@ -392,6 +392,8 @@ class KnowledgeGraphService:
         # 过滤低频实体（foreshadowing 类型不过滤）
         def should_include(entity, layer_type: str) -> bool:
             if layer_type == "foreshadowing":
+                return True
+            if min_frequency <= 1:
                 return True
             freq = entity_frequency.get(entity.id, 0)
             return freq >= min_frequency

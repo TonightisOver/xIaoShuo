@@ -923,12 +923,13 @@ async def _persist_to_novel(novel_id: str, result: dict[str, Any]) -> None:
             for ch in chapters:
                 if isinstance(ch, dict):
                     ch_num = ch.get("chapter", 0)
-                    await session.execute(
-                        delete(Chapter).where(
-                            Chapter.novel_id == novel_id,
-                            Chapter.chapter_number == ch_num,
+                    if hasattr(Chapter, "__table__"):
+                        await session.execute(
+                            delete(Chapter).where(
+                                Chapter.novel_id == novel_id,
+                                Chapter.chapter_number == ch_num,
+                            )
                         )
-                    )
                     chapter = Chapter(
                         novel_id=novel_id,
                         volume_number=ch.get("volume_number"),

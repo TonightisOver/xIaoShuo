@@ -142,13 +142,13 @@ async def update_story_bible(novel_id: str, body: StoryBibleUpdate):
             bible.foreshadowing_list = body.foreshadowing_list
         if body.hard_settings is not None:
             bible.hard_settings = body.hard_settings
-        if body.timeline_events is not None:
+        if getattr(body, "timeline_events", None) is not None:
             bible.timeline_events = body.timeline_events
-        if body.unresolved_hooks is not None:
+        if getattr(body, "unresolved_hooks", None) is not None:
             bible.unresolved_hooks = body.unresolved_hooks
-        if body.main_goals is not None:
+        if getattr(body, "main_goals", None) is not None:
             bible.main_goals = body.main_goals
-        if body.banned_elements is not None:
+        if getattr(body, "banned_elements", None) is not None:
             bible.banned_elements = body.banned_elements
 
         session.add(bible)
