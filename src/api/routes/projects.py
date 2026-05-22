@@ -233,14 +233,41 @@ async def full_generate_project(
 
 
 @router.post("/{novel_id}/generate-full", status_code=202)
-async def full_generate_existing(novel_id: str, background_tasks: BackgroundTasks):
-    """对已有项目启动 13 阶段全功能生成"""
+async def full_generate_existing(novel_id: str, background_tasks: BackgroundTasks, force: bool = False):
+    """对已有项目启动 13 阶段全功能生成。
+
+    如果项目已有章节内容，需要传 force=true 才能覆盖重新生成。
+    如果已有正在运行的生成任务，拒绝重复触发。
+    """
     manager = get_novel_manager()
     novel = await manager.get_novel(novel_id)
     if not novel:
         raise HTTPException(status_code=404, detail="Novel not found")
 
+    # 防止重复触发：检查是否有正在运行的任务
     task_manager = get_task_manager()
+    all_tasks = await task_manager.list_tasks()
+    running_tasks = [
+        t for t in all_tasks
+        if t.get("novel_id") == novel_id
+        and t.get("status") in ("pending", "running")
+    ]
+    if running_tasks:
+        raise HTTPException(
+            status_code=409,
+            detail=f"该小说已有正在运行的生成任务 (task_id={running_tasks[0].get('task_id')}), 请等待完成或取消后再试"
+        )
+
+    # 防止覆盖已有章节：检查是否已有有效章节
+    if not force:
+        existing_chapters = await manager.list_chapters(novel_id)
+        valid_chapters = [ch for ch in existing_chapters if ch.get("word_count", 0) > 100]
+        if valid_chapters:
+            raise HTTPException(
+                status_code=409,
+                detail=f"该小说已有 {len(valid_chapters)} 个有效章节，全流程生成会覆盖所有内容。如确认要重新生成，请传入 force=true 参数"
+            )
+
     task_id = await task_manager.create_task(
         idea=novel["idea"],
         novel_type=novel["novel_type"],
@@ -316,6 +343,20 @@ async def generate_volume(novel_id: str, request: GenerateVolumeRequest, backgro
     if not novel:
         raise HTTPException(status_code=404, detail="Novel not found")
 
+    # 防止重复触发
+    task_manager = get_task_manager()
+    all_tasks = await task_manager.list_tasks()
+    running_tasks = [
+        t for t in all_tasks
+        if t.get("novel_id") == novel_id
+        and t.get("status") in ("pending", "running")
+    ]
+    if running_tasks:
+        raise HTTPException(
+            status_code=409,
+            detail=f"该小说已有正在运行的生成任务 (task_id={running_tasks[0].get('task_id')}), 请等待完成或取消后再试"
+        )
+
     vol = await manager.get_volume(novel_id, request.volume_number)
     if not vol:
         # Fallback: check outlines table for volume data
@@ -328,7 +369,6 @@ async def generate_volume(novel_id: str, request: GenerateVolumeRequest, backgro
 
     from src.api.services.novel_generator import generate_volume_background
 
-    task_manager = get_task_manager()
     task_id = await task_manager.create_task(
         idea=novel["idea"],
         novel_type=novel["novel_type"],
@@ -357,9 +397,22 @@ async def generate_chapters(novel_id: str, request: GenerateChaptersRequest, bac
     if request.chapter_end < request.chapter_start:
         raise HTTPException(status_code=400, detail="chapter_end must be >= chapter_start")
 
+    # 防止重复触发
+    task_manager = get_task_manager()
+    all_tasks = await task_manager.list_tasks()
+    running_tasks = [
+        t for t in all_tasks
+        if t.get("novel_id") == novel_id
+        and t.get("status") in ("pending", "running")
+    ]
+    if running_tasks:
+        raise HTTPException(
+            status_code=409,
+            detail=f"该小说已有正在运行的生成任务 (task_id={running_tasks[0].get('task_id')}), 请等待完成或取消后再试"
+        )
+
     from src.api.services.novel_generator import generate_chapters_background
 
-    task_manager = get_task_manager()
     task_id = await task_manager.create_task(
         idea=novel["idea"],
         novel_type=novel["novel_type"],

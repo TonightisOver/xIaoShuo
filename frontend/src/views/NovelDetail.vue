@@ -610,6 +610,26 @@ async function fullGenerate() {
     if (res.ok) {
       const data = await res.json()
       router.push(`/task/${data.task_id}`)
+    } else if (res.status === 409) {
+      const err = await res.json()
+      const msg = err.detail || '冲突'
+      if (msg.includes('已有正在运行')) {
+        alert(msg)
+      } else if (msg.includes('已有') && msg.includes('有效章节')) {
+        const confirmed = confirm(`${msg}\n\n确定要覆盖重新生成吗？此操作不可撤销！`)
+        if (confirmed) {
+          const forceRes = await fetch(`/api/v1/projects/${novelId}/generate-full?force=true`, { method: 'POST' })
+          if (forceRes.ok) {
+            const data = await forceRes.json()
+            router.push(`/task/${data.task_id}`)
+          } else {
+            const forceErr = await forceRes.json()
+            alert(forceErr.detail || '生成失败')
+          }
+        }
+      } else {
+        alert(msg)
+      }
     }
   } finally {
     fullGenerating.value = false
