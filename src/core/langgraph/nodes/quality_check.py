@@ -8,6 +8,38 @@ from src.core.langgraph.state import NovelState
 
 logger = logging.getLogger(__name__)
 
+
+async def _persist_quality_to_version(
+    novel_id: str, chapter_number: int, quality_scores: dict, consistency_warnings: list
+) -> None:
+    """将质量评分回写到章节的活跃版本记录"""
+    try:
+        from src.api.models.db_models import ChapterVersion
+        from src.core.database import get_db_session
+        from sqlalchemy import select, and_
+
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(ChapterVersion).where(
+                    and_(
+                        ChapterVersion.novel_id == novel_id,
+                        ChapterVersion.chapter_number == chapter_number,
+                        ChapterVersion.is_active == True,
+                    )
+                )
+            )
+            version = result.scalar_one_or_none()
+            if version:
+                version.quality_score = quality_scores.get("overall")
+                version.kg_conflicts = consistency_warnings or None
+                await session.commit()
+                logger.info(
+                    f"Persisted quality_score={version.quality_score} to "
+                    f"chapter {chapter_number} version {version.version_number}"
+                )
+    except Exception as e:
+        logger.warning(f"Failed to persist quality score to version: {e}")
+
 # 多维度小说编辑部级评估 Prompt
 EVALUATION_PROMPT = """你是一位极其严苛的网文总编辑，专门负责评估生成的小说章节质量。
 请根据小说的定位、核心创意、世界观、人物角色人设，对最新的章节文本进行多维度、高精度的硬度评估。
@@ -230,6 +262,13 @@ async def node(state: NovelState) -> NovelState:
             for sug in suggestions:
                 revision_requests.append(f"修改建议: {sug}")
 
+            # 持久化质量评分到活跃版本
+            novel_id = state.get("novel_id")
+            if novel_id and chapter_number:
+                await _persist_quality_to_version(
+                    novel_id, chapter_number, quality_scores, consistency_warnings
+                )
+
             return {
                 **state,
                 "quality_scores": quality_scores,
@@ -251,6 +290,14 @@ async def node(state: NovelState) -> NovelState:
 
     # 4. 触发兜底优雅降级，防止主生成流程中断或死锁
     default_scores["consistency"] = consistency_score
+
+    # 即使降级也持久化默认评分
+    novel_id = state.get("novel_id")
+    if novel_id and last_chapter:
+        await _persist_quality_to_version(
+            novel_id, last_chapter.get("chapter", 0), default_scores, consistency_warnings
+        )
+
     return {
         **state,
         "quality_scores": default_scores,

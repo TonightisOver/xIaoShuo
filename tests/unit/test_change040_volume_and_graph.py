@@ -181,3 +181,32 @@ class TestMinFrequencyParam:
         assert "min_frequency" in sig.parameters
         param = sig.parameters["min_frequency"]
         assert param.default is not inspect.Parameter.empty
+
+
+# ===========================================================================
+# 5. Quality score persistence to ChapterVersion
+# ===========================================================================
+
+class TestQualityScorePersistence:
+    """Test that quality_check node persists scores to active version."""
+
+    def test_persist_function_exists(self):
+        from src.core.langgraph.nodes.quality_check import _persist_quality_to_version
+        import inspect
+        assert inspect.iscoroutinefunction(_persist_quality_to_version)
+
+    @pytest.mark.asyncio
+    async def test_persist_handles_missing_novel_id_gracefully(self):
+        from src.core.langgraph.nodes.quality_check import _persist_quality_to_version
+        # Should not raise even with invalid novel_id
+        await _persist_quality_to_version(
+            novel_id="nonexistent-novel",
+            chapter_number=1,
+            quality_scores={"overall": 0.85},
+            consistency_warnings=[],
+        )
+
+    def test_quality_check_node_is_async(self):
+        from src.core.langgraph.nodes.quality_check import node
+        import inspect
+        assert inspect.iscoroutinefunction(node)
