@@ -5,6 +5,7 @@
   "awaiting_gate": true,
   "gate_number": 2,
   "auto_gate": false,
-  "started_at": "2026-05-21T12:00:00Z",
-  "stages_completed": ["1-需求分析", "2-需求评审(auto)", "3-编码实现", "4-编码评审(auto)"]
+  "started_at": "2026-05-22T00:00:00Z",
+  "stages_completed": ["1-需求分析", "2-需求评审(auto)", "3-编码实现", "4-编码评审(auto)", "5-单元测试", "6-测试评审(auto)", "7-代码推送(skip)", "8-CI验证", "9-部署验证(skip)"],
+  "change_id": "CHANGE-040-修复章节分卷与图谱筛选"
 }

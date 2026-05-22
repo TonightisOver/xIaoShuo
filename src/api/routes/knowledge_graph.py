@@ -504,8 +504,8 @@ async def run_consistency_check(novel_id: str, chapter_number: int):
 
 
 @router.get("/three-layer")
-async def get_three_layer_graph(novel_id: str):
+async def get_three_layer_graph(novel_id: str, min_frequency: int = Query(default=2, ge=1)):
     """获取三层关系图谱数据"""
     service = get_knowledge_graph_service()
-    data = await service.get_three_layer_graph(novel_id)
+    data = await service.get_three_layer_graph(novel_id, min_frequency=min_frequency)
     return data

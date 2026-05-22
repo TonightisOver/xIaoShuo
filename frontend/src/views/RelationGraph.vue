@@ -51,11 +51,25 @@
         <div class="w-16 h-16 bg-purple-50 text-purple-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">🎨</div>
         <h3 class="text-base font-bold text-gray-800 mb-2">暂无故事大纲框架</h3>
         <p class="text-gray-500 text-xs md:text-sm mb-6 max-w-sm mx-auto leading-relaxed">
-          小说尚未生成核心故事主线或人物弧光。请先返回小说详情页面配置故事设定并启动生成。
+          小说尚未生成核心故事主线或人物弧光。您可以一键让 AI 自动生成故事线结构。
         </p>
-        <router-link :to="`/novels/${novelId}`" class="btn-primary text-sm px-6 py-2.5 rounded-lg inline-flex items-center gap-1.5 shadow-sm">
-          <span>前往添加设定</span>
-        </router-link>
+        <div class="flex flex-col items-center gap-3">
+          <button
+            @click="generateStorylines"
+            :disabled="generatingStorylines"
+            class="btn-primary text-sm px-6 py-2.5 rounded-lg inline-flex items-center gap-2 shadow-sm disabled:opacity-50"
+          >
+            <svg v-if="generatingStorylines" class="w-4 h-4 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>{{ generatingStorylines ? '正在生成故事线...' : '一键生成故事线' }}</span>
+          </button>
+          <p v-if="storylineGenError" class="text-xs text-red-500 mt-1">{{ storylineGenError }}</p>
+          <router-link :to="`/novels/${novelId}`" class="text-xs text-gray-400 hover:text-gray-600 mt-2">
+            或返回小说详情手动配置
+          </router-link>
+        </div>
       </div>
 
       <div v-else class="card p-6 rounded-2xl bg-white overflow-x-auto relative">
@@ -81,14 +95,22 @@
             v-for="sub in subLayers"
             :key="sub.id"
             class="flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all"
-            :class="activeSubLayer === sub.id 
-              ? `${sub.activeBg} text-white shadow-sm` 
+            :class="activeSubLayer === sub.id
+              ? `${sub.activeBg} text-white shadow-sm`
               : 'text-gray-500 hover:text-gray-800'"
             @click="changeSubLayer(sub.id)"
           >
             {{ sub.icon }} {{ sub.name }}
           </button>
         </div>
+        <button
+          @click="toggleShowAll"
+          :disabled="kgLoading"
+          class="text-xs font-medium px-3 py-1.5 rounded-lg border transition-all disabled:opacity-50"
+          :class="showAll ? 'bg-purple-50 text-purple-600 border-purple-200' : 'bg-gray-50 text-gray-500 border-gray-200 hover:text-gray-800'"
+        >
+          {{ showAll ? '当前：显示全部' : '当前：只显示主要' }}
+        </button>
       </div>
 
       <div v-if="kgLoading" class="flex flex-col items-center justify-center py-28 space-y-4">
@@ -188,6 +210,9 @@ const activeSubLayer = ref('character')
 
 const extracting = ref(false)
 const extractProgress = ref('')
+const showAll = ref(false)
+const generatingStorylines = ref(false)
+const storylineGenError = ref('')
 
 const subLayers = [
   { id: 'character', name: '角色关系谱', icon: '👥', activeBg: 'bg-blue-600' },
@@ -401,7 +426,8 @@ async function switchToKnowledge() {
 async function loadThreeLayerGraph() {
   kgLoading.value = true
   try {
-    const res = await fetch(`/api/v1/projects/${novelId}/knowledge-graph/three-layer`)
+    const minFreq = showAll.value ? 1 : 2
+    const res = await fetch(`/api/v1/projects/${novelId}/knowledge-graph/three-layer?min_frequency=${minFreq}`)
     if (res.ok) {
       kgData.value = await res.json()
       await nextTick()
@@ -439,6 +465,30 @@ async function reExtractKG() {
       extracting.value = false
       extractProgress.value = ''
     }, 4500)
+  }
+}
+
+async function toggleShowAll() {
+  showAll.value = !showAll.value
+  await loadThreeLayerGraph()
+}
+
+async function generateStorylines() {
+  if (generatingStorylines.value) return
+  generatingStorylines.value = true
+  storylineGenError.value = ''
+  try {
+    const res = await fetch(`/api/v1/projects/${novelId}/storylines/generate-ai`, { method: 'POST' })
+    if (res.ok) {
+      await load()
+    } else {
+      const err = await res.json().catch(() => ({}))
+      storylineGenError.value = err.detail || '生成失败，请重试'
+    }
+  } catch (e) {
+    storylineGenError.value = '网络错误，请重试'
+  } finally {
+    generatingStorylines.value = false
   }
 }
 

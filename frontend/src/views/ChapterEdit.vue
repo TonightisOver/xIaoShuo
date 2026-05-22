@@ -1,6 +1,27 @@
 <template>
   <div class="max-w-7xl mx-auto px-6 py-10 transition-all duration-300">
-    <div v-if="!chapter" class="text-center py-20 text-slate-500">章节不存在</div>
+    <div v-if="!chapter" class="text-center py-20">
+      <div class="max-w-sm mx-auto">
+        <div class="w-16 h-16 bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8 text-slate-400">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+          </svg>
+        </div>
+        <h3 class="text-slate-300 font-semibold text-base mb-2">章节暂时无法访问</h3>
+        <p class="text-slate-500 text-sm mb-6 leading-relaxed">该章节可能正在重新生成中，或生成过程中出现了异常。</p>
+        <div class="flex items-center justify-center gap-3">
+          <button @click="load" class="btn-secondary text-sm px-4 py-2 flex items-center gap-1.5">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+            <span>刷新重试</span>
+          </button>
+          <router-link :to="`/novels/${novelId}`" class="btn-secondary text-sm px-4 py-2">
+            返回章节列表
+          </router-link>
+        </div>
+      </div>
+    </div>
 
     <template v-else>
       <!-- ==================== 1. 阅读模式 (Immersive Read Mode) ==================== -->

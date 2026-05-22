@@ -763,22 +763,32 @@ async def generate_chapters_background(
             ))
 
         def _find_volume_number(ch_num: int) -> int | None:
+            # 先通过 outline 中的 chapters 数组精确匹配
             for vol in volumes:
                 outline = vol.get("outline") or {}
                 for ch in outline.get("chapters", []):
                     if ch.get("chapter") == ch_num:
                         return vol.get("volume_number")
+            # fallback: 通过 chapter_start/chapter_end 范围匹配
+            for vol in volumes:
+                ch_start = vol.get("chapter_start")
+                ch_end = vol.get("chapter_end")
+                if ch_start is not None and ch_end is not None:
+                    if ch_start <= ch_num <= ch_end:
+                        return vol.get("volume_number")
             return None
 
+        # 只替换成功生成的章节，保留失败章节的旧数据
+        successful_chapters = [ch for ch in generated_chapters if ch.get("content") and ch.get("word_count", 0) > 0]
+
         async with get_db_session() as session:
-            await session.execute(
-                delete(Chapter).where(
-                    Chapter.novel_id == novel_id,
-                    Chapter.chapter_number >= chapter_start,
-                    Chapter.chapter_number <= chapter_end,
+            for ch in successful_chapters:
+                await session.execute(
+                    delete(Chapter).where(
+                        Chapter.novel_id == novel_id,
+                        Chapter.chapter_number == ch["chapter"],
+                    )
                 )
-            )
-            for ch in generated_chapters:
                 chapter = Chapter(
                     novel_id=novel_id,
                     chapter_number=ch["chapter"],
@@ -790,8 +800,11 @@ async def generate_chapters_background(
                 )
                 session.add(chapter)
 
+        # 补充可能遗漏的 volume_number
+        await novel_manager.fix_volume_numbers(novel_id)
+
         # Auto-create version records
-        for ch in generated_chapters:
+        for ch in successful_chapters:
             if ch.get("content"):
                 try:
                     await novel_manager.create_chapter_version(
@@ -913,6 +926,9 @@ async def _persist_to_novel(novel_id: str, result: dict[str, Any]) -> None:
                         updated_at=datetime.now(UTC),
                     )
                     session.add(chapter)
+
+        # 补充可能遗漏的 volume_number
+        await manager.fix_volume_numbers(novel_id)
 
         # Auto-create version records for generated chapters
         for ch in chapters:
