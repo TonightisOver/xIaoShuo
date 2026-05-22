@@ -513,6 +513,10 @@ class StoryBible(Base):
     prop_settings: Mapped[str | None] = mapped_column(Text, default="")
     foreshadowing_list: Mapped[list[dict] | None] = mapped_column(JSON, default=list)
     hard_settings: Mapped[str | None] = mapped_column(Text, default="")
+    timeline_events: Mapped[list[dict] | None] = mapped_column(JSON, default=list)
+    unresolved_hooks: Mapped[list[dict] | None] = mapped_column(JSON, default=list)
+    main_goals: Mapped[list[dict] | None] = mapped_column(JSON, default=list)
+    banned_elements: Mapped[list[dict] | None] = mapped_column(JSON, default=list)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(),
         onupdate=func.now()

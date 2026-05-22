@@ -1,4 +1,4 @@
-# CI Verification Result — CHANGE-040
+# CI Verification Result — CHANGE-041
 
 **Date:** 2026-05-22
 
@@ -6,10 +6,11 @@
 
 | 检查项 | 结果 |
 |--------|------|
-| Python 模块导入 | PASS (novel_generator, knowledge_graph_service, knowledge_graph route) |
-| 单元测试 (CHANGE-040) | 15/15 PASS |
-| 相关测试 (CHANGE-038 + KG service) | 40/40 PASS |
-| 语法/类型检查 | PASS (所有修改文件可正常导入) |
+| Python 模块导入 | PASS (story_bible_service, quality_check, chapter_generator, story_bible route) |
+| 单元测试 (CHANGE-041) | 23/23 PASS |
+| 回归测试 (CHANGE-040) | 18/18 PASS |
+| 全量单元测试 | PASS (exit code 0) |
+| 语法检查 | PASS (所有修改文件可正常导入) |
 
 ## 结论
 

@@ -170,6 +170,24 @@ async def node(state: NovelState) -> NovelState:
         except Exception as e:
             logger.warning(f"Consistency check failed: {e}")
 
+    # 2.5 StoryBible 冲突检测
+    novel_id = state.get("novel_id") or state.get("project_id")
+    if novel_id:
+        try:
+            from src.api.services.story_bible_service import detect_bible_conflicts
+            bible_conflicts = await detect_bible_conflicts(
+                novel_id=novel_id,
+                chapter_number=chapter_number,
+                chapter_content=chapter_content,
+            )
+            if bible_conflicts:
+                consistency_warnings.extend(bible_conflicts)
+                bible_errors = sum(1 for c in bible_conflicts if c.get("severity") == "error")
+                if bible_errors > 0:
+                    consistency_score = max(0.3, consistency_score - bible_errors * 0.1)
+        except Exception as e:
+            logger.warning(f"StoryBible conflict detection failed: {e}")
+
     # 3. 调用真实大模型进行 8 大硬度指标自适应评分
     try:
         from src.core.json_utils import safe_json_parse

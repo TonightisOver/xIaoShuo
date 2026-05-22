@@ -83,13 +83,14 @@ async def _generate_single_chapter_inner(
         except Exception as e:
             logger.warning("kg_context_retrieval_failed", error=str(e))
 
-    # 2. 检索故事圣经 (Story Bible) 核心设定约束
+    # 2. 检索故事圣经 (Story Bible) 精准约束抽取
     story_bible_context = "无历史圣经数据"
     if novel_id:
         try:
             from sqlalchemy import select
 
             from src.api.models.db_models import StoryBible
+            from src.api.services.story_bible_service import extract_relevant_constraints
             from src.core.database import get_db_session
 
             async with get_db_session() as session:
@@ -97,30 +98,10 @@ async def _generate_single_chapter_inner(
                 res = await session.execute(stmt)
                 bible = res.scalar_one_or_none()
                 if bible:
-                    char_cards_str = json.dumps(bible.character_cards or [], ensure_ascii=False, indent=2)
-                    foreshadowings_str = json.dumps(bible.foreshadowing_list or [], ensure_ascii=False, indent=2)
-                    story_bible_context = f"""
-## 世界观规则:
-{bible.worldview_rules or "未设定"}
-
-## 人物卡:
-{char_cards_str}
-
-## 势力关系:
-{bible.faction_relations or "未设定"}
-
-## 地点设定:
-{bible.location_settings or "未设定"}
-
-## 道具设定:
-{bible.prop_settings or "未设定"}
-
-## 伏笔列表:
-{foreshadowings_str}
-
-## 禁止违背的硬设定:
-{bible.hard_settings or "未设定"}
-"""
+                    chapter_num = chapter_outline.get("chapter", 0)
+                    story_bible_context = extract_relevant_constraints(
+                        bible, chapter_outline, chapter_num
+                    )
         except Exception as e:
             logger.warning("story_bible_retrieval_failed", error=str(e))
 

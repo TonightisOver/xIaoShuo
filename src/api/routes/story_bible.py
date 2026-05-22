@@ -29,6 +29,10 @@ class StoryBibleResponse(BaseModel):
     prop_settings: str = ""
     foreshadowing_list: list[dict] = []
     hard_settings: str = ""
+    timeline_events: list[dict] = []
+    unresolved_hooks: list[dict] = []
+    main_goals: list[dict] = []
+    banned_elements: list[dict] = []
 
 
 class StoryBibleUpdate(BaseModel):
@@ -39,6 +43,10 @@ class StoryBibleUpdate(BaseModel):
     prop_settings: str | None = None
     foreshadowing_list: list[dict] | None = None
     hard_settings: str | None = None
+    timeline_events: list[dict] | None = None
+    unresolved_hooks: list[dict] | None = None
+    main_goals: list[dict] | None = None
+    banned_elements: list[dict] | None = None
 
 
 # --- Endpoints ---
@@ -72,6 +80,10 @@ async def get_story_bible(novel_id: str):
                 prop_settings="",
                 foreshadowing_list=[],
                 hard_settings="",
+                timeline_events=[],
+                unresolved_hooks=[],
+                main_goals=[],
+                banned_elements=[],
             )
             session.add(bible)
             # Commit will be handled by the context manager get_db_session
@@ -108,6 +120,10 @@ async def update_story_bible(novel_id: str, body: StoryBibleUpdate):
                 prop_settings="",
                 foreshadowing_list=[],
                 hard_settings="",
+                timeline_events=[],
+                unresolved_hooks=[],
+                main_goals=[],
+                banned_elements=[],
             )
             session.add(bible)
 
@@ -126,6 +142,14 @@ async def update_story_bible(novel_id: str, body: StoryBibleUpdate):
             bible.foreshadowing_list = body.foreshadowing_list
         if body.hard_settings is not None:
             bible.hard_settings = body.hard_settings
+        if body.timeline_events is not None:
+            bible.timeline_events = body.timeline_events
+        if body.unresolved_hooks is not None:
+            bible.unresolved_hooks = body.unresolved_hooks
+        if body.main_goals is not None:
+            bible.main_goals = body.main_goals
+        if body.banned_elements is not None:
+            bible.banned_elements = body.banned_elements
 
         session.add(bible)
         return bible

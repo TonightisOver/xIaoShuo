@@ -818,6 +818,20 @@ async def generate_chapters_background(
                 except (ValueError, Exception):
                     pass
 
+        # 反向更新 StoryBible（每章生成后立即更新，确保后续章节读到最新数据）
+        for ch in successful_chapters:
+            if ch.get("content"):
+                try:
+                    from src.api.services.story_bible_service import update_bible_after_generation
+                    await update_bible_after_generation(
+                        novel_id=novel_id,
+                        chapter_number=ch["chapter"],
+                        chapter_content=ch["content"],
+                        chapter_outline=ch,
+                    )
+                except Exception as e:
+                    logger.warning("story_bible_update_failed chapter=%s: %s", ch.get("chapter"), e)
+
         await task_manager.complete_task(task_id, {"chapters": generated_chapters})
         await event_bus.publish(ProgressEvent(
             task_id=task_id,

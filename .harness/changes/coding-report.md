@@ -1,51 +1,59 @@
-# 编码报告：CHANGE-040 修复章节分卷与图谱筛选
+# 编码报告：CHANGE-041 故事圣经约束系统
 
 > 日期：2026-05-22
 
-## 变更概览
+## 变更摘要
 
-| 文件 | 变更类型 | 说明 |
-|------|---------|------|
-| `src/api/services/novel_generator.py` | 修改 | T1: volume_number fallback + T2: 按章节替换策略 |
-| `src/api/services/knowledge_graph_service.py` | 修改 | T4a: 频次筛选逻辑 |
-| `src/api/routes/knowledge_graph.py` | 修改 | T4a: min_frequency 参数 |
-| `frontend/src/views/RelationGraph.vue` | 修改 | T3: 生成故事线按钮 + T4b: 显示全部切换 |
-| `frontend/src/views/ChapterEdit.vue` | 修改 | T5: 404 友好提示 |
+实现了 StoryBible 精准约束注入、生成后反向更新、冲突检测三大核心功能。
 
-## 各任务实现详情
+## 完成任务
 
-### Task 1: 修复 volume_number 缺失
+### Task 1: StoryBible 数据模型扩展
+- `src/api/models/db_models.py` — 新增 4 个 JSON 字段：timeline_events, unresolved_hooks, main_goals, banned_elements
+- `alembic/versions/20260522_extend_story_bibles_fields.py` — 新增迁移文件
 
-- `_find_volume_number()` 增加 fallback：先精确匹配 outline chapters 数组，失败后通过 volume 的 `chapter_start`/`chapter_end` 范围匹配
-- 在 `generate_chapters_background()` 和 `_persist_to_novel()` 章节写入完成后调用 `novel_manager.fix_volume_numbers(novel_id)` 补充遗漏
+### Task 2: StoryBible API 路由更新
+- `src/api/routes/story_bible.py` — StoryBibleResponse/StoryBibleUpdate 增加 4 个字段，初始化和更新逻辑同步更新
 
-### Task 2: 修复章节 404
+### Task 3: 精准约束抽取服务
+- `src/api/services/story_bible_service.py` (新增) — `extract_relevant_constraints()` 方法
+  - 只抽取本章出场人物的 character_cards
+  - 只抽取相关伏笔
+  - 只取最近 5 章时间线事件
+  - 过滤已解决悬念和已完成目标
+  - 全局约束始终包含
 
-- 将原来的"批量 DELETE 整个范围 → INSERT 所有章节"改为"逐章 DELETE+INSERT 仅成功章节"
-- 过滤条件：`ch.get("content") and ch.get("word_count", 0) > 0`
-- 失败章节的旧数据保留不动
+### Task 4: 章节生成器约束注入替换
+- `src/core/llm/chapter_generator.py` — 替换全量注入为 `extract_relevant_constraints()` 调用
 
-### Task 3: 故事框架拓扑生成入口
+### Task 5: 生成后反向更新 StoryBible 服务
+- `src/api/services/story_bible_service.py` — `update_bible_after_generation()` 方法
+  - LLM 分析章节内容提取新事件、新悬念、已回收悬念、人物更新、目标进展
+  - Merge 到 StoryBible 各字段
 
-- 空状态区域增加"一键生成故事线"按钮
-- 调用 `POST /api/v1/projects/{novelId}/storylines/generate-ai`
-- 加载状态 + 错误提示 + 成功后自动刷新
+### Task 6: StoryBible 冲突检测集成
+- `src/api/services/story_bible_service.py` — `detect_bible_conflicts()` 方法
+  - 规则检测：伏笔遗忘（超过 10 章未回收）
+  - LLM 检测：人物性格漂移、时间线冲突、设定矛盾
+- `src/core/langgraph/nodes/quality_check.py` — 在知识图谱检查后集成 StoryBible 冲突检测
 
-### Task 4: 三层图谱频次筛选
+### Task 7: 反向更新集成到生成流程
+- `src/api/services/novel_generator.py` — 在章节持久化和版本创建后调用 `update_bible_after_generation()`
 
-- 后端：统计每个实体在三元组中作为 subject/object 出现的次数
-- `should_include()` 函数：foreshadowing 类型不过滤，其余按 min_frequency 阈值过滤
-- API 路由增加 `min_frequency: int = Query(default=2, ge=1)` 参数
-- 前端：增加"显示全部/只显示主要"切换按钮，切换时传递 min_frequency=1 或 2
+## 测试结果
 
-### Task 5: 章节 404 友好提示
+- `tests/unit/test_change041_story_bible.py` — 23 tests PASSED
+- `tests/unit/test_change040_volume_and_graph.py` — 18 tests PASSED (回归验证)
 
-- 替换原来的纯文字"章节不存在"为带图标的卡片
-- 包含说明文字、"刷新重试"按钮、"返回章节列表"链接
+## 文件变更清单
 
-## 统计
-
-- 修改文件数：5
-- 新增行数：约 100 行
-- 删除行数：约 10 行
-- 未引入新依赖
+| 文件 | 变更类型 | 行数变化 |
+|------|----------|----------|
+| src/api/models/db_models.py | 修改 | +4 |
+| alembic/versions/20260522_extend_story_bibles_fields.py | 新增 | +32 |
+| src/api/routes/story_bible.py | 修改 | +20 |
+| src/api/services/story_bible_service.py | 新增 | ~300 |
+| src/core/llm/chapter_generator.py | 修改 | -20/+10 |
+| src/core/langgraph/nodes/quality_check.py | 修改 | +15 |
+| src/api/services/novel_generator.py | 修改 | +12 |
+| tests/unit/test_change041_story_bible.py | 新增 | ~230 |

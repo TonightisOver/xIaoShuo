@@ -1,4 +1,4 @@
-# Test Report — CHANGE-040: 修复章节分卷与图谱筛选
+# Test Report — CHANGE-041: 故事圣经约束系统
 
 **Date:** 2026-05-22
 
@@ -6,37 +6,50 @@
 
 | 指标 | 值 |
 |------|-----|
-| 测试文件 | `tests/unit/test_change040_volume_and_graph.py` |
-| 测试用例数 | 15 |
-| 通过 | 15 |
+| 测试文件 | `tests/unit/test_change041_story_bible.py` |
+| 测试用例数 | 23 |
+| 通过 | 23 |
 | 失败 | 0 |
-| 耗时 | 2.08s |
+| 耗时 | 1.21s |
 
 ## 测试覆盖范围
 
-### 1. _find_volume_number fallback 逻辑 (5 tests)
-- 精确匹配 outline chapters 数组
-- fallback 通过 chapter_start/chapter_end 范围匹配
-- 无匹配时返回 None
-- outline 优先于 range 匹配
-- chapter_start/chapter_end 为 None 时安全处理
+### 1. 精准约束抽取 (8 tests)
+- 全局约束始终包含
+- 只抽取出场人物的 character_cards
+- 无出场人物时返回全部卡片
+- 时间线只取最近 5 章
+- 过滤已解决悬念
+- 只返回活跃目标
+- 禁用元素包含
+- 只抽取相关伏笔
 
-### 2. 成功章节过滤逻辑 (3 tests)
-- 过滤空 content 和 word_count=0 的章节
-- 过滤有 content 但 word_count=0 的章节
-- 保留有效章节
+### 2. 辅助函数 (10 tests)
+- 从列表/字典/scenes 提取人物
+- 提取地点
+- 人物匹配（精确/部分/不匹配）
+- 伏笔关联判断（人物/描述/不相关）
 
-### 3. 知识图谱频次筛选 (5 tests)
-- 高频实体被包含
-- 低频实体被排除
-- foreshadowing 类型始终包含
-- min_frequency=1 包含所有实体
-- 不在三元组中的孤立实体被排除
+### 3. 冲突检测 (1 test)
+- 伏笔遗忘检测（超过 10 章未回收）
+- 已解决伏笔不触发
+- 近期伏笔不触发
 
-### 4. API 路由参数验证 (2 tests)
-- Query import 存在
-- 路由函数签名包含 min_frequency 参数
+### 4. API 模型字段 (3 tests)
+- Response 模型包含新字段
+- Update 模型包含新字段
+- 默认值为空列表
+
+### 5. DB 模型字段 (1 test)
+- StoryBible 表包含 4 个新列
+
+## 回归测试
+
+| 测试文件 | 用例数 | 结果 |
+|----------|--------|------|
+| test_change040_volume_and_graph.py | 18 | ALL PASSED |
+| test_change041_story_bible.py | 23 | ALL PASSED |
 
 ## 结论
 
-所有 15 个测试用例通过，覆盖了 CHANGE-040 的核心逻辑变更。
+所有 23 个测试用例通过，覆盖了精准约束抽取、辅助函数、冲突检测、API/DB 模型等核心逻辑。回归测试无破坏。
