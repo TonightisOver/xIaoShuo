@@ -112,13 +112,73 @@
           type="range"
           v-model.number="form.target_words"
           min="10000"
-          max="500000"
-          step="10000"
+          max="5000000"
+          :step="form.target_words >= 500000 ? 100000 : 10000"
           class="w-full h-2 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-purple-500"
         />
         <div class="flex justify-between text-[10px] text-slate-500 font-bold font-mono">
           <span>1 万字</span>
-          <span>50 万字</span>
+          <span>500 万字</span>
+        </div>
+        <div v-if="isLongForm" class="mt-1 px-3 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+          <span class="text-[11px] text-purple-300 font-semibold">长篇模式已激活（>20万字自动启用卷章结构）</span>
+        </div>
+      </div>
+
+      <div v-if="isLongForm" class="space-y-4 relative z-10 p-5 bg-slate-950/30 rounded-2xl border border-purple-500/20">
+        <h3 class="text-sm font-bold text-purple-300 flex items-center gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+          </svg>
+          长篇结构设定
+        </h3>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-400">卷数</label>
+            <input
+              type="number"
+              v-model.number="form.volumes"
+              min="3"
+              max="20"
+              class="input text-sm bg-slate-950/40 border-slate-800 text-center"
+            />
+            <span class="text-[10px] text-slate-500">3 ~ 20 卷</span>
+          </div>
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-400">每卷章数</label>
+            <input
+              type="number"
+              v-model.number="form.chapters_per_volume"
+              min="20"
+              max="60"
+              class="input text-sm bg-slate-950/40 border-slate-800 text-center"
+            />
+            <span class="text-[10px] text-slate-500">20 ~ 60 章</span>
+          </div>
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-400">每章字数</label>
+            <input
+              type="number"
+              v-model.number="form.words_per_chapter"
+              min="2000"
+              max="4000"
+              step="100"
+              class="input text-sm bg-slate-950/40 border-slate-800 text-center"
+            />
+            <span class="text-[10px] text-slate-500">2000 ~ 4000 字</span>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap gap-4 pt-2">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" v-model="form.auto_quality_check" class="accent-purple-500 w-4 h-4 rounded" />
+            <span class="text-xs text-slate-300 font-medium">自动质量检查</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" v-model="form.auto_filler_detection" class="accent-purple-500 w-4 h-4 rounded" />
+            <span class="text-xs text-slate-300 font-medium">自动注水检测</span>
+          </label>
         </div>
       </div>
 
@@ -171,6 +231,11 @@ const form = ref({
   writing_style: '现代白话',
   custom_style_description: '',
   writing_style_prompt: '',
+  volumes: 10,
+  chapters_per_volume: 40,
+  words_per_chapter: 3000,
+  auto_quality_check: true,
+  auto_filler_detection: true,
 })
 
 const submitting = ref(false)
@@ -179,6 +244,7 @@ const error = ref('')
 const generatingStyle = ref(false)
 
 const canSubmit = computed(() => form.value.idea.length >= 10 && form.value.novel_type)
+const isLongForm = computed(() => form.value.target_words > 200000)
 
 async function generateStyle() {
   if (!form.value.custom_style_description) return
@@ -204,10 +270,26 @@ async function submit() {
   error.value = ''
 
   try {
-    const res = await fetch('/api/v1/projects', {
+    const endpoint = isLongForm.value ? '/api/v1/novels/long-form' : '/api/v1/projects'
+    const payload = isLongForm.value
+      ? {
+          idea: form.value.idea,
+          novel_type: form.value.novel_type,
+          target_words: form.value.target_words,
+          volumes: form.value.volumes,
+          chapters_per_volume: form.value.chapters_per_volume,
+          words_per_chapter: form.value.words_per_chapter,
+          writing_style: form.value.writing_style,
+          writing_style_prompt: form.value.writing_style_prompt,
+          auto_quality_check: form.value.auto_quality_check,
+          auto_filler_detection: form.value.auto_filler_detection,
+        }
+      : form.value
+
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form.value),
+      body: JSON.stringify(payload),
     })
 
     if (!res.ok) {
@@ -230,10 +312,26 @@ async function fullGenerate() {
   error.value = ''
 
   try {
-    const res = await fetch('/api/v1/projects/full-generate', {
+    const endpoint = isLongForm.value ? '/api/v1/novels/long-form' : '/api/v1/projects/full-generate'
+    const payload = isLongForm.value
+      ? {
+          idea: form.value.idea,
+          novel_type: form.value.novel_type,
+          target_words: form.value.target_words,
+          volumes: form.value.volumes,
+          chapters_per_volume: form.value.chapters_per_volume,
+          words_per_chapter: form.value.words_per_chapter,
+          writing_style: form.value.writing_style,
+          writing_style_prompt: form.value.writing_style_prompt,
+          auto_quality_check: form.value.auto_quality_check,
+          auto_filler_detection: form.value.auto_filler_detection,
+        }
+      : form.value
+
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form.value),
+      body: JSON.stringify(payload),
     })
 
     if (!res.ok) {
@@ -242,7 +340,7 @@ async function fullGenerate() {
     }
 
     const data = await res.json()
-    router.push(`/task/${data.task_id}`)
+    router.push(isLongForm.value ? `/novels/${data.novel_id}` : `/task/${data.task_id}`)
   } catch (e) {
     error.value = e.message
   } finally {
