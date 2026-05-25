@@ -1,114 +1,156 @@
-# 需求文档：故事圣经 Story Bible + 章节生成约束系统
+# 需求文档：章节节奏控制与定向改写闭环
 
-> 版本：v1.0 · 日期：2026-05-22
+> 版本：v1.0 · 日期：2026-05-25
 
 ---
 
 ## 需求概述
 
-为每个小说项目维护一个结构化故事圣经（Story Bible），在章节生成前精准抽取相关约束注入 prompt，生成后自动反向更新故事圣经，并在质量评估阶段检测人物性格漂移、时间线冲突、设定矛盾、伏笔遗忘等问题。
+在现有章节生成 + 八维质量评估基础上，建设"章节蓝图规划 → 定向改写 → 评分闭环"三层能力，使平台从"自动生成内容"升级为"辅助作者持续生产、检查、修改和管理百万字长篇网文的创作工作台"。
 
-## 背景与动机
+## 核心目标
 
-当前系统已有基础 StoryBible 模型（worldview_rules, character_cards, faction_relations, location_settings, prop_settings, foreshadowing_list, hard_settings），章节生成前会全量注入 StoryBible 内容到 prompt。但存在以下不足：
+1. 每章生成前产出结构化"章节蓝图"(Chapter Blueprint)，明确功能类型、剧情目标、爽点设计、伏笔处理和章末钩子
+2. 生成后将八维质量评估低分项自动转化为具体改写动作指令
+3. 提供定向改写 API，支持局部重写、节奏压缩、爽点增强、人物一致性修复和水文删减
+4. 改写后重新评分，验证改善效果，支持多轮迭代直到达标
 
-1. **字段不完整**：缺少时间线事件、未回收悬念、主线目标、禁用设定细化等维度
-2. **约束注入粗放**：当前全量注入所有 StoryBible 内容，token 浪费且噪声大
-3. **无反向更新**：生成章节后不会自动更新 StoryBible，导致圣经数据逐渐过时
-4. **冲突检测不足**：质量评估仅依赖知识图谱一致性检查，缺少基于 StoryBible 的专项冲突检测
+---
 
-## 功能范围
+## 功能需求
 
-### 功能 1: StoryBible 模型扩展
+### FR-1: 章节蓝图 (Chapter Blueprint)
 
-**目标**：扩展 story_bibles 表，增加 4 个新字段
+**描述**: 在章节正文生成前，为每章创建结构化蓝图，作为生成约束注入 prompt。
 
+**蓝图字段**:
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| timeline_events | JSON | 已发生事件时间线，格式 `[{chapter, event, characters, timestamp_in_story}]` |
-| unresolved_hooks | JSON | 未回收悬念，格式 `[{hook_id, description, planted_chapter, related_characters, status}]` |
-| main_goals | JSON | 主线目标，格式 `[{goal_id, description, owner, status, progress}]` |
-| banned_elements | JSON | 禁用设定细化，格式 `[{element, reason, scope}]` |
+| chapter_type | enum | 章节功能类型: main_advance / climax / aftermath / daily / setup |
+| plot_goal | string | 本章剧情推进目标 |
+| hook_design | string | 爽点/冲突设计 |
+| foreshadow_actions | list[dict] | 伏笔操作: {action: plant/callback/advance, name, detail} |
+| cliffhanger | string | 章末钩子描述 |
+| pacing_target | enum | 节奏定位: fast / medium / slow |
+| key_characters | list[string] | 本章核心出场人物 |
+| word_target | int | 本章目标字数 |
 
-**约束**：
-- 需要新增 Alembic 迁移文件
-- 需要更新 ORM 模型 `StoryBible` 类
-- 需要更新 API 路由的 Request/Response 模型
-- 向后兼容：新字段默认为空列表
+**行为**:
+- 蓝图由 LLM 根据卷纲/章纲 + 前章上下文 + StoryBible 自动生成
+- 蓝图持久化到数据库 (新增 ChapterBlueprint model)
+- 蓝图注入章节生成 prompt，替代现有 CHAPTER_PLANNING_PROMPT 的非结构化输出
+- 支持用户手动编辑蓝图后再触发生成
 
-### 功能 2: 精准约束注入
+**与现有系统的关系**:
+- 替代 `chapter_generator.py` 中的 `CHAPTER_PLANNING_PROMPT` 非结构化规划
+- 复用 `Chapter.chapter_type` 字段
+- 复用 StoryBible 约束抽取逻辑
 
-**目标**：生成前根据当前章节的卷号、出场人物、场景，从 StoryBible 中精准抽取相关约束
+### FR-2: 质量→改写动作转化 (Quality-to-Action Mapping)
 
-**当前行为**（`chapter_generator.py` 第86-123行）：全量注入 worldview_rules, character_cards, faction_relations, location_settings, prop_settings, foreshadowing_list, hard_settings
+**描述**: 将八维评分低分项自动映射为具体的改写动作指令。
 
-**目标行为**：
-1. 解析当前 chapter_outline 中的出场人物列表和场景地点
-2. 从 character_cards 中只抽取本章出场人物的卡片
-3. 从 foreshadowing_list 中只抽取与本章人物/场景相关的伏笔
-4. 从 timeline_events 中只抽取最近 N 章的事件（上下文窗口）
-5. 从 unresolved_hooks 中抽取所有 status=hanging 的悬念
-6. 始终注入 worldview_rules、hard_settings、banned_elements（全局约束）
-7. 从 main_goals 中抽取 status=active 的目标
+**映射规则**:
+| 维度 | 阈值 | 改写动作 | 动作类型 |
+|------|------|----------|----------|
+| advancement < 0.5 | 低 | "主线停滞，需增加推进事件" | enhance_plot |
+| pacing < 0.5 | 低 | "节奏拖沓，需压缩/删减" | compress_pacing |
+| conflict < 0.5 | 低 | "缺乏爽点，需增强冲突" | enhance_hook |
+| character_consistency < 0.5 | 低 | "人物漂移，需修复对话/行为" | fix_character |
+| readability < 0.5 | 低 | "水文过多，需精简" | trim_filler |
+| foreshadowing < 0.5 | 低 | "伏笔缺失，需补充伏笔" | add_foreshadow |
+| world_consistency < 0.5 | 低 | "设定冲突，需修正" | fix_world |
+| trope_alignment < 0.5 | 低 | "爽感不足，需强化套路" | enhance_trope |
 
-**技术方案**：新增 `src/api/services/story_bible_service.py`，提供 `extract_relevant_constraints(bible, chapter_outline, current_chapter_num)` 方法
+**行为**:
+- 质量评估完成后自动生成 rewrite_actions 列表
+- 每个 action 包含: {action_type, dimension, score, instruction, priority}
+- 按 priority 排序（分数越低优先级越高）
+- 持久化到 ChapterBlueprint 或独立表
 
-### 功能 3: 生成后反向更新 StoryBible
+### FR-3: 定向改写 API (Targeted Rewrite)
 
-**目标**：章节生成完成后，用 LLM 分析新章节内容，自动更新 StoryBible
+**描述**: 在现有 `rewrite_chapter_segment` 基础上，新增按改写类型的批量定向改写能力。
 
-**触发时机**：在 LangGraph 流程中，quality_check 节点之后（或作为 quality_check 的一部分）
+**改写类型**:
+| 类型 | 说明 | 改写策略 |
+|------|------|----------|
+| rewrite_section | 局部重写 | 对指定段落按指令重写 |
+| compress_pacing | 节奏压缩 | 删减冗余描写，压缩对话，加快叙事 |
+| enhance_hook | 爽点增强 | 增加冲突、悬念、反转 |
+| fix_character | 人物一致性修复 | 修正不符合人设的对话/行为 |
+| trim_filler | 水文删减 | 删除重复描写、车轱辘话、无意义段落 |
+| enhance_plot | 主线推进增强 | 增加推进主线的事件/信息 |
+| add_foreshadow | 伏笔补充 | 在合适位置植入伏笔 |
+| fix_world | 设定修正 | 修正违反世界观的内容 |
 
-**更新逻辑**：
-1. 调用 LLM 分析新章节，提取：新出现的人物信息、新地点、新事件、新伏笔、已回收的伏笔、主线目标进展
-2. 将提取结果 merge 到 StoryBible 对应字段
-3. 更新 timeline_events（追加本章事件）
-4. 更新 unresolved_hooks（标记已回收的悬念，追加新悬念）
-5. 更新 main_goals 进展
+**API 设计**:
+- `POST /api/v1/projects/{novel_id}/chapters/{chapter_number}/targeted-rewrite`
+- 请求体: `{rewrite_type, instruction?, auto_actions?: bool}`
+- 当 `auto_actions=true` 时，自动执行 FR-2 生成的所有改写动作
+- 改写后自动创建新版本 (复用 ChapterVersion)
 
-**技术方案**：新增 `src/core/langgraph/nodes/story_bible_update.py` 节点，或在 `novel_generator.py` 的章节持久化后调用独立服务
+**与现有系统的关系**:
+- 扩展现有 `chapter_rewriter.py`，新增按类型的 prompt 模板
+- 复用 `_build_rewrite_context` 上下文构建
+- 复用 ChapterVersion 版本管理
 
-### 功能 4: StoryBible 冲突检测
+### FR-4: 改写闭环 (Rewrite Loop)
 
-**目标**：在质量评估阶段，对比新章节与 StoryBible 约束，检测 4 类问题
+**描述**: 改写后重新评分，验证改善效果，支持多轮迭代。
 
-**检测维度**：
-1. **人物性格漂移**：对比章节中人物行为与 character_cards 中的性格描述
-2. **时间线冲突**：对比章节事件与 timeline_events 中已记录的事件顺序
-3. **设定矛盾**：对比章节内容与 worldview_rules + hard_settings + banned_elements
-4. **伏笔遗忘**：检查 unresolved_hooks 中 planted_chapter 距当前章节超过 N 章（可配置，默认10章）的悬念
+**行为**:
+- 定向改写完成后，自动触发八维质量重评
+- 对比改写前后分数，记录改善幅度
+- 若仍有低分项（< 0.5），生成新一轮改写动作
+- 最多迭代 N 轮（默认 3 轮），防止无限循环
+- 每轮结果记录到 rewrite_history
 
-**技术方案**：增强 `quality_check.py` 节点，在现有 8 维评分之外，增加 StoryBible 冲突检测调用，将冲突结果写入 `consistency_warnings`
+**API 设计**:
+- `POST /api/v1/projects/{novel_id}/chapters/{chapter_number}/auto-improve`
+- 请求体: `{max_iterations?: int, target_score?: float, dimensions?: list[str]}`
+- 返回: `{iterations_done, final_scores, improvement_history}`
 
-## 涉及模块
+---
 
-| 文件 | 变更类型 | 说明 |
-|------|----------|------|
-| `src/api/models/db_models.py` | 修改 | StoryBible 类增加 4 个字段 |
-| `alembic/versions/xxx_extend_story_bibles.py` | 新增 | 迁移文件 |
-| `src/api/routes/story_bible.py` | 修改 | 更新 Request/Response 模型 |
-| `src/api/services/story_bible_service.py` | 新增 | 约束抽取 + 反向更新逻辑 |
-| `src/core/llm/chapter_generator.py` | 修改 | 替换全量注入为精准约束注入 |
-| `src/core/langgraph/nodes/quality_check.py` | 修改 | 增加 StoryBible 冲突检测 |
-| `src/core/langgraph/graph.py` | 可能修改 | 如需新增节点则修改流程图 |
+## 非功能需求
+
+### NFR-1: 性能
+- 单章蓝图生成 < 15s
+- 单次定向改写 < 60s
+- 自动改善闭环（3轮）< 5min
+
+### NFR-2: 数据完整性
+- 每次改写创建新版本，不覆盖原文
+- 蓝图与章节一一对应，支持历史查询
+
+### NFR-3: 可观测性
+- 改写闭环每轮进度通过 SSE/WebSocket 推送
+- 蓝图生成和改写动作记录日志
+
+---
 
 ## 技术约束
 
-- Python 3.11 + FastAPI + SQLAlchemy async
-- LLM 调用使用现有 `get_llm_client()` + DeepSeek API
-- 不引入新外部依赖
-- 新字段使用 JSON 类型，保持 PostgreSQL 兼容
-- LLM prompt 需控制 token 消耗，避免过长上下文
+- 复用现有 LLM client (`src/core/llm/client.py`)
+- 复用现有 ChapterVersion 版本管理
+- 复用现有八维质量评估 (`quality_check.py`)
+- 新增 DB model 需提供 Alembic migration
+- API 路由挂载到现有 projects router
+- 测试覆盖: 每个 service 函数至少 1 个 unit test
 
-## 验收标准
+---
 
-- [ ] story_bibles 表新增 timeline_events, unresolved_hooks, main_goals, banned_elements 字段
-- [ ] API GET/PUT 端点支持新字段的读写
-- [ ] 章节生成前根据出场人物和场景精准抽取约束（非全量注入）
-- [ ] 章节生成后自动提取新信息并更新 StoryBible
-- [ ] 质量评估阶段检测人物性格漂移并输出警告
-- [ ] 质量评估阶段检测时间线冲突并输出警告
-- [ ] 质量评估阶段检测设定矛盾并输出警告
-- [ ] 质量评估阶段检测伏笔遗忘（超过 10 章未回收）并输出提醒
-- [ ] 所有新增代码有对应单元测试
-- [ ] Alembic 迁移可正常执行 upgrade/downgrade
+## 影响范围
+
+| 模块 | 变更类型 |
+|------|----------|
+| `src/api/models/db_models.py` | 新增 ChapterBlueprint model |
+| `src/core/llm/prompts.py` | 新增蓝图生成 prompt、定向改写 prompt 模板 |
+| `src/core/llm/chapter_generator.py` | 改造：使用结构化蓝图替代非结构化规划 |
+| `src/core/llm/chapter_rewriter.py` | 扩展：新增按类型的定向改写函数 |
+| `src/api/services/` | 新增 blueprint_service.py、rewrite_loop_service.py |
+| `src/api/routes/projects.py` | 新增 3 个 API endpoint |
+| `src/core/langgraph/nodes/quality_check.py` | 扩展：输出 rewrite_actions |
+| `tests/` | 新增对应 unit tests |
+| `alembic/` | 新增 migration |

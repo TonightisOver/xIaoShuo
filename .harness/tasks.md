@@ -1,160 +1,251 @@
-# 任务清单：故事圣经 Story Bible + 章节生成约束系统
+# 任务清单：章节节奏控制与定向改写闭环
 
-> 版本：v1.0 · 日期：2026-05-22
+> 对应需求：`.harness/requirements.md` v1.0
+> 日期：2026-05-25
 
 ---
 
 ## 任务总览
-- 总任务数：7
+- 总任务数：11
 - 预估复杂度：高
+- 预估工时：3-4 天
 
-## 任务列表
+## 任务依赖图
 
-### Task 1: StoryBible 数据模型扩展
+```
+T1 (DB Model) ──┬──> T3 (Blueprint Service)
+                │         │
+                │         ├──> T5 (章节生成改造)
+                │         │
+T2 (Prompts) ──┘         └──> T7 (Blueprint API)
+                │
+                ├──> T4 (Quality-to-Action)
+                │         │
+                │         └──> T6 (定向改写引擎)
+                │                   │
+                │                   ├──> T8 (改写 API)
+                │                   │
+                │                   └──> T9 (改写闭环)
+                │
+                └──> T10 (Migration)
 
-- **目标**：为 story_bibles 表新增 4 个 JSON 字段
-- **范围**：`src/api/models/db_models.py`, `alembic/versions/` (新增迁移文件)
-- **修改内容**：
-  1. 在 `StoryBible` 类中新增字段：
-     - `timeline_events: Mapped[list[dict] | None] = mapped_column(JSON, default=list)`
-     - `unresolved_hooks: Mapped[list[dict] | None] = mapped_column(JSON, default=list)`
-     - `main_goals: Mapped[list[dict] | None] = mapped_column(JSON, default=list)`
-     - `banned_elements: Mapped[list[dict] | None] = mapped_column(JSON, default=list)`
-  2. 新增 Alembic 迁移文件 `alembic/versions/xxxx_extend_story_bibles_fields.py`，使用 `op.add_column` 添加 4 个 nullable JSON 列
-- **验收标准**：
-  - 迁移文件可正常执行 upgrade/downgrade
-  - ORM 模型字段与数据库列一致
-- **依赖**：无
-
-### Task 2: StoryBible API 路由更新
-
-- **目标**：更新 GET/PUT 端点支持新字段
-- **范围**：`src/api/routes/story_bible.py`
-- **修改内容**：
-  1. `StoryBibleResponse` 增加 4 个字段（默认空列表）
-  2. `StoryBibleUpdate` 增加 4 个可选字段
-  3. `update_story_bible` 处理逻辑增加新字段的赋值
-  4. `get_story_bible` 初始化空记录时包含新字段默认值
-- **验收标准**：
-  - GET 返回新字段（空列表）
-  - PUT 可更新新字段
-  - 向后兼容：不传新字段时不影响旧字段
-- **依赖**：Task 1
-
-### Task 3: 精准约束抽取服务
-
-- **目标**：新建 story_bible_service，实现根据章节上下文精准抽取相关约束
-- **范围**：`src/api/services/story_bible_service.py` (新增)
-- **修改内容**：
-  1. 实现 `extract_relevant_constraints(bible: StoryBible, chapter_outline: dict, current_chapter_num: int) -> str` 方法
-  2. 逻辑：
-     - 解析 chapter_outline 中的 characters 列表和 location/scene 字段
-     - 从 character_cards 筛选出场人物卡片
-     - 从 foreshadowing_list 筛选与出场人物相关的伏笔
-     - 从 timeline_events 取最近 5 章的事件
-     - 取所有 status != "resolved" 的 unresolved_hooks
-     - 取所有 status = "active" 的 main_goals
-     - 始终包含 worldview_rules, hard_settings, banned_elements
-  3. 返回格式化的约束文本字符串（用于注入 prompt）
-- **验收标准**：
-  - 给定包含特定人物的 chapter_outline，只返回该人物的 character_card
-  - 给定无关人物的 chapter_outline，不返回其他人物的详细卡片
-  - 全局约束（worldview_rules, hard_settings）始终包含
-- **依赖**：Task 1
-
-### Task 4: 章节生成器约束注入替换
-
-- **目标**：将 chapter_generator.py 中的全量 StoryBible 注入替换为精准约束注入
-- **范围**：`src/core/llm/chapter_generator.py` (第86-123行)
-- **修改内容**：
-  1. 导入 `story_bible_service.extract_relevant_constraints`
-  2. 查询 StoryBible 后，调用 `extract_relevant_constraints(bible, chapter_outline, chapter_num)` 获取精准约束
-  3. 将返回的约束文本赋值给 `story_bible_context`
-  4. 保持异常处理：服务调用失败时 fallback 到 "无历史圣经数据"
-- **验收标准**：
-  - 生成章节时 prompt 中只包含相关人物和约束
-  - 异常时不影响章节生成流程
-- **依赖**：Task 3
-
-### Task 5: 生成后反向更新 StoryBible 服务
-
-- **目标**：章节生成后用 LLM 分析内容并自动更新 StoryBible
-- **范围**：`src/api/services/story_bible_service.py` (追加方法)
-- **修改内容**：
-  1. 实现 `async def update_bible_after_generation(novel_id: str, chapter_number: int, chapter_content: str, chapter_outline: dict) -> dict`
-  2. 逻辑：
-     - 读取当前 StoryBible
-     - 构造 LLM prompt，要求从章节内容中提取：新人物信息、新地点、新事件、新伏笔、已回收伏笔、主线进展
-     - 调用 `get_llm_client().generate()` 获取结构化 JSON 响应
-     - 解析响应并 merge 到 StoryBible 各字段：
-       - timeline_events: append 新事件
-       - unresolved_hooks: 标记已回收的为 resolved，append 新悬念
-       - character_cards: 更新已有人物属性或 append 新人物
-       - main_goals: 更新进展
-     - 写回数据库
-  3. 返回更新摘要（新增了什么、更新了什么）
-- **验收标准**：
-  - 生成章节后 StoryBible 的 timeline_events 包含新事件
-  - 已回收的伏笔 status 变为 resolved
-  - LLM 调用失败时不影响主流程（仅 log warning）
-- **依赖**：Task 1
-
-### Task 6: StoryBible 冲突检测集成
-
-- **目标**：在质量评估阶段增加基于 StoryBible 的 4 类冲突检测
-- **范围**：`src/core/langgraph/nodes/quality_check.py`
-- **修改内容**：
-  1. 在现有知识图谱一致性检查之后，增加 StoryBible 冲突检测调用
-  2. 实现（或在 story_bible_service 中实现）`async def detect_bible_conflicts(novel_id, chapter_number, chapter_content) -> list[dict]`
-  3. 检测逻辑（通过 LLM prompt）：
-     - 人物性格漂移：对比 character_cards 中的性格与章节行为
-     - 时间线冲突：对比 timeline_events 与章节事件顺序
-     - 设定矛盾：对比 worldview_rules + hard_settings + banned_elements
-     - 伏笔遗忘：检查 unresolved_hooks 中 planted_chapter 距当前超过 10 章的条目
-  4. 将检测结果 append 到 `consistency_warnings`
-  5. 伏笔遗忘检测不需要 LLM，直接数值比较即可
-- **验收标准**：
-  - 当章节中人物行为与 character_cards 矛盾时，输出 severity=warning 的冲突
-  - 当存在超过 10 章未回收的伏笔时，输出 severity=warning 的提醒
-  - 检测失败时优雅降级，不阻断质量评估流程
-- **依赖**：Task 1, Task 5
-
-### Task 7: 反向更新集成到生成流程
-
-- **目标**：将 StoryBible 反向更新嵌入章节生成主流程
-- **范围**：`src/api/services/novel_generator.py` 或 `src/core/langgraph/nodes/chapter_generation.py`
-- **修改内容**：
-  1. 在章节生成成功并持久化到数据库后，调用 `update_bible_after_generation()`
-  2. 调用位置选择：在 `novel_generator.py` 的 `_persist_to_novel()` 完成后，对每个成功生成的章节触发更新
-  3. 使用 try/except 包裹，失败仅 log 不阻断
-  4. 可选：批量生成时，每章生成后立即更新（确保后续章节能读到最新 StoryBible）
-- **验收标准**：
-  - 批量生成 3 章后，StoryBible 包含所有 3 章的事件和人物更新
-  - 单章更新失败不影响后续章节生成
-- **依赖**：Task 5
+T11 (Unit Tests) 依赖 T3-T9 全部完成
+```
 
 ---
 
-## 任务依赖关系
+## T1: 新增 ChapterBlueprint 数据模型
 
-```
-Task 1 (模型扩展)
-  ├── Task 2 (API 更新)
-  ├── Task 3 (约束抽取服务)
-  │     └── Task 4 (注入替换)
-  ├── Task 5 (反向更新服务)
-  │     ├── Task 6 (冲突检测)
-  │     └── Task 7 (流程集成)
-  └── Task 6 (冲突检测) [也依赖 Task 5]
-```
+**文件**: `src/api/models/db_models.py`
+**依赖**: 无
+**变更**:
+- 新增 `ChapterBlueprint` SQLAlchemy model
+- 字段: novel_id, chapter_number, chapter_type, plot_goal, hook_design, foreshadow_actions(JSON), cliffhanger, pacing_target, key_characters(JSON), word_target, rewrite_actions(JSON), is_active(bool), created_at, updated_at
+- 唯一约束: (novel_id, chapter_number, is_active) 或 (novel_id, chapter_number) + version
 
-## 实施顺序建议
+**验收标准**:
+- `python -c "from src.api.models.db_models import ChapterBlueprint"` 无报错
+- model 字段与 requirements FR-1 蓝图字段一一对应
 
-T1 → T2 → T3 → T4 → T5 → T7 → T6
+---
 
-理由：
-- T1 是基础，所有后续任务依赖模型字段
-- T2 紧跟 T1，确保 API 可用
-- T3/T4 实现精准注入，是生成质量提升的核心
-- T5/T7 实现反向更新，确保 StoryBible 数据持续积累
-- T6 最后实现冲突检测，依赖 StoryBible 中有足够数据才有意义
+## T2: 新增蓝图生成与定向改写 Prompt 模板
+
+**文件**: `src/core/llm/prompts.py`
+**依赖**: 无
+**变更**:
+- 新增 `BLUEPRINT_GENERATION_PROMPT`: 输入卷纲/章纲 + 前章摘要 + StoryBible + KG上下文，输出结构化 JSON 蓝图
+- 新增 `TARGETED_REWRITE_PROMPTS`: dict，按 rewrite_type 索引，每种类型一个专用 prompt 模板
+  - compress_pacing: 指导 LLM 压缩节奏
+  - enhance_hook: 指导 LLM 增强爽点
+  - fix_character: 指导 LLM 修复人物一致性
+  - trim_filler: 指导 LLM 删减水文
+  - enhance_plot: 指导 LLM 增强主线推进
+  - add_foreshadow: 指导 LLM 补充伏笔
+  - fix_world: 指导 LLM 修正设定
+
+**验收标准**:
+- `python -c "from src.core.llm.prompts import BLUEPRINT_GENERATION_PROMPT, TARGETED_REWRITE_PROMPTS"` 无报错
+- BLUEPRINT_GENERATION_PROMPT 输出格式为 JSON，包含 FR-1 定义的所有字段
+- TARGETED_REWRITE_PROMPTS 包含 7 种改写类型的 key
+
+---
+
+## T3: 实现 Blueprint Service
+
+**文件**: `src/api/services/blueprint_service.py` (新建)
+**依赖**: T1, T2
+**变更**:
+- `generate_blueprint(novel_id, chapter_number, chapter_outline, volume_context)` → ChapterBlueprint
+  - 调用 LLM 生成结构化蓝图
+  - 解析 JSON 响应
+  - 持久化到 DB
+- `get_blueprint(novel_id, chapter_number)` → ChapterBlueprint | None
+- `update_blueprint(novel_id, chapter_number, updates: dict)` → ChapterBlueprint
+  - 支持用户手动编辑蓝图字段
+
+**验收标准**:
+- `pytest tests/unit/test_blueprint_service.py` 通过
+- generate_blueprint 返回包含所有蓝图字段的对象
+- 蓝图持久化后可通过 get_blueprint 查询
+
+---
+
+## T4: 实现 Quality-to-Action 映射逻辑
+
+**文件**: `src/api/services/quality_action_service.py` (新建)
+**依赖**: T1
+**变更**:
+- `generate_rewrite_actions(quality_scores: dict, threshold: float = 0.5)` → list[RewriteAction]
+  - 遍历八维评分，低于阈值的维度生成对应 RewriteAction
+  - RewriteAction: {action_type, dimension, score, instruction, priority}
+  - priority = 1.0 - score（分数越低优先级越高）
+  - 按 priority 降序排列
+- `persist_actions(novel_id, chapter_number, actions)` → None
+  - 将 actions 写入 ChapterBlueprint.rewrite_actions
+
+**验收标准**:
+- `pytest tests/unit/test_quality_action_service.py` 通过
+- 输入 `{"advancement": 0.3, "pacing": 0.4, "conflict": 0.8}` 时，生成 2 个 action（advancement 和 pacing），conflict 不生成
+- actions 按 priority 正确排序
+
+---
+
+## T5: 改造章节生成流程使用结构化蓝图
+
+**文件**: `src/core/llm/chapter_generator.py`
+**依赖**: T3
+**变更**:
+- 在 `_generate_single_chapter_inner` 中：
+  - 将现有"双级联第1阶段"（CHAPTER_PLANNING_PROMPT 调用）替换为调用 `blueprint_service.generate_blueprint`
+  - 将蓝图 JSON 格式化后注入正文生成 prompt（替代现有非结构化 chapter_plan 文本）
+  - 保留 StoryBible 和 KG 上下文检索逻辑不变
+- 蓝图注入格式: 将蓝图各字段以结构化方式嵌入 prompt
+
+**验收标准**:
+- `pytest tests/unit/test_chapter_generator.py` 通过（如有）
+- 生成流程调用 blueprint_service 而非直接调用 CHAPTER_PLANNING_PROMPT
+- 生成的章节 prompt 中包含蓝图的 chapter_type、plot_goal、hook_design 等字段
+
+---
+
+## T6: 扩展定向改写引擎
+
+**文件**: `src/core/llm/chapter_rewriter.py`
+**依赖**: T2
+**变更**:
+- 新增 `targeted_rewrite(novel_id, chapter_number, rewrite_type, instruction?)` → str
+  - 根据 rewrite_type 选择对应 prompt 模板
+  - 复用 `_build_rewrite_context` 获取上下文
+  - 对整章内容执行定向改写（非片段级）
+  - 返回改写后的完整章节内容
+- 新增 `batch_targeted_rewrite(novel_id, chapter_number, actions: list[RewriteAction])` → str
+  - 按 priority 顺序依次执行多个改写动作
+  - 每次改写基于上一次的输出
+  - 返回最终内容
+
+**验收标准**:
+- `pytest tests/unit/test_chapter_rewriter.py` 通过
+- targeted_rewrite 对 compress_pacing 类型使用对应 prompt
+- batch_targeted_rewrite 按顺序执行多个 action
+
+---
+
+## T7: 新增蓝图 API Endpoint
+
+**文件**: `src/api/routes/projects.py`
+**依赖**: T3
+**变更**:
+- `GET /api/v1/projects/{novel_id}/chapters/{chapter_number}/blueprint`
+  - 返回当前章节蓝图
+- `PUT /api/v1/projects/{novel_id}/chapters/{chapter_number}/blueprint`
+  - 用户手动编辑蓝图
+- `POST /api/v1/projects/{novel_id}/chapters/{chapter_number}/blueprint/generate`
+  - 触发 LLM 生成蓝图（不触发章节生成）
+
+**验收标准**:
+- 三个 endpoint 可正常响应（200/201）
+- GET 返回蓝图 JSON 包含所有字段
+- PUT 更新后 GET 返回更新值
+
+---
+
+## T8: 新增定向改写 API Endpoint
+
+**文件**: `src/api/routes/projects.py`
+**依赖**: T4, T6
+**变更**:
+- `POST /api/v1/projects/{novel_id}/chapters/{chapter_number}/targeted-rewrite`
+  - 请求体: `{rewrite_type: str, instruction?: str, auto_actions?: bool}`
+  - 当 auto_actions=true: 读取 ChapterBlueprint.rewrite_actions 并批量执行
+  - 当指定 rewrite_type: 执行单次定向改写
+  - 改写后自动创建 ChapterVersion (source="ai_rewrite")
+  - 返回: `{new_version_number, word_count, rewrite_type}`
+
+**验收标准**:
+- endpoint 可正常响应
+- 改写后 ChapterVersion 表新增一条记录
+- 返回体包含 new_version_number
+
+---
+
+## T9: 实现改写闭环 Service + API
+
+**文件**: `src/api/services/rewrite_loop_service.py` (新建), `src/api/routes/projects.py`
+**依赖**: T4, T6
+**变更**:
+- `auto_improve_chapter(novel_id, chapter_number, max_iterations=3, target_score=0.6, dimensions=None)` → dict
+  - 循环逻辑:
+    1. 调用质量评估获取当前分数
+    2. 调用 generate_rewrite_actions 生成改写动作
+    3. 调用 batch_targeted_rewrite 执行改写
+    4. 创建新版本
+    5. 重新评估质量
+    6. 若所有维度 >= target_score 或达到 max_iterations，停止
+  - 返回: {iterations_done, final_scores, improvement_history: [{iteration, scores_before, scores_after, actions_taken}]}
+- 新增 API endpoint:
+  - `POST /api/v1/projects/{novel_id}/chapters/{chapter_number}/auto-improve`
+  - 请求体: `{max_iterations?: int, target_score?: float, dimensions?: list[str]}`
+
+**验收标准**:
+- `pytest tests/unit/test_rewrite_loop_service.py` 通过
+- 当所有维度 >= target_score 时，循环在第 1 轮停止
+- 当达到 max_iterations 时强制停止
+- improvement_history 记录每轮分数变化
+
+---
+
+## T10: Alembic Migration
+
+**文件**: `alembic/versions/xxx_add_chapter_blueprint.py` (新建)
+**依赖**: T1
+**变更**:
+- 创建 `chapter_blueprints` 表
+- 添加索引: (novel_id, chapter_number)
+
+**验收标准**:
+- `alembic upgrade head` 无报错
+- `alembic downgrade -1` 可回滚
+
+---
+
+## T11: Unit Tests
+
+**文件**: `tests/unit/test_blueprint_service.py`, `tests/unit/test_quality_action_service.py`, `tests/unit/test_rewrite_loop_service.py` (新建)
+**依赖**: T3, T4, T6, T9
+**变更**:
+- test_blueprint_service: 测试蓝图生成、查询、更新
+- test_quality_action_service: 测试评分→动作映射、阈值边界、排序
+- test_rewrite_loop_service: 测试闭环迭代逻辑、停止条件
+
+**验收标准**:
+- `pytest tests/unit/test_blueprint_service.py tests/unit/test_quality_action_service.py tests/unit/test_rewrite_loop_service.py -v` 全部通过
+
+---
+
+## 执行顺序建议
+
+**Phase 1 (基础层)**: T1 + T2 并行 → T10
+**Phase 2 (服务层)**: T3 + T4 并行 → T5 + T6 并行
+**Phase 3 (API 层)**: T7 + T8 并行 → T9
+**Phase 4 (验证层)**: T11
