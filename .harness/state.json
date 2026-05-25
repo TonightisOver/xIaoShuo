@@ -1,13 +1,13 @@
 {
   "mode": 10,
-  "current_stage": 10,
-  "stage_name": "已完成",
+  "current_stage": 1,
+  "stage_name": "需求分析",
   "awaiting_gate": false,
   "gate_number": 0,
-  "started_at": "2026-05-25T00:00:00+08:00",
-  "completed_at": "2026-05-25T12:00:00+08:00",
-  "stages_completed": ["1-需求分析", "2-技术设计", "3-编码计划", "4-编码实现", "5-代码检查", "6-专家评审", "7-单元测试", "8-集成测试", "9-CI验证", "10-部署验证"],
-  "change_id": "CHANGE-044",
-  "change_slug": "百万字长篇生成验证",
-  "status": "completed"
+  "started_at": "2026-05-25T14:00:00+08:00",
+  "completed_at": null,
+  "stages_completed": [],
+  "change_id": "CHANGE-045",
+  "change_slug": "章节节奏控制与定向改写闭环",
+  "status": "in_progress"
 }
