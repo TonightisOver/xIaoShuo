@@ -755,14 +755,21 @@ async function save() {
 async function regenerate() {
   if (!confirm('重新生成将覆盖当前内容，确定吗？')) return
   regenerating.value = true
-  const res = await fetch(`/api/v1/projects/${novelId.value}/generate-chapters`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chapter_start: parseInt(chapterNum.value), chapter_end: parseInt(chapterNum.value) }),
-  })
-  if (res.ok) {
-    const data = await res.json()
-    router.push(`/task/${data.task_id}`)
+  try {
+    const res = await fetch(`/api/v1/projects/${novelId.value}/generate-chapters`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chapter_start: parseInt(chapterNum.value), chapter_end: parseInt(chapterNum.value) }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      router.push(`/task/${data.task_id}`)
+    } else {
+      const err = await res.json().catch(() => ({ detail: '请求失败' }))
+      alert(`重新生成失败: ${err.detail || res.statusText}`)
+    }
+  } catch (e) {
+    alert(`重新生成失败: 网络错误`)
   }
   regenerating.value = false
 }

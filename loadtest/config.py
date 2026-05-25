@@ -4,11 +4,17 @@ import json
 import os
 from pathlib import Path
 
-HOST = os.environ.get("LOADTEST_HOST", "http://localhost:8000")
+HOST = os.environ.get("LOADTEST_HOST", "http://115.190.142.169:8000")
 
-_seed_path = Path(__file__).parent / "data" / "seed.json"
-with _seed_path.open(encoding="utf-8") as _f:
-    _seed = json.load(_f)
+DATA_DIR = Path(__file__).parent / "data"
+_seed_path = DATA_DIR / "seed.json"
 
-NOVEL_IDS: list[str] = _seed["novel_ids"]
-CHAPTER_NUMBERS: list[int] = _seed["chapter_numbers"]
+if _seed_path.exists():
+    with _seed_path.open(encoding="utf-8") as _f:
+        _seed = json.load(_f)
+else:
+    _seed = {"novel_ids": [], "chapter_numbers": [], "task_ids": []}
+
+NOVEL_IDS: list[str] = _seed.get("novel_ids", [])
+CHAPTER_NUMBERS: list[int] = _seed.get("chapter_numbers", [])
+TASK_IDS: list[str] = _seed.get("task_ids", [])

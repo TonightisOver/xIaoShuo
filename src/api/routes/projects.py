@@ -246,7 +246,8 @@ async def full_generate_existing(novel_id: str, background_tasks: BackgroundTask
 
     # 防止重复触发：检查是否有正在运行的任务
     task_manager = get_task_manager()
-    all_tasks = await task_manager.list_tasks()
+    await task_manager.expire_stale_tasks(hours=1)
+    all_tasks, _ = await task_manager.list_tasks()
     running_tasks = [
         t for t in all_tasks
         if t.get("novel_id") == novel_id
@@ -343,9 +344,10 @@ async def generate_volume(novel_id: str, request: GenerateVolumeRequest, backgro
     if not novel:
         raise HTTPException(status_code=404, detail="Novel not found")
 
-    # 防止重复触发
+    # 防止重复触发；先清理超时任务
     task_manager = get_task_manager()
-    all_tasks = await task_manager.list_tasks()
+    await task_manager.expire_stale_tasks(hours=1)
+    all_tasks, _ = await task_manager.list_tasks()
     running_tasks = [
         t for t in all_tasks
         if t.get("novel_id") == novel_id
@@ -397,9 +399,10 @@ async def generate_chapters(novel_id: str, request: GenerateChaptersRequest, bac
     if request.chapter_end < request.chapter_start:
         raise HTTPException(status_code=400, detail="chapter_end must be >= chapter_start")
 
-    # 防止重复触发
+    # 防止重复触发；先清理超时任务
     task_manager = get_task_manager()
-    all_tasks = await task_manager.list_tasks()
+    await task_manager.expire_stale_tasks(hours=1)
+    all_tasks, _ = await task_manager.list_tasks()
     running_tasks = [
         t for t in all_tasks
         if t.get("novel_id") == novel_id

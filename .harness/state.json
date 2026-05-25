@@ -1,11 +1,11 @@
 {
-  "mode": 10,
-  "current_stage": 10,
-  "stage_name": "用户确认",
-  "awaiting_gate": true,
+  "mode": 5,
+  "change_id": "CHANGE-043",
+  "change_name": "API压力测试扩展",
+  "current_stage": 5,
+  "stage_name": "已完成",
+  "awaiting_gate": false,
   "gate_number": 2,
-  "auto_gate": false,
-  "started_at": "2026-05-22T00:00:00Z",
-  "stages_completed": ["1-需求分析", "2-需求评审(auto)", "3-编码实现", "4-编码评审", "5-单元测试", "6-测试评审", "8-CI验证"],
-  "change_id": "CHANGE-041-故事圣经约束系统"
+  "started_at": "2026-05-25T09:39:00+08:00",
+  "stages_completed": ["1-需求分析", "2-需求评审", "3-编码+测试", "4-CI验证", "5-用户确认"]
 }
