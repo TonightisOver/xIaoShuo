@@ -6,6 +6,14 @@ from .ai_rewrite import AIRewriteTasks
 from .task_management import TaskManagementTasks
 from .outline_world import OutlineWorldTasks
 from .knowledge_graph import KnowledgeGraphTasks
+from .long_form import (
+    LongFormCreateTasks,
+    LongFormProgressTasks,
+    LongFormQualityReportTasks,
+    LongFormFillerDetectionTasks,
+    LongFormForeshadowTrackerTasks,
+    LongFormVolumeControlTasks,
+)
 
 __all__ = [
     "ChapterReadTasks",
@@ -16,4 +24,10 @@ __all__ = [
     "TaskManagementTasks",
     "OutlineWorldTasks",
     "KnowledgeGraphTasks",
+    "LongFormCreateTasks",
+    "LongFormProgressTasks",
+    "LongFormQualityReportTasks",
+    "LongFormFillerDetectionTasks",
+    "LongFormForeshadowTrackerTasks",
+    "LongFormVolumeControlTasks",
 ]

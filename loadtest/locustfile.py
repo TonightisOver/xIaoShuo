@@ -1,4 +1,4 @@
-"""Locust 压测入口 - 三种用户画像
+"""Locust 压测入口 - 四种用户画像
 
 用法：
   # 交互式 Web UI（推荐）
@@ -26,16 +26,22 @@ from tasks import (
     TaskManagementTasks,
     OutlineWorldTasks,
     KnowledgeGraphTasks,
+    LongFormCreateTasks,
+    LongFormProgressTasks,
+    LongFormQualityReportTasks,
+    LongFormFillerDetectionTasks,
+    LongFormForeshadowTrackerTasks,
+    LongFormVolumeControlTasks,
 )
 from config import HOST
 
 
 class ReaderUser(HttpUser):
-    """读者（60%）：高频浏览章节、列表、版本历史"""
+    """读者（50%）：高频浏览章节、列表、版本历史"""
 
     host = HOST
     wait_time = between(0.5, 2)
-    weight = 6
+    weight = 5
     tasks = {
         ChapterReadTasks: 5,
         ChapterListTasks: 3,
@@ -44,11 +50,11 @@ class ReaderUser(HttpUser):
 
 
 class WriterUser(HttpUser):
-    """作者（25%）：编辑章节、触发生成、查看任务"""
+    """作者（20%）：编辑章节、触发生成、查看任务"""
 
     host = HOST
     wait_time = between(2, 5)
-    weight = 3
+    weight = 2
     tasks = {
         ChapterEditTasks: 4,
         ChapterGenerateTasks: 1,
@@ -68,4 +74,20 @@ class AdminUser(HttpUser):
         KnowledgeGraphTasks: 3,
         ChapterListTasks: 2,
         TaskManagementTasks: 1,
+    }
+
+
+class LongFormUser(HttpUser):
+    """长篇创作者（15%）：创建长篇任务、查看进度、质量报告、注水检测、伏笔追踪、卷控制"""
+
+    host = HOST
+    wait_time = between(2, 5)
+    weight = 2
+    tasks = {
+        LongFormCreateTasks: 1,
+        LongFormProgressTasks: 3,
+        LongFormQualityReportTasks: 2,
+        LongFormFillerDetectionTasks: 2,
+        LongFormForeshadowTrackerTasks: 2,
+        LongFormVolumeControlTasks: 1,
     }

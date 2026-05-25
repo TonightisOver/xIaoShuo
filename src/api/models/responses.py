@@ -157,3 +157,107 @@ class VolumeResponse(BaseModel):
     chapter_end: int | None = None
     updated_at: datetime
 
+
+# --- Long-form novel models ---
+
+
+class LongFormTaskResponse(BaseModel):
+    """长篇任务响应"""
+
+    task_id: str = Field(..., description="任务 ID")
+    novel_id: str = Field(..., description="小说 ID")
+    status: str = Field(..., description="任务状态")
+    total_volumes: int = Field(..., description="总卷数")
+    total_chapters: int = Field(..., description="总章节数")
+    target_words: int = Field(..., description="目标总字数")
+    volumes_completed: int = Field(default=0, description="已完成卷数")
+    chapters_completed: int = Field(default=0, description="已完成章节数")
+    created_at: datetime = Field(..., description="创建时间")
+    estimated_duration_hours: float = Field(default=0.0, description="预计耗时（小时）")
+
+
+class VolumeQualityReport(BaseModel):
+    """单卷质量报告"""
+
+    volume_number: int = Field(..., description="卷号")
+    chapter_count: int = Field(..., description="章节数")
+    total_word_count: int = Field(..., description="总字数")
+    avg_scores: dict[str, float] = Field(default_factory=dict, description="8维度均值")
+    score_trends: dict[str, list[float]] = Field(
+        default_factory=dict, description="8维度按章节的变化序列"
+    )
+    warnings: list[str] = Field(default_factory=list, description="质量警告")
+    filler_chapters: list[int] = Field(
+        default_factory=list, description="检测到的注水章节号"
+    )
+    stalled_chapters: list[int] = Field(
+        default_factory=list, description="主线停滞章节号"
+    )
+
+
+class QualityReport(BaseModel):
+    """完整质量报告"""
+
+    novel_id: str = Field(..., description="小说 ID")
+    total_volumes: int = Field(..., description="总卷数")
+    completed_volumes: int = Field(..., description="已完成卷数")
+    overall_avg_scores: dict[str, float] = Field(
+        default_factory=dict, description="全局8维度均值"
+    )
+    volume_reports: list[VolumeQualityReport] = Field(
+        default_factory=list, description="各卷质量报告"
+    )
+    foreshadow_summary: dict[str, Any] = Field(
+        default_factory=dict, description="伏笔追踪"
+    )
+    character_appearance: dict[str, Any] = Field(
+        default_factory=dict, description="人物出场统计"
+    )
+
+
+class FillerDetectionResult(BaseModel):
+    """注水检测结果"""
+
+    novel_id: str = Field(..., description="小说 ID")
+    total_chapters: int = Field(..., description="总章节数")
+    filler_chapters: list[dict[str, Any]] = Field(
+        default_factory=list, description="注水章节列表"
+    )
+    filler_ratio: float = Field(default=0.0, description="注水比例")
+    recommendations: list[str] = Field(default_factory=list, description="处理建议")
+
+
+class ForeshadowTrackerResult(BaseModel):
+    """伏笔追踪结果"""
+
+    novel_id: str = Field(..., description="小说 ID")
+    total_foreshadows: int = Field(..., description="总伏笔数")
+    planted: list[dict[str, Any]] = Field(
+        default_factory=list, description="已种下的伏笔"
+    )
+    resolved: list[dict[str, Any]] = Field(
+        default_factory=list, description="已回收的伏笔"
+    )
+    dangling: list[dict[str, Any]] = Field(
+        default_factory=list, description="悬挂未回收的伏笔"
+    )
+    resolution_rate: float = Field(default=0.0, description="回收率")
+
+
+class LongFormProgressResponse(BaseModel):
+    """百万字长篇进度响应"""
+
+    novel_id: str = Field(..., description="小说 ID")
+    total_volumes: int = Field(..., description="总卷数")
+    completed_volumes: int = Field(default=0, description="已完成卷数")
+    current_volume: int | None = Field(None, description="当前卷号")
+    total_chapters: int = Field(..., description="总章节数")
+    chapters_completed: int = Field(default=0, description="已完成章节数")
+    total_word_count: int = Field(default=0, description="已生成总字数")
+    target_words: int = Field(..., description="目标总字数")
+    progress_percentage: float = Field(default=0.0, description="完成百分比")
+    volume_details: list[dict[str, Any]] = Field(
+        default_factory=list, description="各卷详情"
+    )
+    errors: list[str] = Field(default_factory=list, description="错误列表")
+

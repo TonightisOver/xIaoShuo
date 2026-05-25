@@ -12,6 +12,9 @@ from src.core.validation import get_style_instruction
 
 logger = structlog.get_logger(__name__)
 
+# Default word count for standard mode
+DEFAULT_TARGET_WORDS = 3000
+
 
 async def node(state: NovelState) -> NovelState:
     """章节生成节点"""
@@ -43,6 +46,9 @@ async def node(state: NovelState) -> NovelState:
             state.get("writing_style_prompt", ""),
         )
 
+        # Determine target words per chapter (long-form mode vs standard)
+        target_words_per_chapter = state.get("target_words_per_chapter") or DEFAULT_TARGET_WORDS
+
         chapter_errors: list[str] = []
 
         for i, chapter_outline in enumerate(chapter_outlines):
@@ -67,6 +73,7 @@ async def node(state: NovelState) -> NovelState:
                     style_instruction=style_instruction,
                     kg_service=kg_service,
                     novel_id=state.get("novel_id") or state["project_id"],
+                    target_words=target_words_per_chapter,
                 )
             except Exception as chapter_exc:
                 error_msg = str(chapter_exc)

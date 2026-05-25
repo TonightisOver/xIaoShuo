@@ -37,5 +37,12 @@ class NovelState(TypedDict, total=False):
     kg_context: str
     consistency_warnings: list[dict]
 
+    # Long-form specific fields
+    chapter_type: str | None
+    volume_context: dict | None
+    current_volume_number: int | None
+    master_outline: dict | None
+    target_words_per_chapter: int | None
+
     # 错误信息
     errors: list[str]

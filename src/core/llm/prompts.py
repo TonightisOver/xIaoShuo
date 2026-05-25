@@ -173,6 +173,196 @@ CHAPTER_GENERATION_PROMPT = PromptTemplate(
 """,
 )
 
+# 章节生成 Prompt（带字数约束，用于长篇模式）
+CHAPTER_GENERATION_PROMPT_WITH_WORD_COUNT = PromptTemplate(
+    input_variables=[
+        "chapter_outline",
+        "previous_chapter",
+        "characters",
+        "world_setting",
+        "target_words",
+    ],
+    template="""你是一位资深的网络小说作家。请根据章节大纲生成具体的章节内容。
+
+章节大纲：{chapter_outline}
+上一章简况：{previous_chapter}
+人物设定：{characters}
+世界观设定：{world_setting}
+
+【重要规则】
+1. 必须使用上面人物设定中列出的角色名，不得自行创造新主角
+2. 人物性格、能力、背景必须与人物设定完全一致
+3. 世界观规则（力量体系、地理、文化）必须严格遵守
+4. 情节发展必须符合章节大纲
+5. 与上一章衔接自然（如果上一章有内容）
+6. 对话生动，描写细腻
+7. 符合中文网络小说风格
+8. 【字数约束】本章目标字数为 {target_words} 字，允许浮动范围为 ±20%（即 {target_words_min} ~ {target_words_max} 字）。请务必控制在此范围内，避免过短或过长。
+
+请直接输出章节内容（含章节标题如"第X章 标题"），不要输出 JSON 或其他格式包装。
+""",
+)
+
+
+# 总纲生成 Prompt（百万字长篇专用）
+MASTER_OUTLINE_PROMPT = PromptTemplate(
+    input_variables=[
+        "idea",
+        "novel_type",
+        "target_words",
+        "volumes",
+        "chapters_per_volume",
+        "words_per_chapter",
+    ],
+    template="""你是一位资深的百万字网络小说总策划师。请根据用户创意生成一份完整的总纲。
+
+## 用户创意
+{idea}
+
+## 基本参数
+- 小说类型：{novel_type}
+- 目标总字数：{target_words} 字
+- 卷数：{volumes} 卷
+- 每卷章数：约 {chapters_per_volume} 章
+- 每章字数：约 {words_per_chapter} 字
+
+## 总纲要求
+
+请生成以下内容：
+
+1. **卷级概述**（每卷一句话概括核心剧情）
+2. **主线规划**（核心冲突、发展阶段、高潮安排）
+3. **伏笔分布**（在哪些卷种下伏笔、在哪些卷回收）
+4. **人物出场规划**（主要人物在各卷的出场安排）
+5. **节奏控制**（哪些卷快节奏、哪些卷慢节奏）
+
+## 章节类型分布建议
+
+每卷应合理分布以下章节类型：
+- **main_advance**（主线推进）：约 40-50%
+- **climax**（高潮章）：约 10-15%
+- **aftermath**（余波章）：约 5-10%
+- **daily**（日常章）：约 10-15%
+- **setup**（铺垫章）：约 10-15%
+- **filler**（注水章）：尽量为 0%，由系统自动检测标记
+
+## 输出格式（JSON）
+```json
+{{
+    "title": "小说标题",
+    "synopsis": "全书概要（200-300字）",
+    "main_conflict": "核心冲突描述",
+    "main_theme": "核心主题",
+    "volumes": [
+        {{
+            "volume_number": 1,
+            "title": "卷标题",
+            "summary": "本卷一句话概括",
+            "chapter_types": {{
+                "main_advance": 20,
+                "climax": 4,
+                "aftermath": 2,
+                "daily": 5,
+                "setup": 4,
+                "filler": 0
+            }},
+            "key_events": ["关键事件1", "关键事件2"],
+            "foreshadows_planted": ["伏笔1"],
+            "foreshadows_resolved": []
+        }}
+    ],
+    "foreshadow_plan": [
+        {{
+            "name": "伏笔名称",
+            "planted_volume": 1,
+            "resolved_volume": 5,
+            "description": "伏笔描述"
+        }}
+    ],
+    "character_plan": [
+        {{
+            "name": "角色名",
+            "role": "主角/配角/反派",
+            "first_appear_volume": 1,
+            "key_volumes": [1, 3, 5],
+            "arc_summary": "角色弧光概要"
+        }}
+    ]
+}}
+```
+
+只输出 JSON，不要包含其他说明。
+""",
+)
+
+
+# 卷纲细化 Prompt（百万字长篇专用）
+VOLUME_OUTLINE_PROMPT = PromptTemplate(
+    input_variables=[
+        "master_outline",
+        "volume_number",
+        "volume_summary",
+        "previous_volumes_summary",
+        "chapters_count",
+        "words_per_chapter",
+        "chapter_types",
+    ],
+    template="""你是一位资深的百万字网络小说卷纲策划师。请根据总纲为指定卷生成详细的章纲。
+
+## 总纲信息
+{master_outline}
+
+## 当前卷信息
+- 卷号：第 {volume_number} 卷
+- 本卷概要：{volume_summary}
+- 本卷章节数：约 {chapters_count} 章
+- 每章字数：约 {words_per_chapter} 字
+
+## 前序卷摘要
+{previous_volumes_summary}
+
+## 章节类型分布要求
+{chapter_types}
+
+## 卷纲要求
+
+请为本卷生成 {chapters_count} 章的详细章纲，每章包含：
+
+1. **chapter**：章节序号（从 1 开始）
+2. **title**：章节标题
+3. **chapter_type**：章节类型（main_advance/climax/aftermath/daily/setup/filler）
+4. **plot**：主要情节描述（50-100字）
+5. **key_characters**：本章出场主要角色
+6. **foreshadows_planted**：本章种下的伏笔（如有）
+7. **foreshadows_resolved**：本章回收的伏笔（如有）
+8. **turning_point**：本章转折点
+9. **emotional_arc**：情感走向（如：平静->紧张->高潮）
+
+## 输出格式（JSON）
+```json
+{{
+    "volume_number": {volume_number},
+    "title": "卷标题",
+    "chapters": [
+        {{
+            "chapter": 1,
+            "title": "章节标题",
+            "chapter_type": "main_advance",
+            "plot": "主要情节描述",
+            "key_characters": ["角色1", "角色2"],
+            "foreshadows_planted": [],
+            "foreshadows_resolved": [],
+            "turning_point": "转折点描述",
+            "emotional_arc": "平静->紧张"
+        }}
+    ]
+}}
+```
+
+只输出 JSON，不要包含其他说明。
+""",
+)
+
 
 # 章节生成前置规划检查 Prompt
 CHAPTER_PLANNING_PROMPT = PromptTemplate(

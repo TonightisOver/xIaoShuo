@@ -52,6 +52,13 @@ class Novel(Base):
     custom_style_description: Mapped[str | None] = mapped_column(Text)
     writing_style_prompt: Mapped[str | None] = mapped_column(Text)
 
+    # Long-form novel fields
+    is_long_form: Mapped[bool] = mapped_column(Boolean, default=False)
+    total_volumes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    chapters_per_volume: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    words_per_chapter: Mapped[int] = mapped_column(Integer, default=3000)
+    master_outline: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
     # Relationships
     world_setting: Mapped["WorldSetting | None"] = relationship(
         back_populates="novel", uselist=False, cascade="all, delete-orphan"
@@ -72,6 +79,10 @@ class Novel(Base):
     )
     story_bible: Mapped["StoryBible | None"] = relationship(
         back_populates="novel", uselist=False, cascade="all, delete-orphan"
+    )
+    long_form_progress: Mapped[list["LongFormProgress"]] = relationship(
+        back_populates="novel", cascade="all, delete-orphan",
+        order_by="LongFormProgress.volume_number"
     )
 
 
@@ -164,6 +175,10 @@ class Volume(Base):
     status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
     chapter_start: Mapped[int | None] = mapped_column(Integer)
     chapter_end: Mapped[int | None] = mapped_column(Integer)
+    target_chapters: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    generated_chapters: Mapped[int] = mapped_column(Integer, default=0)
+    avg_quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    quality_report: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(),
         onupdate=func.now()
@@ -191,6 +206,9 @@ class Chapter(Base):
     content: Mapped[str | None] = mapped_column(Text)
     word_count: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
+    chapter_type: Mapped[str | None] = mapped_column(
+        String(30), nullable=True, index=True,
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(),
         onupdate=func.now()
@@ -559,3 +577,36 @@ class ChapterVersion(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class LongFormProgress(Base):
+    """百万字长篇生成进度追踪"""
+
+    __tablename__ = "long_form_progress"
+    __table_args__ = (
+        Index("ix_lfp_novel_volume", "novel_id", "volume_number"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    volume_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    chapter_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    chapter_end: Mapped[int] = mapped_column(Integer, nullable=False)
+    chapters_completed: Mapped[int] = mapped_column(Integer, default=0)
+    current_chapter: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quality_report: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    filler_report: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    errors: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    novel: Mapped["Novel"] = relationship(back_populates="long_form_progress")

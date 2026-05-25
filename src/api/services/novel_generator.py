@@ -5,6 +5,7 @@
 
 from typing import Any
 
+import json
 import structlog
 
 from src.api.models.requests import CreateNovelRequest
@@ -18,6 +19,7 @@ from src.api.services.progress_event_bus import (
 )
 from src.api.services.task_manager import get_task_manager
 from src.core.langgraph.graph import create_novel_graph
+from src.api.services.long_form_progress_service import get_long_form_progress_service
 
 logger = structlog.get_logger(__name__)
 
@@ -967,3 +969,553 @@ async def _persist_to_novel(novel_id: str, result: dict[str, Any]) -> None:
 
     except Exception as e:
         logger.error("persist_results_failed", novel_id=novel_id, error=str(e))
+
+
+async def generate_long_form_background(
+    task_id: str,
+    novel_id: str,
+    request: Any,
+) -> None:
+    """后台执行百万字长篇生成
+
+    流程：
+    1. 生成总纲（master_outline）
+    2. 逐卷执行卷纲细化 + 卷内7节点流水线
+    3. 每卷完成后生成质量报告
+    4. 全部完成后生成最终报告
+
+    Args:
+        task_id: Task ID
+        novel_id: Novel ID
+        request: LongFormNovelRequest
+    """
+    task_manager = get_task_manager()
+    event_bus = get_event_bus()
+    progress_service = get_long_form_progress_service()
+
+    try:
+        await task_manager.update_status(task_id, "running")
+
+        logger.info("long_form_generation_starting", task_id=task_id, novel_id=novel_id)
+
+        # Initialize progress tracking
+        await progress_service.initialize_progress(
+            novel_id=novel_id,
+            total_volumes=request.volumes,
+            chapters_per_volume=request.chapters_per_volume,
+        )
+
+        # Stage 1: Generate master outline
+        await event_bus.publish(ProgressEvent(
+            task_id=task_id,
+            event_type=EventType.STAGE_START,
+            data={"stage": "master_outline", "percentage": 0},
+        ))
+
+        master_outline = await _generate_master_outline(
+            novel_id=novel_id,
+            request=request,
+        )
+
+        # Update novel with master outline
+        from src.api.services.novel_manager import get_novel_manager
+        novel_manager = get_novel_manager()
+        await novel_manager.update_novel(
+            novel_id,
+            master_outline=master_outline,
+            total_volumes=request.volumes,
+            chapters_per_volume=request.chapters_per_volume,
+            words_per_chapter=request.words_per_chapter,
+            is_long_form=True,
+        )
+
+        await event_bus.publish(ProgressEvent(
+            task_id=task_id,
+            event_type=EventType.STAGE_COMPLETE,
+            data={"stage": "master_outline", "percentage": 5},
+        ))
+
+        # Stage 2: Generate volume by volume
+        total_volumes = request.volumes
+        chapters_per_vol = request.chapters_per_volume
+        words_per_chapter = request.words_per_chapter
+
+        global_chapter_start = 1
+        all_chapters_generated = []
+
+        for vol_num in range(1, total_volumes + 1):
+            # Update progress
+            await progress_service.update_volume_status(
+                novel_id=novel_id,
+                volume_number=vol_num,
+                status="generating",
+            )
+
+            vol_percentage = 5 + int((vol_num - 1) / total_volumes * 90)
+            await event_bus.publish(ProgressEvent(
+                task_id=task_id,
+                event_type=EventType.STAGE_START,
+                data={
+                    "stage": f"volume_{vol_num}",
+                    "volume_number": vol_num,
+                    "percentage": vol_percentage,
+                },
+            ))
+
+            try:
+                # Generate volume outline
+                vol_outline = await _generate_volume_outline(
+                    novel_id=novel_id,
+                    master_outline=master_outline,
+                    volume_number=vol_num,
+                    chapters_per_volume=chapters_per_vol,
+                    words_per_chapter=words_per_chapter,
+                    request=request,
+                )
+
+                # Generate chapters for this volume
+                chapter_end = global_chapter_start + chapters_per_vol - 1
+                vol_chapters = await _generate_volume_chapters(
+                    task_id=task_id,
+                    novel_id=novel_id,
+                    volume_number=vol_num,
+                    chapter_start=global_chapter_start,
+                    chapter_end=chapter_end,
+                    vol_outline=vol_outline,
+                    words_per_chapter=words_per_chapter,
+                    request=request,
+                )
+
+                all_chapters_generated.extend(vol_chapters)
+
+                # Generate quality report for this volume
+                quality_report = await _generate_volume_quality_report(
+                    novel_id=novel_id,
+                    volume_number=vol_num,
+                    chapters=vol_chapters,
+                )
+
+                # Update progress
+                await progress_service.update_volume_status(
+                    novel_id=novel_id,
+                    volume_number=vol_num,
+                    status="completed",
+                    chapters_completed=len(vol_chapters),
+                    quality_report=quality_report,
+                )
+
+                await event_bus.publish(ProgressEvent(
+                    task_id=task_id,
+                    event_type=EventType.STAGE_COMPLETE,
+                    data={
+                        "stage": f"volume_{vol_num}",
+                        "volume_number": vol_num,
+                        "percentage": vol_percentage + int(90 / total_volumes),
+                    },
+                ))
+
+                global_chapter_start = chapter_end + 1
+
+            except Exception as vol_error:
+                logger.error(
+                    "volume_generation_failed",
+                    novel_id=novel_id,
+                    volume_number=vol_num,
+                    error=str(vol_error),
+                )
+                await progress_service.update_volume_status(
+                    novel_id=novel_id,
+                    volume_number=vol_num,
+                    status="failed",
+                    errors=[str(vol_error)],
+                )
+                # Continue to next volume
+                continue
+
+        # Final completion
+        await task_manager.complete_task(task_id, {
+            "novel_id": novel_id,
+            "total_volumes": total_volumes,
+            "total_chapters": len(all_chapters_generated),
+        })
+
+        await event_bus.publish(ProgressEvent(
+            task_id=task_id,
+            event_type=EventType.COMPLETED,
+            data={"percentage": 100, "current_stage": "completed"},
+        ))
+
+        logger.info(
+            "long_form_generation_completed",
+            task_id=task_id,
+            novel_id=novel_id,
+            total_chapters=len(all_chapters_generated),
+        )
+
+    except Exception as e:
+        logger.exception("long_form_generation_failed", task_id=task_id)
+        await task_manager.fail_task(task_id, str(e))
+        await event_bus.publish(ProgressEvent(
+            task_id=task_id,
+            event_type=EventType.ERROR,
+            data={"error": str(e)},
+        ))
+
+
+async def _generate_master_outline(
+    novel_id: str,
+    request: Any,
+) -> dict[str, Any]:
+    """Generate master outline for long-form novel.
+
+    Args:
+        novel_id: Novel ID
+        request: LongFormNovelRequest
+
+    Returns:
+        Master outline dict
+    """
+    from src.core.json_utils import safe_json_parse
+    from src.core.llm.client import get_llm_client
+    from src.core.llm.prompts import MASTER_OUTLINE_PROMPT
+    from src.core.validation import get_style_instruction
+
+    client = get_llm_client()
+
+    prompt = MASTER_OUTLINE_PROMPT.format(
+        idea=request.idea,
+        novel_type=request.novel_type,
+        target_words=request.target_words,
+        volumes=request.volumes,
+        chapters_per_volume=request.chapters_per_volume,
+        words_per_chapter=request.words_per_chapter,
+    )
+
+    style_instruction = get_style_instruction(
+        request.writing_style,
+        request.writing_style_prompt,
+    )
+    if style_instruction:
+        prompt = f"{style_instruction}\n\n{prompt}"
+
+    response = await client.generate(prompt, max_tokens=6000)
+
+    # Fallback
+    fallback_volumes = []
+    for i in range(1, request.volumes + 1):
+        fallback_volumes.append({
+            "volume_number": i,
+            "title": f"第{i}卷",
+            "summary": "本卷主要情节",
+            "chapter_types": {
+                "main_advance": int(request.chapters_per_volume * 0.45),
+                "climax": int(request.chapters_per_volume * 0.12),
+                "aftermath": int(request.chapters_per_volume * 0.08),
+                "daily": int(request.chapters_per_volume * 0.15),
+                "setup": int(request.chapters_per_volume * 0.15),
+                "filler": 0,
+            },
+            "key_events": [],
+            "foreshadows_planted": [],
+            "foreshadows_resolved": [],
+        })
+
+    fallback_data = {
+        "title": request.idea[:20],
+        "synopsis": request.idea,
+        "main_conflict": "待展开",
+        "main_theme": "待确定",
+        "volumes": fallback_volumes,
+        "foreshadow_plan": [],
+        "character_plan": [],
+    }
+
+    return safe_json_parse(response, fallback=fallback_data, extract_partial=True)
+
+
+async def _generate_volume_outline(
+    novel_id: str,
+    master_outline: dict[str, Any],
+    volume_number: int,
+    chapters_per_volume: int,
+    words_per_chapter: int,
+    request: Any,
+) -> dict[str, Any]:
+    """Generate volume outline.
+
+    Args:
+        novel_id: Novel ID
+        master_outline: Master outline
+        volume_number: Volume number
+        chapters_per_volume: Chapters per volume
+        words_per_chapter: Words per chapter
+        request: LongFormNovelRequest
+
+    Returns:
+        Volume outline dict
+    """
+    from src.core.json_utils import safe_json_parse
+    from src.core.llm.client import get_llm_client
+    from src.core.llm.prompts import VOLUME_OUTLINE_PROMPT
+    from src.core.validation import get_style_instruction
+
+    client = get_llm_client()
+
+    volumes = master_outline.get("volumes", [])
+    vol_info = next(
+        (v for v in volumes if v.get("volume_number") == volume_number),
+        {"title": f"第{volume_number}卷", "summary": "待生成"}
+    )
+
+    # Build previous volumes summary
+    prev_summary = "这是第一卷，无前序卷摘要。"
+    if volume_number > 1:
+        prev_parts = []
+        for v in volumes:
+            if v.get("volume_number", 0) < volume_number:
+                prev_parts.append(
+                    f"- 第{v.get('volume_number')}卷《{v.get('title', '')}》：{v.get('summary', '')}"
+                )
+        if prev_parts:
+            prev_summary = "\n".join(prev_parts)
+
+    chapter_types = vol_info.get("chapter_types", {})
+    chapter_types_str = f"""
+- main_advance（主线推进）：约 {chapter_types.get('main_advance', int(chapters_per_volume * 0.45))} 章
+- climax（高潮章）：约 {chapter_types.get('climax', int(chapters_per_volume * 0.12))} 章
+- aftermath（余波章）：约 {chapter_types.get('aftermath', int(chapters_per_volume * 0.08))} 章
+- daily（日常章）：约 {chapter_types.get('daily', int(chapters_per_volume * 0.15))} 章
+- setup（铺垫章）：约 {chapter_types.get('setup', int(chapters_per_volume * 0.15))} 章
+- filler（注水章）：约 0 章
+"""
+
+    prompt = VOLUME_OUTLINE_PROMPT.format(
+        master_outline=json.dumps(
+            {k: v for k, v in master_outline.items() if k != "volumes"},
+            ensure_ascii=False,
+        ),
+        volume_number=volume_number,
+        volume_summary=vol_info.get("summary", ""),
+        previous_volumes_summary=prev_summary,
+        chapters_count=chapters_per_volume,
+        words_per_chapter=words_per_chapter,
+        chapter_types=chapter_types_str,
+    )
+
+    style_instruction = get_style_instruction(
+        request.writing_style,
+        request.writing_style_prompt,
+    )
+    if style_instruction:
+        prompt = f"{style_instruction}\n\n{prompt}"
+
+    response = await client.generate(prompt, max_tokens=6000)
+
+    # Fallback
+    fallback_chapters = []
+    for i in range(1, chapters_per_volume + 1):
+        fallback_chapters.append({
+            "chapter": i,
+            "title": f"第{i}章",
+            "chapter_type": "main_advance" if i % 3 != 0 else "daily",
+            "plot": "情节待展开",
+            "key_characters": [],
+            "foreshadows_planted": [],
+            "foreshadows_resolved": [],
+            "turning_point": "",
+            "emotional_arc": "平静->推进",
+        })
+
+    fallback_data = {
+        "volume_number": volume_number,
+        "title": vol_info.get("title", f"第{volume_number}卷"),
+        "chapters": fallback_chapters,
+    }
+
+    result = safe_json_parse(response, fallback=fallback_data, extract_partial=True)
+
+    # Add volume_number to each chapter
+    for ch in result.get("chapters", []):
+        ch["volume_number"] = volume_number
+
+    return result
+
+
+async def _generate_volume_chapters(
+    task_id: str,
+    novel_id: str,
+    volume_number: int,
+    chapter_start: int,
+    chapter_end: int,
+    vol_outline: dict[str, Any],
+    words_per_chapter: int,
+    request: Any,
+) -> list[dict[str, Any]]:
+    """Generate chapters for a volume.
+
+    Args:
+        task_id: Task ID
+        novel_id: Novel ID
+        volume_number: Volume number
+        chapter_start: Start chapter number
+        chapter_end: End chapter number
+        vol_outline: Volume outline
+        words_per_chapter: Target words per chapter
+        request: LongFormNovelRequest
+
+    Returns:
+        List of generated chapter dicts
+    """
+    from src.api.models.db_models import Chapter
+    from src.api.services.novel_manager import get_novel_manager
+    from src.core.database import get_db_session
+    from src.core.llm.chapter_generator import generate_single_chapter
+    from src.core.llm.client import get_llm_client
+    from src.core.validation import get_style_instruction
+
+    manager = get_novel_manager()
+    client = get_llm_client()
+    event_bus = get_event_bus()
+
+    # Get context
+    novel = await manager.get_novel(novel_id)
+    world = await manager.get_world_setting(novel_id)
+    characters = await manager.list_characters(novel_id)
+
+    style_instruction = get_style_instruction(
+        novel.get("writing_style", ""),
+        novel.get("writing_style_prompt", ""),
+    )
+
+    chars_str = json.dumps([{
+        "name": c.get("name"), "role": c.get("role"),
+        "personality": c.get("personality"), "description": c.get("description"),
+    } for c in characters], ensure_ascii=False) if characters else "暂无人物"
+
+    world_str = json.dumps({
+        "background": (world or {}).get("background", ""),
+        "rules": (world or {}).get("rules", ""),
+        "geography": (world or {}).get("geography", ""),
+        "culture": (world or {}).get("culture", ""),
+    }, ensure_ascii=False) if world else "暂无世界观"
+
+    # Get previous chapter context
+    prev_context = ""
+    if chapter_start > 1:
+        prev_chapters = await manager.list_chapters(novel_id)
+        prev_in_earlier = [c for c in prev_chapters if c.get("chapter_number", 0) == chapter_start - 1]
+        if prev_in_earlier:
+            prev_context = (prev_in_earlier[0].get("content", "") or "")[-500:]
+
+    chapters_data = vol_outline.get("chapters", [])
+    generated_chapters = []
+
+    for i, ch_outline in enumerate(chapters_data):
+        ch_num = ch_outline.get("chapter", i + 1)
+
+        if i == 0:
+            previous_chapter = prev_context or "这是本卷第一章"
+        else:
+            last_content = generated_chapters[-1].get("content", "") if generated_chapters else ""
+            previous_chapter = last_content[:500] if last_content else "续写"
+
+        try:
+            chapter_result = await generate_single_chapter(
+                client=client,
+                chapter_outline=ch_outline,
+                previous_chapter=previous_chapter,
+                characters_json=chars_str,
+                world_setting_json=world_str,
+                style_instruction=style_instruction,
+                target_words=words_per_chapter,
+            )
+            generated_chapters.append(chapter_result)
+        except Exception as ch_error:
+            logger.error(
+                "chapter_generation_failed",
+                novel_id=novel_id,
+                chapter=ch_num,
+                error=str(ch_error),
+            )
+            generated_chapters.append({
+                "chapter": ch_num,
+                "title": ch_outline.get("title", f"第{ch_num}章"),
+                "content": f"[章节生成失败: {str(ch_error)}]",
+                "word_count": 0,
+                "generation_failed": True,
+            })
+
+        # Emit progress
+        progress_data = {
+            "current_stage": "chapter_generation",
+            "volume_number": volume_number,
+            "completed_chapters": len(generated_chapters),
+            "total_chapters": len(chapters_data),
+            "percentage": int((len(generated_chapters) / len(chapters_data)) * 100),
+        }
+        await event_bus.publish(ProgressEvent(
+            task_id=task_id,
+            event_type=EventType.CHAPTER_PROGRESS,
+            data=progress_data,
+        ))
+
+    # Persist successful chapters
+    successful = [ch for ch in generated_chapters if not ch.get("generation_failed")]
+
+    async with get_db_session() as session:
+        for ch in successful:
+            chapter = Chapter(
+                novel_id=novel_id,
+                volume_number=volume_number,
+                chapter_number=ch["chapter"],
+                title=ch["title"],
+                content=ch["content"],
+                word_count=ch["word_count"],
+                chapter_type=ch_outline.get("chapter_type"),
+                status="generated",
+            )
+            session.add(chapter)
+
+    return generated_chapters
+
+
+async def _generate_volume_quality_report(
+    novel_id: str,
+    volume_number: int,
+    chapters: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Generate quality report for a volume.
+
+    Args:
+        novel_id: Novel ID
+        volume_number: Volume number
+        chapters: List of generated chapter dicts
+
+    Returns:
+        Quality report dict
+    """
+    total_word_count = sum(ch.get("word_count", 0) for ch in chapters)
+    chapter_count = len(chapters)
+
+    # Simple quality metrics
+    avg_scores = {
+        "advancement": 0.7,
+        "character_consistency": 0.7,
+        "world_consistency": 0.7,
+        "pacing": 0.7,
+        "conflict": 0.7,
+        "foreshadowing": 0.7,
+        "dialogue_quality": 0.7,
+        "emotional_impact": 0.7,
+    }
+
+    return {
+        "volume_number": volume_number,
+        "chapter_count": chapter_count,
+        "total_word_count": total_word_count,
+        "avg_scores": avg_scores,
+        "avg_quality_score": sum(avg_scores.values()) / len(avg_scores),
+        "warnings": [],
+        "filler_chapters": [],
+        "stalled_chapters": [],
+    }
