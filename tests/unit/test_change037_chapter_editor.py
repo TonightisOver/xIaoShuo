@@ -1,6 +1,7 @@
 """Unit tests for chapter AI editing and version history."""
 
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -243,9 +244,6 @@ class TestChapterRewriter:
 
         with patch(
             "src.core.llm.chapter_rewriter.get_llm_client", return_value=client
-        ), patch(
-            "src.core.llm.chapter_rewriter._build_rewrite_context",
-            new=AsyncMock(return_value={}),
         ):
             result = await rewrite_chapter_segment(
                 novel_id="novel-001",
@@ -253,6 +251,7 @@ class TestChapterRewriter:
                 full_content="full text",
                 selected_text="old text",
                 instruction="make it sharper",
+                context={},
             )
 
         assert result == "rewritten text"
@@ -267,9 +266,6 @@ class TestChapterRewriter:
 
         with patch(
             "src.core.llm.chapter_rewriter.get_llm_client", return_value=client
-        ), patch(
-            "src.core.llm.chapter_rewriter._build_rewrite_context",
-            new=AsyncMock(return_value={}),
         ), pytest.raises(asyncio.TimeoutError):
             await rewrite_chapter_segment(
                 novel_id="novel-001",
@@ -277,6 +273,7 @@ class TestChapterRewriter:
                 full_content="full text",
                 selected_text="old text",
                 instruction="rewrite",
+                context={},
             )
 
     def test_prompt_includes_context_and_task(self):
@@ -320,12 +317,37 @@ class TestChapterEditorEndpoints:
         mock_manager = AsyncMock()
         mock_manager.get_chapter = AsyncMock(return_value={"id": 1})
 
+        # Mock the context builder for the route handler
+        mock_rewrite_ctx = MagicMock()
+        mock_rewrite_ctx.world_setting = ""
+        mock_rewrite_ctx.chapter_outline = ""
+        mock_rewrite_ctx.prev_chapter_summary = ""
+        mock_rewrite_ctx.next_chapter_summary = ""
+        mock_rewrite_ctx.characters = ""
+        mock_rewrite_ctx.story_bible = ""
+        mock_rewrite_ctx.writing_style = ""
+
+        mock_builder = MagicMock()
+        mock_builder.build_rewrite_context = AsyncMock(
+            return_value=mock_rewrite_ctx
+        )
+
+        @asynccontextmanager
+        async def _fake_session():
+            yield MagicMock()
+
         with patch(
             "src.api.routes.projects.get_novel_manager", return_value=mock_manager
         ), patch(
-            "src.core.llm.chapter_rewriter.rewrite_chapter_segment",
-            new=AsyncMock(return_value="rewritten"),
+            "src.core.llm.chapter_rewriter.get_llm_client",
+        ) as mock_llm, patch(
+            "src.core.context.NovelContextBuilder",
+            return_value=mock_builder,
+        ), patch(
+            "src.core.database.get_db_session",
+            _fake_session,
         ):
+            mock_llm.return_value.generate = AsyncMock(return_value="rewritten")
             response = client.post(
                 "/api/v1/projects/novel-001/chapters/1/rewrite",
                 json={
@@ -348,12 +370,39 @@ class TestChapterEditorEndpoints:
         mock_manager = AsyncMock()
         mock_manager.get_chapter = AsyncMock(return_value={"id": 1})
 
+        # Mock the context builder for the route handler
+        mock_rewrite_ctx = MagicMock()
+        mock_rewrite_ctx.world_setting = ""
+        mock_rewrite_ctx.chapter_outline = ""
+        mock_rewrite_ctx.prev_chapter_summary = ""
+        mock_rewrite_ctx.next_chapter_summary = ""
+        mock_rewrite_ctx.characters = ""
+        mock_rewrite_ctx.story_bible = ""
+        mock_rewrite_ctx.writing_style = ""
+
+        mock_builder = MagicMock()
+        mock_builder.build_rewrite_context = AsyncMock(
+            return_value=mock_rewrite_ctx
+        )
+
+        @asynccontextmanager
+        async def _fake_session():
+            yield MagicMock()
+
         with patch(
             "src.api.routes.projects.get_novel_manager", return_value=mock_manager
         ), patch(
-            "src.core.llm.chapter_rewriter.rewrite_chapter_segment",
-            new=AsyncMock(side_effect=asyncio.TimeoutError()),
+            "src.core.llm.chapter_rewriter.get_llm_client",
+        ) as mock_llm, patch(
+            "src.core.context.NovelContextBuilder",
+            return_value=mock_builder,
+        ), patch(
+            "src.core.database.get_db_session",
+            _fake_session,
         ):
+            mock_llm.return_value.generate = AsyncMock(
+                side_effect=asyncio.TimeoutError()
+            )
             response = client.post(
                 "/api/v1/projects/novel-001/chapters/1/rewrite",
                 json={

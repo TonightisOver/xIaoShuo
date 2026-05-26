@@ -405,11 +405,10 @@ class TestChapterGenerationNodeIsolation:
         with patch("src.core.langgraph.nodes.chapter_generation.get_settings") as mock_cfg, \
              patch("src.core.langgraph.nodes.chapter_generation.get_llm_client"), \
              patch("src.core.langgraph.nodes.chapter_generation.generate_single_chapter",
-                   side_effect=fake_generate), \
-             patch("src.api.services.progress_event_bus.get_progress_callback",
-                   return_value=fake_callback):
+                   side_effect=fake_generate):
             mock_cfg.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=False)
-            await chapter_generation.node(state)
+            config = {"configurable": {"progress_callback": fake_callback}}
+            await chapter_generation.node(state, config=config)
 
         assert len(callback_calls) == 2
 
@@ -463,9 +462,7 @@ class TestChapterProgressCallbackFields:
              patch("src.api.services.novel_generator.get_event_bus",
                    return_value=mock_event_bus), \
              patch("src.api.services.novel_generator.create_novel_graph",
-                   return_value=mock_graph), \
-             patch("src.api.services.novel_generator.register_progress_callback"), \
-             patch("src.api.services.novel_generator.unregister_progress_callback"):
+                   return_value=mock_graph):
 
             # Manually invoke the callback to test its field propagation
             from src.api.services.novel_generator import _full_generate_percentage

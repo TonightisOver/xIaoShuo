@@ -6,19 +6,18 @@ import structlog
 from sqlalchemy import select, update
 
 from src.api.models.db_models import (
-    Chapter,
     ChapterBlueprint,
-    Novel,
-    Outline,
-    StoryBible,
 )
 from src.api.services.knowledge_graph_service import KnowledgeGraphService
+from src.core.context import NovelContextBuilder
 from src.core.database import get_db_session
-from src.core.json_utils import safe_json_parse
 from src.core.llm.client import get_llm_client
+from src.core.llm.helpers import generate_and_parse_json
 from src.core.llm.prompts import BLUEPRINT_GENERATION_PROMPT
 
 logger = structlog.get_logger(__name__)
+
+_context_builder = NovelContextBuilder()
 
 BLUEPRINT_FIELDS = [
     "chapter_type",
@@ -60,15 +59,14 @@ class BlueprintService:
         )
 
         client = get_llm_client()
-        raw_response = await client.generate(prompt, max_tokens=2000)
-
-        blueprint_data = safe_json_parse(raw_response, fallback=None)
+        blueprint_data = await generate_and_parse_json(
+            client, prompt, max_tokens=2000, fallback=None
+        )
         if blueprint_data is None:
             logger.error(
                 "blueprint_json_parse_failed",
                 novel_id=novel_id,
                 chapter_number=chapter_number,
-                raw_length=len(raw_response),
             )
             blueprint_data = self._default_blueprint(chapter_outline)
 
@@ -160,73 +158,17 @@ class BlueprintService:
         self, novel_id: str, chapter_number: int, chapter_outline: dict
     ) -> dict:
         """从 DB 读取蓝图生成所需的上下文"""
-        ctx: dict = {
-            "previous_chapter": "",
-            "story_bible": "",
-            "kg_context": "",
-            "volume_context": "",
-        }
-
         async with get_db_session() as session:
-            # 前章摘要
-            if chapter_number > 1:
-                prev_res = await session.execute(
-                    select(Chapter).where(
-                        Chapter.novel_id == novel_id,
-                        Chapter.chapter_number == chapter_number - 1,
-                    )
-                )
-                prev_ch = prev_res.scalar_one_or_none()
-                if prev_ch and prev_ch.content:
-                    ctx["previous_chapter"] = prev_ch.content[:500]
-
-            # Story Bible
-            bible_res = await session.execute(
-                select(StoryBible).where(StoryBible.novel_id == novel_id)
+            bp_ctx = await _context_builder.build_blueprint_context(
+                session, novel_id, chapter_number, chapter_outline
             )
-            bible = bible_res.scalar_one_or_none()
-            if bible:
-                parts = []
-                if bible.worldview_rules:
-                    parts.append(f"世界观规则：{bible.worldview_rules}")
-                if bible.hard_settings:
-                    parts.append(f"硬设定：{bible.hard_settings}")
-                if bible.character_cards:
-                    parts.append(
-                        f"人物卡：{json.dumps(bible.character_cards, ensure_ascii=False)}"
-                    )
-                if bible.foreshadowing_list:
-                    parts.append(
-                        f"伏笔列表：{json.dumps(bible.foreshadowing_list, ensure_ascii=False)}"
-                    )
-                ctx["story_bible"] = "\n".join(parts)
 
-            # 卷上下文
-            novel_res = await session.execute(
-                select(Novel).where(Novel.novel_id == novel_id)
-            )
-            novel = novel_res.scalar_one_or_none()
-            if novel and novel.is_long_form:
-                chapter_obj_res = await session.execute(
-                    select(Chapter).where(
-                        Chapter.novel_id == novel_id,
-                        Chapter.chapter_number == chapter_number,
-                    )
-                )
-                chapter_obj = chapter_obj_res.scalar_one_or_none()
-                if chapter_obj and chapter_obj.volume_number:
-                    vol_outline_res = await session.execute(
-                        select(Outline).where(
-                            Outline.novel_id == novel_id,
-                            Outline.level == "volume",
-                            Outline.volume_number == chapter_obj.volume_number,
-                        )
-                    )
-                    vol_outline = vol_outline_res.scalar_one_or_none()
-                    if vol_outline and vol_outline.content:
-                        ctx["volume_context"] = json.dumps(
-                            vol_outline.content, ensure_ascii=False
-                        )
+        ctx: dict = {
+            "previous_chapter": bp_ctx.previous_chapter,
+            "story_bible": bp_ctx.story_bible,
+            "kg_context": "",
+            "volume_context": bp_ctx.volume_context,
+        }
 
         # KG 上下文
         try:

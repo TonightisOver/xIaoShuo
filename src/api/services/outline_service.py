@@ -7,8 +7,8 @@ from sqlalchemy import and_, select
 
 from src.api.models.db_models import Outline
 from src.core.database import get_db_session
-from src.core.json_utils import safe_json_parse
 from src.core.llm.client import get_llm_client
+from src.core.llm.helpers import generate_and_parse_json
 
 logger = structlog.get_logger(__name__)
 
@@ -201,8 +201,7 @@ class OutlineService:
             target_words=target_words,
             novel_type=novel_type,
         )
-        response = await client.generate(prompt, max_tokens=4000)
-        volumes = safe_json_parse(response, fallback=[], extract_partial=True)
+        volumes = await generate_and_parse_json(client, prompt, max_tokens=4000, fallback=[])
 
         if not isinstance(volumes, list):
             volumes = []
@@ -232,8 +231,7 @@ class OutlineService:
             world_setting=str(world) if world else "暂无",
             characters=str([c["name"] + "(" + (c.get("role") or "") + ")" for c in characters[:10]]),
         )
-        response = await client.generate(prompt, max_tokens=4000)
-        chapters = safe_json_parse(response, fallback=[], extract_partial=True)
+        chapters = await generate_and_parse_json(client, prompt, max_tokens=4000, fallback=[])
 
         if not isinstance(chapters, list):
             chapters = []
@@ -317,14 +315,15 @@ class OutlineService:
             conversation_text=conv_text[:3000],
             context=context or "暂无",
         )
-        response = await client.generate(prompt, max_tokens=2000)
-        master_content = safe_json_parse(response, fallback={
-            "premise": "待完善",
-            "main_conflict": "待完善",
-            "plot_arcs": [],
-            "ending": "待完善",
-            "themes": [],
-        }, extract_partial=True)
+        master_content = await generate_and_parse_json(
+            client, prompt, max_tokens=2000, fallback={
+                "premise": "待完善",
+                "main_conflict": "待完善",
+                "plot_arcs": [],
+                "ending": "待完善",
+                "themes": [],
+            }
+        )
 
         await self.upsert_master_outline(novel_id, master_content)
         return master_content
@@ -355,14 +354,15 @@ class OutlineService:
         )
 
         client = get_llm_client()
-        response = await client.generate(prompt, max_tokens=2000)
-        master_content = safe_json_parse(response, fallback={
-            "premise": "待完善",
-            "main_conflict": "待完善",
-            "plot_arcs": [],
-            "ending": "待完善",
-            "themes": [],
-        }, extract_partial=True)
+        master_content = await generate_and_parse_json(
+            client, prompt, max_tokens=2000, fallback={
+                "premise": "待完善",
+                "main_conflict": "待完善",
+                "plot_arcs": [],
+                "ending": "待完善",
+                "themes": [],
+            }
+        )
 
         await self.upsert_master_outline(novel_id, master_content)
         return master_content

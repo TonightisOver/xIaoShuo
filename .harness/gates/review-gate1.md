@@ -1,61 +1,135 @@
-# 需求评审报告 - CHANGE-048
+# Plan Review 评审报告 — 全局架构优化：模块解耦与冗余消除
 
-## 评审结论: APPROVED
+**评审对象**: `.harness/requirements.md` + `.harness/tasks.md`
+**评审轮次**: 第 1 轮
+**评审日期**: 2026-05-26
 
-## 评审要点
+---
 
-### 1. 完整性 (Completeness)
+## 评审结论
 
-需求文档定义了 5 个功能需求 (FR-1 ~ FR-5)，任务清单的 7 个 Task 完整覆盖：
+**结果**: APPROVED
 
-| 功能需求 | 对应任务 | 覆盖情况 |
-|---------|---------|---------|
-| FR-1 读者人设定义 | Task-3 (READER_PERSONAS 常量) | 完整 |
-| FR-2 模拟执行 | Task-3 (Service 层) | 完整 |
-| FR-3 结果存储 | Task-1 + Task-2 (模型 + 迁移) | 完整 |
-| FR-4 历史对比 | Task-4 (GET 列表/详情 API) | 完整 |
-| FR-5 前端交互 | Task-6 + Task-7 (面板 + 集成) | 完整 |
+---
 
-### 2. 可行性 (Feasibility)
+## 代码验证结果
 
-- LLM 调用模式与现有 `outline_sync_service.py` 一致 -- 使用 `get_llm_client()` + `safe_json_parse()` + structlog，技术路径已验证。
-- `asyncio.gather` 并行执行在项目中已有使用先例，可行。
-- FastAPI BackgroundTasks 模式在 `novels.py` 和 `projects.py` 中已大量使用，模式成熟。
-- 数据模型 `novel_id` 使用 `String(100) FK` 关联 `novels.novel_id`，与现有 Chapter、Outline 等模型一致。
-- 前端 polling GET 接口是合理的简化方案，无需引入 WebSocket。
+### 1. chapter_generator 反向依赖 — 已确认
 
-### 3. 一致性 (Consistency)
+`src/core/llm/chapter_generator.py` 第 223-239 行：
+- `from src.api.models.db_models import StoryBible`
+- `from src.api.services.story_bible_service import extract_relevant_constraints`
+- `from src.core.database import get_db_session`
 
-- 数据模型字段与 API 响应结构完全对齐。
-- 前端卡片内容（engagement 分数、情感反应、节奏评价、爽点/痛点、总评）与 LLM 输出 JSON 结构一一对应。
-- 路由注册遵循现有 `__init__.py` 导出 + `main.py` include_router 模式。
-- 测试命名 `test_change048_reader_simulation.py` 遵循项目既有规范。
+第 252 行：
+- `from src.api.services.blueprint_service import BlueprintService`
 
-### 4. 范围 (Scope)
+第 389-392 行：
+- `from src.api.models.db_models import Chapter`
+- `from src.core.database import get_db_session`（写入 chapter_type）
 
-7 个任务，预估复杂度"中"，合理。核心工作量集中在 Task-3（Service 层 prompt 设计 + 并行调用 + 错误处理）和 Task-6（前端面板），其余为胶水代码。对单人开发者而言 1-2 天可完成。
+**结论**: 需求文档描述准确，core/llm 层确实反向依赖 api/services 层和 database 层。
 
-### 5. 风险评估 (Risk)
+### 2. LangGraph 节点 import service 层 — 已确认
 
-| 风险项 | 等级 | 缓解措施 |
-|--------|------|---------|
-| LLM 输出 JSON 不稳定 | 中 | 已规划使用 `safe_json_parse` 容错解析，单人设失败不阻塞整体 |
-| 4 路并行 LLM 调用可能触发 rate limit | 低 | DeepSeek API 并发限制较宽松；`get_llm_client()` 已内置 retry |
-| 前端轮询频率未明确 | 低 | 建议实现时设定 3s 间隔 + 最大轮询次数 |
-| 上下文截断策略（前8000+后2000字）可能丢失关键信息 | 低 | 对网文章节（通常 2000-5000 字）影响极小 |
+`src/core/langgraph/nodes/chapter_generation.py` 第 34 行：
+- `from src.api.services.knowledge_graph_service import get_knowledge_graph_service`
 
-## 问题与建议
+第 97 行：
+- `from src.api.services.progress_event_bus import get_progress_callback`
 
-### 建议项（不阻塞）
+`src/core/langgraph/nodes/quality_check.py` 第 17-19 行：
+- `from src.api.models.db_models import ChapterVersion`
+- `from src.core.database import get_db_session`
 
-1. **ReaderFeedbackCard.vue 未单独列为任务**：需求文档前端设计部分提到了独立的 `ReaderFeedbackCard.vue` 组件，但任务清单中未单独列出。建议在 Task-6 中明确说明卡片是内联实现还是抽取为子组件。当前不阻塞，因为 Task-6 描述已包含卡片内容。
+第 157 行：
+- `from src.api.services.knowledge_graph_service import get_knowledge_graph_service`
 
-2. **轮询终止条件建议明确**：Task-6 描述"轮询或 polling 获取结果"，建议实现时确定：轮询间隔 3 秒，最大等待 90 秒，终止条件为 status=completed 或 failed。
+第 177 行：
+- `from src.api.services.story_bible_service import detect_bible_conflicts`
 
-3. **novel_id FK 类型**：Task-1 描述 `novel_id(FK)` 但未指定类型为 `String(100)`。实现时需确保与现有模型一致（`String(100), ForeignKey("novels.novel_id", ondelete="CASCADE")`）。
+**结论**: 需求文档描述准确。
 
-4. **status 字段枚举**：需求文档定义了 4 种状态（pending/running/completed/failed），建议 Task-1 中添加 CheckConstraint 或在 Service 层使用 Enum 常量，与项目中其他模型保持一致。
+### 3. novel_generator 行数与职责混合 — 已确认
+
+实际行数：**1521 行**（需求文档说 850+，实际远超此数）。包含：
+- 4 个后台生成入口函数（generate_novel_background, generate_novel_full_background, generate_volume_background, generate_long_form_background）
+- 编排逻辑（_run_langgraph_pipeline, _run_sub_feature）
+- DB 持久化（_persist_to_novel）
+- 进度推送（大量 event_bus.publish 调用）
+- 长篇生成全流程（_generate_master_outline, _generate_volume_outline, _generate_volume_chapters, _generate_volume_quality_report）
+
+**结论**: 问题比需求文档描述的更严重。
+
+### 4. storyline_service AI 生成逻辑混合 — 已确认
+
+`src/api/services/storyline_service.py`（511 行）包含：
+- CRUD 方法（list/create/update/delete storylines, arcs, scenes）
+- AI 生成方法：`generate_storylines_ai`, `generate_power_systems_ai`, `generate_arcs_ai`, `generate_scenes_ai`, `generate_from_conversation`
+
+每个 AI 生成方法都包含重复的模式：获取上下文 -> 构建 prompt -> 调用 LLM -> parse JSON -> 持久化。
+
+**结论**: 需求文档描述准确。
+
+### 5. 质量评估 Prompt 重复 — 已确认
+
+`quality_check.py` 第 44-103 行的 `EVALUATION_PROMPT` 与 `rewrite_loop_service.py` 第 26-70 行的 `EVALUATION_PROMPT` 高度重复（核心评估维度和输出格式完全相同，仅 rewrite_loop 版本略简化了输出格式要求）。
+
+**结论**: 需求文档描述准确。
+
+### 6. chapter_rewriter 反向依赖 — 已确认
+
+`src/core/llm/chapter_rewriter.py` 第 77-78 行：
+- `from src.api.models.db_models import Chapter, Novel, Outline, StoryBible`
+- `from src.core.database import get_db_session`
+
+**结论**: 需求文档中提到的 chapter_rewriter 上下文构建问题确实存在。
+
+---
+
+## 评审发现
+
+### MUST FIX（必须修复）
+
+无。
+
+### SHOULD FIX（建议修复）
+
+1. **novel_generator 行数描述不准确**
+   - 位置：requirements.md 1.1 表格
+   - 问题：文档描述 "850+ 行"，实际为 1521 行。这不影响重构方向，但低估了拆分工作量。
+   - 建议：更新为实际行数 ~1500 行，并在 Task 6 中调整目标（从 "降至 ~800" 调整为 "降至 ~600-700"，因为长篇生成相关函数也应考虑拆分）。
+
+2. **Task 6 拆分范围可能不够**
+   - 位置：tasks.md Task 6
+   - 问题：novel_generator 中 `generate_long_form_background` 及其辅助函数（_generate_master_outline, _generate_volume_outline, _generate_volume_chapters, _generate_volume_quality_report）占约 500 行，Task 6 只提到拆分 `_persist_to_novel` 和进度推送逻辑，可能不足以将文件降至 ~800 行。
+   - 建议：考虑将长篇生成逻辑也拆分为独立的 `long_form_generation_service.py`，或在 Task 9 中一并处理。当前不阻塞，可在实施阶段视情况调整。
+
+3. **Task 5 的依赖注入方案需要明确**
+   - 位置：tasks.md Task 5
+   - 问题：文档提到 "通过 state 中的回调函数或 LangGraph config 注入这些依赖"，但未明确选择哪种方案。两种方案各有利弊：state 注入简单但污染 state 类型定义；config 注入更干净但需要修改 graph 创建逻辑。
+   - 建议：在实施时优先选择 LangGraph config 注入（通过 `configurable` 字段传入 service 实例），保持 state 类型定义的纯净性。
+
+4. **Task 4 遗漏了 chapter_rewriter 的同类问题**
+   - 位置：tasks.md Task 4
+   - 问题：Task 4 只处理 chapter_generator 的 DB 依赖，但 chapter_rewriter.py 存在完全相同的问题（直接 import db_models 和 get_db_session）。Task 8 虽然覆盖了 chapter_rewriter，但 Task 8 依赖 Task 1 而非 Task 4，两者的解耦模式应保持一致。
+   - 建议：在 Task 8 描述中明确参考 Task 4 的解耦模式，确保 core/llm 下两个文件的重构方式一致。
+
+### INFO（信息提示）
+
+1. **quality_check.node 中的 `_persist_quality_to_version` 也是反向依赖**
+   - quality_check.py 第 12-41 行定义了 `_persist_quality_to_version`，直接操作 DB。Task 5 的描述中未明确提到这个函数的处理方式。实施时需要将此持久化逻辑移到 service 层或通过回调处理。
+
+2. **Phase 2 串行依赖链较长**
+   - Task 4 -> Task 5 -> Task 6 形成串行链，如果 Task 4 遇到问题会阻塞后续。但考虑到 Task 4 的变更范围明确（参数化 + 删除 import），风险可控。
+
+3. **测试覆盖率未知**
+   - Task 10 要求 "所有现有测试通过"，但未评估现有测试是否覆盖了被重构的代码路径。建议在实施前先运行一次测试，确认基线状态。
+
+---
 
 ## 总结
 
-需求文档和任务分解质量良好。功能边界清晰，技术方案与项目现有模式高度一致，依赖关系合理，无阻塞性问题。建议项均为实现细节层面的补充，可在编码阶段自然解决。批准进入实现阶段。
+需求文档对架构问题的分析准确且全面，经代码验证所有描述的耦合点和重复模式均真实存在。任务拆分粒度合理，Phase 分层和依赖关系设计正确，优先级排序（先提取公共模块、再消除反向依赖、最后重划职责边界）符合重构最佳实践。SHOULD FIX 项主要是行数描述偏差和实施细节建议，不影响整体方案的可行性和正确性。
+
+**结论: APPROVED**

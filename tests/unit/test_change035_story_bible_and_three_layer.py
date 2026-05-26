@@ -241,57 +241,48 @@ class TestChapterPlanningCheckCascade:
         characters_json = "[]"
         world_setting_json = "{}"
 
-        mock_session = AsyncMock()
-        mock_result = MagicMock()
-        # Mocking an existing StoryBible
-        mock_bible = StoryBible(
-            novel_id="novel-plan-test",
-            worldview_rules="天玄大陆，百家争鸣",
-            character_cards=[],
-            hard_settings="不能使用热武器"
+        # Story bible context is now passed as a parameter (caller responsibility)
+        story_bible_context = (
+            "## 世界观规则:\n天玄大陆，百家争鸣\n\n"
+            "## 禁止违背的硬设定:\n不能使用热武器"
         )
-        mock_result.scalar_one_or_none.return_value = mock_bible
-        mock_session.execute = AsyncMock(return_value=mock_result)
 
-        with patch("src.core.database.get_db_session") as mock_db:
-            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
+        # Mock kg retrieve_context
+        kg_mock = AsyncMock()
+        kg_mock.retrieve_context = AsyncMock(return_value="【图谱记忆】林动与林琅天有仇怨")
+        kg_mock.extract_from_chapter = AsyncMock()
 
-            # Mock kg retrieve_context
-            kg_mock = AsyncMock()
-            kg_mock.retrieve_context = AsyncMock(return_value="【图谱记忆】林动与林琅天有仇怨")
-            kg_mock.extract_from_chapter = AsyncMock()
+        result = await generate_single_chapter(
+            client=client,
+            chapter_outline=chapter_outline,
+            previous_chapter=previous_chapter,
+            characters_json=characters_json,
+            world_setting_json=world_setting_json,
+            kg_service=kg_mock,
+            novel_id="novel-plan-test",
+            story_bible_context=story_bible_context,
+        )
 
-            result = await generate_single_chapter(
-                client=client,
-                chapter_outline=chapter_outline,
-                previous_chapter=previous_chapter,
-                characters_json=characters_json,
-                world_setting_json=world_setting_json,
-                kg_service=kg_mock,
-                novel_id="novel-plan-test"
-            )
+        # 1. Verify two LLM calls were made
+        assert client.generate.call_count == 2
 
-            # 1. Verify two LLM calls were made
-            assert client.generate.call_count == 2
+        # 2. Check the first call (planning prompt) variables
+        first_call_prompt = client.generate.call_args_list[0][0][0]
+        assert "章节规划单" in first_call_prompt or "规划任务" in first_call_prompt
+        assert "天玄大陆，百家争鸣" in first_call_prompt  # Bible context passed in
+        assert "【图谱记忆】" in first_call_prompt         # KG context retrieved
 
-            # 2. Check the first call (planning prompt) variables
-            first_call_prompt = client.generate.call_args_list[0][0][0]
-            assert "章节规划单" in first_call_prompt or "规划任务" in first_call_prompt
-            assert "天玄大陆，百家争鸣" in first_call_prompt  # Bible rules retrieved
-            assert "【图谱记忆】" in first_call_prompt         # KG context retrieved
+        # 3. Check the second call (chapter generation prompt) variables
+        second_call_prompt = client.generate.call_args_list[1][0][0]
+        assert "章节生成依据规划单与约束" in second_call_prompt
+        assert "林动获得大荒囚天指" in second_call_prompt  # Plan injected!
+        assert "神秘魔眼" in second_call_prompt            # Plan injected!
 
-            # 3. Check the second call (chapter generation prompt) variables
-            second_call_prompt = client.generate.call_args_list[1][0][0]
-            assert "章节生成依据规划单与约束" in second_call_prompt
-            assert "林动获得大荒囚天指" in second_call_prompt  # Plan injected!
-            assert "神秘魔眼" in second_call_prompt            # Plan injected!
+        # 4. Verify result formatting
+        assert result["chapter"] == 10
+        assert result["title"] == "大荒碑前"
+        assert result["content"] == mock_chapter_text
+        assert result["word_count"] > 0
 
-            # 4. Verify result formatting
-            assert result["chapter"] == 10
-            assert result["title"] == "大荒碑前"
-            assert result["content"] == mock_chapter_text
-            assert result["word_count"] > 0
-
-            # 5. Verify knowledge graph auto extraction called on completion
-            assert kg_mock.extract_from_chapter.called
+        # 5. Verify knowledge graph auto extraction called on completion
+        assert kg_mock.extract_from_chapter.called

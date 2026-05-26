@@ -113,7 +113,7 @@ class TestAutoImproveChapter:
                 return_value=mock_manager,
             ),
             patch(
-                "src.api.services.rewrite_loop_service._evaluate_chapter_quality",
+                "src.api.services.rewrite_loop_service._evaluate_chapter_quality_for_novel",
                 new_callable=AsyncMock,
                 return_value=_high_scores(),
             ),
@@ -139,6 +139,21 @@ class TestAutoImproveChapter:
 
         mock_rewrite = AsyncMock(return_value="Rewritten content")
 
+        # Mock the context builder used for rewrite context
+        mock_rewrite_ctx = MagicMock()
+        mock_rewrite_ctx.world_setting = ""
+        mock_rewrite_ctx.chapter_outline = ""
+        mock_rewrite_ctx.prev_chapter_summary = ""
+        mock_rewrite_ctx.next_chapter_summary = ""
+        mock_rewrite_ctx.characters = ""
+        mock_rewrite_ctx.story_bible = ""
+        mock_rewrite_ctx.writing_style = ""
+
+        mock_builder = MagicMock()
+        mock_builder.build_rewrite_context = AsyncMock(return_value=mock_rewrite_ctx)
+
+        ctx_factory, _ = _fake_session()
+
         svc = RewriteLoopService()
 
         with (
@@ -147,13 +162,21 @@ class TestAutoImproveChapter:
                 return_value=mock_manager,
             ),
             patch(
-                "src.api.services.rewrite_loop_service._evaluate_chapter_quality",
+                "src.api.services.rewrite_loop_service._evaluate_chapter_quality_for_novel",
                 new_callable=AsyncMock,
                 return_value=_low_scores(),
             ),
             patch(
                 "src.core.llm.chapter_rewriter.batch_targeted_rewrite",
                 mock_rewrite,
+            ),
+            patch(
+                "src.api.services.rewrite_loop_service.get_db_session",
+                ctx_factory,
+            ),
+            patch(
+                "src.api.services.rewrite_loop_service.NovelContextBuilder",
+                return_value=mock_builder,
             ),
         ):
             result = await svc.auto_improve_chapter(
@@ -170,12 +193,12 @@ class TestAutoImproveChapter:
 # ===========================================================================
 
 class TestEvaluateChapterQuality:
-    """Tests for the module-level _evaluate_chapter_quality function."""
+    """Tests for the module-level _evaluate_chapter_quality_for_novel function."""
 
     @pytest.mark.asyncio
     async def test_normal_parse(self):
         """Valid LLM JSON response is parsed into scores dict."""
-        from src.api.services.rewrite_loop_service import _evaluate_chapter_quality
+        from src.api.services.rewrite_loop_service import _evaluate_chapter_quality_for_novel
 
         valid_response = (
             '{"scores": {"advancement": 0.8, "conflict": 0.7, '
@@ -198,11 +221,11 @@ class TestEvaluateChapterQuality:
                 ctx_factory,
             ),
             patch(
-                "src.api.services.rewrite_loop_service.get_llm_client",
+                "src.core.quality.evaluator.get_llm_client",
                 return_value=mock_client,
             ),
         ):
-            scores = await _evaluate_chapter_quality(_novel_id(), 1, "chapter text")
+            scores = await _evaluate_chapter_quality_for_novel(_novel_id(), 1, "chapter text")
 
         assert scores["advancement"] == 0.8
         assert scores["conflict"] == 0.7
@@ -212,9 +235,9 @@ class TestEvaluateChapterQuality:
     async def test_parse_failure_returns_default_scores(self):
         """Invalid LLM response returns default 0.5 scores for all dimensions."""
         from src.api.services.rewrite_loop_service import (
-            QUALITY_DIMENSIONS,
-            _evaluate_chapter_quality,
+            _evaluate_chapter_quality_for_novel,
         )
+        from src.core.quality import QUALITY_DIMENSIONS
 
         ctx_factory, _ = _fake_session()
         mock_client = AsyncMock()
@@ -226,11 +249,11 @@ class TestEvaluateChapterQuality:
                 ctx_factory,
             ),
             patch(
-                "src.api.services.rewrite_loop_service.get_llm_client",
+                "src.core.quality.evaluator.get_llm_client",
                 return_value=mock_client,
             ),
         ):
-            scores = await _evaluate_chapter_quality(_novel_id(), 1, "chapter text")
+            scores = await _evaluate_chapter_quality_for_novel(_novel_id(), 1, "chapter text")
 
         for dim in QUALITY_DIMENSIONS:
             assert scores[dim] == 0.5

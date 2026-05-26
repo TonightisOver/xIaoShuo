@@ -636,7 +636,24 @@ async def rewrite_chapter_segment(novel_id: str, chapter_number: int, request: R
     if not chapter:
         raise HTTPException(status_code=404, detail="Chapter not found")
 
+    from src.core.context import NovelContextBuilder
+    from src.core.database import get_db_session
     from src.core.llm.chapter_rewriter import rewrite_chapter_segment as do_rewrite
+
+    async with get_db_session() as session:
+        ctx = await NovelContextBuilder().build_rewrite_context(
+            session, novel_id, chapter_number
+        )
+    context = {
+        "world_setting": ctx.world_setting,
+        "chapter_outline": ctx.chapter_outline,
+        "prev_chapter_summary": ctx.prev_chapter_summary,
+        "next_chapter_summary": ctx.next_chapter_summary,
+        "characters": ctx.characters,
+        "story_bible": ctx.story_bible,
+        "writing_style": ctx.writing_style,
+    }
+
     try:
         rewritten = await do_rewrite(
             novel_id=novel_id,
@@ -644,6 +661,7 @@ async def rewrite_chapter_segment(novel_id: str, chapter_number: int, request: R
             full_content=request.full_content,
             selected_text=request.selected_text,
             instruction=request.instruction,
+            context=context,
         )
     except asyncio.TimeoutError:
         raise HTTPException(status_code=504, detail="AI rewrite timed out")
@@ -834,6 +852,8 @@ async def targeted_rewrite_chapter(
     novel_id: str, chapter_number: int, request: TargetedRewriteRequest
 ):
     """定向改写章节"""
+    from src.core.context import NovelContextBuilder
+    from src.core.database import get_db_session
     from src.core.llm.chapter_rewriter import (
         batch_targeted_rewrite,
         targeted_rewrite,
@@ -848,6 +868,20 @@ async def targeted_rewrite_chapter(
         raise HTTPException(status_code=400, detail="章节无内容，无法改写")
 
     full_content = chapter["content"]
+
+    async with get_db_session() as session:
+        ctx = await NovelContextBuilder().build_rewrite_context(
+            session, novel_id, chapter_number
+        )
+    context = {
+        "world_setting": ctx.world_setting,
+        "chapter_outline": ctx.chapter_outline,
+        "prev_chapter_summary": ctx.prev_chapter_summary,
+        "next_chapter_summary": ctx.next_chapter_summary,
+        "characters": ctx.characters,
+        "story_bible": ctx.story_bible,
+        "writing_style": ctx.writing_style,
+    }
 
     try:
         if request.auto_actions:
@@ -866,6 +900,7 @@ async def targeted_rewrite_chapter(
                 chapter_number=chapter_number,
                 full_content=full_content,
                 actions=actions,
+                context=context,
             )
         else:
             new_content = await targeted_rewrite(
@@ -874,6 +909,7 @@ async def targeted_rewrite_chapter(
                 full_content=full_content,
                 rewrite_type=request.rewrite_type,
                 instruction=request.instruction,
+                context=context,
             )
     except asyncio.TimeoutError:
         raise HTTPException(status_code=504, detail="AI rewrite timed out")

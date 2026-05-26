@@ -17,14 +17,14 @@ import pytest
 # ============================================================
 
 class TestGeneratePowerSystemsAI:
-    """Tests for StorylineService.generate_power_systems_ai()."""
+    """Tests for AIGenerationService.generate_power_systems_ai()."""
 
     @pytest.mark.asyncio
     async def test_generates_power_systems_from_world_setting(self):
         """Happy path: world setting + novel info produce 1-3 power systems."""
-        from src.api.services.storyline_service import StorylineService
+        from src.api.services.ai_generation_service import AIGenerationService
 
-        service = StorylineService()
+        service = AIGenerationService()
 
         novel_data = {
             "id": 1, "novel_id": "novel-test-1", "title": "测试",
@@ -55,7 +55,7 @@ class TestGeneratePowerSystemsAI:
 
         with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
-             patch("src.core.json_utils.safe_json_parse", return_value=llm_response):
+             patch("src.core.llm.helpers.safe_json_parse", return_value=llm_response):
 
             mock_llm_client = AsyncMock()
             mock_llm_client.generate = AsyncMock(return_value="[{...}]")
@@ -78,9 +78,9 @@ class TestGeneratePowerSystemsAI:
     @pytest.mark.asyncio
     async def test_generates_power_systems_with_empty_world(self):
         """When world_setting is None/empty, still generates with novel info only."""
-        from src.api.services.storyline_service import StorylineService
+        from src.api.services.ai_generation_service import AIGenerationService
 
-        service = StorylineService()
+        service = AIGenerationService()
 
         novel_data = {
             "id": 1, "novel_id": "novel-test-2", "title": "测试2",
@@ -95,7 +95,7 @@ class TestGeneratePowerSystemsAI:
 
         with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
-             patch("src.core.json_utils.safe_json_parse", return_value=llm_response):
+             patch("src.core.llm.helpers.safe_json_parse", return_value=llm_response):
 
             mock_llm_client = AsyncMock()
             mock_llm_client.generate = AsyncMock(return_value="[{...}]")
@@ -115,9 +115,9 @@ class TestGeneratePowerSystemsAI:
     @pytest.mark.asyncio
     async def test_raises_when_novel_not_found(self):
         """Raises ValueError when novel does not exist."""
-        from src.api.services.storyline_service import StorylineService
+        from src.api.services.ai_generation_service import AIGenerationService
 
-        service = StorylineService()
+        service = AIGenerationService()
 
         with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr:
             mock_manager = AsyncMock()
@@ -130,9 +130,9 @@ class TestGeneratePowerSystemsAI:
     @pytest.mark.asyncio
     async def test_handles_llm_returning_invalid_json(self):
         """Falls back to empty list when LLM returns unparseable content."""
-        from src.api.services.storyline_service import StorylineService
+        from src.api.services.ai_generation_service import AIGenerationService
 
-        service = StorylineService()
+        service = AIGenerationService()
 
         novel_data = {
             "id": 1, "novel_id": "novel-test-3", "title": "测试3",
@@ -142,7 +142,7 @@ class TestGeneratePowerSystemsAI:
 
         with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
-             patch("src.core.json_utils.safe_json_parse", return_value=[]) as mock_parse:
+             patch("src.core.llm.helpers.safe_json_parse", return_value=[]) as mock_parse:
 
             mock_llm_client = AsyncMock()
             mock_llm_client.generate = AsyncMock(return_value="garbage text")
@@ -161,9 +161,9 @@ class TestGeneratePowerSystemsAI:
     @pytest.mark.asyncio
     async def test_handles_llm_returning_singular_dict(self):
         """Falls back to empty list when LLM returns a dict instead of list."""
-        from src.api.services.storyline_service import StorylineService
+        from src.api.services.ai_generation_service import AIGenerationService
 
-        service = StorylineService()
+        service = AIGenerationService()
 
         novel_data = {
             "id": 1, "novel_id": "novel-test-3b", "title": "测试3b",
@@ -173,7 +173,7 @@ class TestGeneratePowerSystemsAI:
 
         with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
-             patch("src.core.json_utils.safe_json_parse", return_value={"name": "单一体系"}):
+             patch("src.core.llm.helpers.safe_json_parse", return_value={"name": "单一体系"}):
 
             mock_llm_client = AsyncMock()
             mock_llm_client.generate = AsyncMock(return_value="{\"name\": \"单一体系\"}")
@@ -191,9 +191,9 @@ class TestGeneratePowerSystemsAI:
     @pytest.mark.asyncio
     async def test_skips_items_without_name(self):
         """Items in the LLM response without a 'name' field are skipped."""
-        from src.api.services.storyline_service import StorylineService
+        from src.api.services.ai_generation_service import AIGenerationService
 
-        service = StorylineService()
+        service = AIGenerationService()
 
         novel_data = {
             "id": 1, "novel_id": "novel-test-4", "title": "测试4",
@@ -209,7 +209,7 @@ class TestGeneratePowerSystemsAI:
 
         with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
-             patch("src.core.json_utils.safe_json_parse", return_value=llm_response):
+             patch("src.core.llm.helpers.safe_json_parse", return_value=llm_response):
 
             mock_llm_client = AsyncMock()
             mock_llm_client.generate = AsyncMock(return_value="[{...}]")
@@ -625,7 +625,7 @@ class TestRunSubFeature:
         ) as mock_bus, patch(
             "src.api.services.novel_generator.get_task_manager"
         ) as mock_tm, patch(
-            "src.api.services.storyline_service.get_storyline_service"
+            "src.api.services.ai_generation_service.get_ai_generation_service"
         ) as mock_sl:
 
             mock_bus.return_value = FakeEventBus()
@@ -736,7 +736,7 @@ class TestRunSubFeature:
         with patch("src.api.services.novel_generator.get_event_bus") as mock_bus, \
              patch("src.api.services.novel_generator.get_task_manager") as mock_tm, \
              patch(
-                "src.api.services.storyline_service.get_storyline_service"
+                "src.api.services.ai_generation_service.get_ai_generation_service"
              ) as mock_sl:
 
             mock_bus.return_value = FakeEventBus()
