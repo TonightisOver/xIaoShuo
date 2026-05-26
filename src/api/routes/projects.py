@@ -1,10 +1,10 @@
 """小说项目管理 API 路由"""
 
 import asyncio
-import structlog
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from typing import Literal
 
+import structlog
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.api.models.requests import CreateNovelRequest

@@ -223,7 +223,9 @@ async def _generate_single_chapter_inner(
             from sqlalchemy import select
 
             from src.api.models.db_models import StoryBible
-            from src.api.services.story_bible_service import extract_relevant_constraints
+            from src.api.services.story_bible_service import (
+                extract_relevant_constraints,
+            )
             from src.core.database import get_db_session
 
             async with get_db_session() as session:
