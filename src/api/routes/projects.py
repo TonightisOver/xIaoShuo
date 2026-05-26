@@ -743,3 +743,203 @@ async def fix_volume_numbers(novel_id: str):
     manager = get_novel_manager()
     fixed_count = await manager.fix_volume_numbers(novel_id)
     return {"status": "fixed", "chapters_updated": fixed_count}
+
+
+# --- Blueprint API ---
+
+
+class BlueprintUpdateRequest(BaseModel):
+    chapter_type: str | None = None
+    plot_goal: str | None = None
+    hook_design: str | None = None
+    foreshadow_actions: list[dict] | None = None
+    cliffhanger: str | None = None
+    pacing_target: str | None = None
+    key_characters: list[str] | None = None
+    word_target: int | None = None
+
+
+@router.get("/{novel_id}/chapters/{chapter_number}/blueprint")
+async def get_blueprint(novel_id: str, chapter_number: int):
+    """获取章节蓝图"""
+    from src.api.services.blueprint_service import BlueprintService
+
+    service = BlueprintService()
+    blueprint = await service.get_blueprint(novel_id, chapter_number)
+    if not blueprint:
+        raise HTTPException(status_code=404, detail="该章节暂无蓝图")
+    return blueprint
+
+
+@router.put("/{novel_id}/chapters/{chapter_number}/blueprint")
+async def update_blueprint(
+    novel_id: str, chapter_number: int, request: BlueprintUpdateRequest
+):
+    """用户手动编辑蓝图"""
+    from src.api.services.blueprint_service import BlueprintService
+
+    service = BlueprintService()
+    updates = request.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="无更新字段")
+    result = await service.update_blueprint(novel_id, chapter_number, updates)
+    return result
+
+
+@router.post(
+    "/{novel_id}/chapters/{chapter_number}/blueprint/generate",
+    status_code=201,
+)
+async def generate_blueprint(novel_id: str, chapter_number: int):
+    """触发 LLM 生成蓝图（不触发章节生成）"""
+    from sqlalchemy import select
+
+    from src.api.models.db_models import Outline
+    from src.api.services.blueprint_service import BlueprintService
+    from src.core.database import get_db_session
+
+    async with get_db_session() as session:
+        stmt = select(Outline).where(
+            Outline.novel_id == novel_id,
+            Outline.level == "chapter",
+            Outline.chapter_number == chapter_number,
+        )
+        result = await session.execute(stmt)
+        outline = result.scalar_one_or_none()
+
+    chapter_outline = (
+        outline.content
+        if outline
+        else {"chapter": chapter_number, "title": f"第{chapter_number}章"}
+    )
+
+    service = BlueprintService()
+    blueprint = await service.generate_blueprint(
+        novel_id, chapter_number, chapter_outline
+    )
+    return blueprint
+
+
+# --- Targeted Rewrite API ---
+
+
+class TargetedRewriteRequest(BaseModel):
+    rewrite_type: str = Field(..., description="改写类型")
+    instruction: str = Field(default="", description="额外改写指令")
+    auto_actions: bool = Field(default=False, description="是否自动执行所有改写动作")
+
+
+@router.post("/{novel_id}/chapters/{chapter_number}/targeted-rewrite")
+async def targeted_rewrite_chapter(
+    novel_id: str, chapter_number: int, request: TargetedRewriteRequest
+):
+    """定向改写章节"""
+    from src.core.llm.chapter_rewriter import (
+        batch_targeted_rewrite,
+        targeted_rewrite,
+    )
+
+    manager = get_novel_manager()
+    chapter = await manager.get_chapter(novel_id, chapter_number)
+    if not chapter:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+
+    if not chapter.get("content"):
+        raise HTTPException(status_code=400, detail="章节无内容，无法改写")
+
+    full_content = chapter["content"]
+
+    try:
+        if request.auto_actions:
+            # 从 blueprint 读取 rewrite_actions，调用 batch_targeted_rewrite
+            from src.api.services.blueprint_service import BlueprintService
+
+            bp_service = BlueprintService()
+            bp = await bp_service.get_blueprint(novel_id, chapter_number)
+            actions = (bp or {}).get("rewrite_actions", [])
+            if not actions:
+                raise HTTPException(
+                    status_code=400, detail="蓝图中无改写动作，请先生成质量评估"
+                )
+            new_content = await batch_targeted_rewrite(
+                novel_id=novel_id,
+                chapter_number=chapter_number,
+                full_content=full_content,
+                actions=actions,
+            )
+        else:
+            new_content = await targeted_rewrite(
+                novel_id=novel_id,
+                chapter_number=chapter_number,
+                full_content=full_content,
+                rewrite_type=request.rewrite_type,
+                instruction=request.instruction,
+            )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="AI rewrite timed out")
+    except Exception as e:
+        logger.error("targeted_rewrite_failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Targeted rewrite failed")
+
+    # 创建新 ChapterVersion
+    new_version = await manager.create_chapter_version(
+        novel_id=novel_id,
+        chapter_number=chapter_number,
+        content=new_content,
+        source="ai_rewrite",
+        rewrite_instruction=request.rewrite_type,
+        is_active=True,
+    )
+
+    return {
+        "new_version_number": new_version,
+        "word_count": len(new_content),
+        "rewrite_type": request.rewrite_type,
+    }
+
+
+# --- Auto Improve API ---
+
+
+class AutoImproveRequest(BaseModel):
+    max_iterations: int = Field(default=3, ge=1, le=5)
+    target_score: float = Field(default=0.6, ge=0.3, le=0.9)
+    dimensions: list[str] | None = None
+
+
+@router.post("/{novel_id}/chapters/{chapter_number}/auto-improve")
+async def auto_improve_chapter(
+    novel_id: str, chapter_number: int, request: AutoImproveRequest
+):
+    """自动改善闭环"""
+    from src.api.services.rewrite_loop_service import RewriteLoopService
+
+    manager = get_novel_manager()
+    chapter = await manager.get_chapter(novel_id, chapter_number)
+    if not chapter:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+
+    if not chapter.get("content"):
+        raise HTTPException(status_code=400, detail="章节无内容，无法改善")
+
+    service = RewriteLoopService()
+    try:
+        result = await service.auto_improve_chapter(
+            novel_id=novel_id,
+            chapter_number=chapter_number,
+            max_iterations=request.max_iterations,
+            target_score=request.target_score,
+            dimensions=request.dimensions,
+        )
+    except Exception as e:
+        logger.error(
+            "auto_improve_failed",
+            novel_id=novel_id,
+            chapter_number=chapter_number,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Auto improve failed: {str(e)}"
+        )
+
+    return result

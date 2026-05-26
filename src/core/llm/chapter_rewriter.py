@@ -6,6 +6,7 @@ import json
 import structlog
 
 from src.core.llm.client import get_llm_client
+from src.core.llm.prompts import TARGETED_REWRITE_PROMPTS
 
 logger = structlog.get_logger(__name__)
 
@@ -229,3 +230,150 @@ def _build_rewrite_prompt(
     )
 
     return "\n\n".join(sections)
+
+
+async def targeted_rewrite(
+    novel_id: str,
+    chapter_number: int,
+    full_content: str,
+    rewrite_type: str,
+    instruction: str = "",
+) -> str:
+    """按改写类型对整章内容执行定向改写。
+
+    Args:
+        novel_id: 小说 ID
+        chapter_number: 章节号
+        full_content: 章节完整正文
+        rewrite_type: 改写类型
+        instruction: 额外改写指令（可选）
+
+    Returns:
+        改写后的完整章节内容
+
+    Raises:
+        ValueError: rewrite_type 不在支持列表中
+        asyncio.TimeoutError: 超过 120s 超时
+    """
+    if rewrite_type not in TARGETED_REWRITE_PROMPTS:
+        raise ValueError(
+            f"Unsupported rewrite_type: {rewrite_type}. "
+            f"Supported: {list(TARGETED_REWRITE_PROMPTS.keys())}"
+        )
+
+    logger.info(
+        "targeted_rewrite_start",
+        novel_id=novel_id,
+        chapter_number=chapter_number,
+        rewrite_type=rewrite_type,
+        content_length=len(full_content),
+    )
+
+    context = await _build_rewrite_context(novel_id, chapter_number)
+
+    prompt_template = TARGETED_REWRITE_PROMPTS[rewrite_type]
+    prompt = prompt_template.format(
+        full_content=full_content,
+        instruction=instruction or "无额外指令",
+        context=context.get("chapter_outline", ""),
+        characters=context.get("characters", "无人物信息"),
+        world_setting=context.get("world_setting", "无世界设定"),
+    )
+
+    client = get_llm_client()
+    result = await asyncio.wait_for(
+        client.generate(prompt, max_tokens=8000),
+        timeout=REWRITE_TIMEOUT_SECONDS,
+    )
+
+    logger.info(
+        "targeted_rewrite_done",
+        novel_id=novel_id,
+        chapter_number=chapter_number,
+        rewrite_type=rewrite_type,
+        result_length=len(result),
+    )
+    return result.strip()
+
+
+async def batch_targeted_rewrite(
+    novel_id: str,
+    chapter_number: int,
+    full_content: str,
+    actions: list[dict],
+) -> str:
+    """按优先级顺序依次执行多个改写动作。
+
+    每次改写基于上一次的输出。
+
+    Args:
+        novel_id: 小说 ID
+        chapter_number: 章节号
+        full_content: 章节完整正文
+        actions: list of {action_type, dimension, score, instruction, priority}
+
+    Returns:
+        最终改写后的完整章节内容
+    """
+    if not actions:
+        return full_content
+
+    sorted_actions = sorted(actions, key=lambda a: a.get("priority", 99))
+
+    logger.info(
+        "batch_targeted_rewrite_start",
+        novel_id=novel_id,
+        chapter_number=chapter_number,
+        action_count=len(sorted_actions),
+        action_types=[a.get("action_type") for a in sorted_actions],
+    )
+
+    current_content = full_content
+    for i, action in enumerate(sorted_actions):
+        action_type = action.get("action_type", "")
+        instruction = action.get("instruction", "")
+
+        if action_type not in TARGETED_REWRITE_PROMPTS:
+            logger.warning(
+                "batch_rewrite_skip_unknown_type",
+                novel_id=novel_id,
+                chapter_number=chapter_number,
+                action_type=action_type,
+                step=i + 1,
+            )
+            continue
+
+        try:
+            current_content = await targeted_rewrite(
+                novel_id=novel_id,
+                chapter_number=chapter_number,
+                full_content=current_content,
+                rewrite_type=action_type,
+                instruction=instruction,
+            )
+            logger.info(
+                "batch_rewrite_step_done",
+                novel_id=novel_id,
+                chapter_number=chapter_number,
+                step=i + 1,
+                action_type=action_type,
+                content_length=len(current_content),
+            )
+        except Exception as e:
+            logger.error(
+                "batch_rewrite_step_failed",
+                novel_id=novel_id,
+                chapter_number=chapter_number,
+                step=i + 1,
+                action_type=action_type,
+                error=str(e),
+            )
+            break
+
+    logger.info(
+        "batch_targeted_rewrite_done",
+        novel_id=novel_id,
+        chapter_number=chapter_number,
+        final_length=len(current_content),
+    )
+    return current_content

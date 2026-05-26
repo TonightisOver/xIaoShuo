@@ -1,59 +1,68 @@
-﻿# plan_review 评审报告
+# plan_review 评审报告
 
 **评审轮次**: 第 1 轮
-**评审对象**: CHANGE-044-百万字长篇生成验证 需求分析 + 技术设计
+**评审对象**: 章节节奏控制与定向改写闭环 (requirements.md + tasks.md)
 **日期**: 2026-05-25
 
 ## 评审结论
-**结果**：APPROVED（附带建议项）
+**结果**：APPROVED
+
+---
 
 ## 评审发现
 
 ### MUST FIX（必须修复）
 
-无
+无。
 
 ### SHOULD FIX（建议修复）
 
-1. **大纲生成的 token 上限矛盾**
-   - 位置：技术设计 D1 章节 + outline_generation.py:39
-   - 问题：技术设计指出 DeepSeek API 单次输出 token 上限约 4000，不够输出完整百万字大纲，但当前 outline_generation.py 中 max_tokens=4000。设计文档中未明确说明三级大纲各阶段的具体 token 分配策略（总纲需要多少 token、卷纲需要多少 token），且未评估 DeepSeek 对输出 35~50 章章纲（每章需含 chapter_type、摘要、冲突设定等字段）的单次调用是否可行。若卷纲一次仍无法输出 40 章的完整章纲，需要进一步细化为卷纲 + 逐章补全两步。
-   - 建议：补充各阶段 token 预算估算，并明确当卷纲输出超过 token 上限时的降级策略（如分批次输出章纲）。
+1. **Blueprint 替代现有 CHAPTER_PLANNING_PROMPT 需保留降级路径**
+   - 位置：requirements.md FR-1 "替代现有 CHAPTER_PLANNING_PROMPT"；tasks.md T5
+   - 问题：当前 `chapter_generator.py` 的双级联流程（先调用 CHAPTER_PLANNING_PROMPT 生成规划单，再注入正文生成）是核心生成逻辑。需求说"替代"，但 Blueprint 是结构化 JSON 字段，而现有规划单是自由文本 Markdown。T5 任务描述过于简略，未说明如何兼容已有小说（已生成章节无 Blueprint 的情况）。
+   - 建议：T5 描述中补充：(a) 对无 Blueprint 的章节保留现有 CHAPTER_PLANNING_PROMPT 降级路径；(b) 明确 Blueprint JSON 如何转化为注入正文 Prompt 的约束文本。
 
-2. **断点恢复的并发安全未说明**
-   - 位置：API 设计 pause/resume 端点 + LongFormProgress 模型
-   - 问题：LongFormProgress 记录了 current_chapter 和 status，但设计中未提及暂停/恢复操作的并发安全机制。若用户在生成过程中调用 pause，当前 LLM 调用可能仍在进行中，resume 时如何确定是从当前 chapter 还是下一 chapter 恢复？是否有锁机制防止重复触发同一卷的生成？
-   - 建议：在技术设计中补充 pause/resume 的状态机转换图，明确暂停中已完成的章和暂停中未完成的章的处理方式。
+2. **定向改写 API 与现有 rewrite 端点的定位区分未说明**
+   - 位置：requirements.md FR-3
+   - 问题：现有 `POST /{novel_id}/chapters/{chapter_number}/rewrite` 是"选中文本片段改写"（需传入 selected_text），新增的 `targeted-rewrite` 是"按维度整章改写"。两者功能有重叠但粒度不同，需求文档未说明两者的定位区分和是否共存。
+   - 建议：补充一句说明：现有 rewrite 端点保留用于用户手动选段改写，新增 targeted-rewrite 用于系统自动按质量维度改写，两者共存互不影响。
 
-3. **伏笔追踪阈值调整缺乏具体参数**
-   - 位置：需求分析 F6 + 风险表
-   - 问题：风险表提到 10章阈值在300+章中过于宽松，但未给出调整后的具体参数。验收标准中注水检测能识别连续3章低 advancement 是固定阈值，与动态调整阈值的描述不一致。
-   - 建议：明确注水检测阈值是固定（连续3章）还是动态（基于卷长度的百分比），二选一并在验收标准中统一。
+3. **T4 依赖标注不完整**
+   - 位置：tasks.md T4 "依赖: T1"
+   - 问题：T4 "Quality-to-Action 映射逻辑" 需要读取八维评分结果的数据结构（来自 `quality_check.py` 的 scores dict），但依赖仅标注了 T1（数据模型）。实现者需要了解评分输出格式才能正确映射。
+   - 建议：在 T4 描述中补充"参考 `src/core/langgraph/nodes/quality_check.py` 的评分输出格式（8 维度 key: advancement/conflict/character_consistency/world_consistency/foreshadowing/pacing/readability/trope_alignment）"。
 
-4. **新增 4 个 service 文件的职责边界模糊**
-   - 位置：影响评估涉及文件表
-   - 问题：quality_report_service.py、filler_detection_service.py、foreshadow_tracker_service.py、long_form_progress_service.py 四个新服务。其中 filler_detection 和 foreshadow_tracker 的功能在需求分析 F6 和 F5 中描述为监控仪表盘的子功能，是否有必要拆为独立服务？如果它们都读取 ChapterVersion 的质量评分数据，是否存在重复的查询逻辑？
-   - 建议：考虑将 filler_detection 和 foreshadow_tracker 合并为一个 long_form_monitoring_service.py，减少服务间的职责碎片化。此为架构偏好，不阻塞流程。
+4. **Blueprint.chapter_type 与 Chapter.chapter_type 字段重复**
+   - 位置：requirements.md FR-1 蓝图字段
+   - 问题：现有 `Chapter` model 已有 `chapter_type` 字段（String(30)）。Blueprint 中也定义了 `chapter_type`。需明确两者关系：Blueprint 的 chapter_type 是规划阶段的预设值，生成后是否同步写入 Chapter.chapter_type？
+   - 建议：在 T1 或 FR-1 中补充说明数据流向：Blueprint.chapter_type 为规划值，章节生成完成后自动同步到 Chapter.chapter_type。
 
-5. **LongFormProgress 表与现有 Volume 表字段重叠**
-   - 位置：数据模型 LongFormProgress vs Volume
-   - 问题：Volume 表新增了 generated_chapters、avg_quality_score、quality_report 字段，LongFormProgress 表也记录了 chapters_completed、quality_report、filler_report。两表存在数据冗余，更新时需要同步，容易导致不一致。
-   - 建议：明确哪张表为权威数据源。建议 LongFormProgress 只记录生成进度（status、current_chapter、errors），将质量报告数据统一归到 Volume 表。
+5. **auto-improve 闭环的终止条件需精确定义**
+   - 位置：requirements.md FR-4
+   - 问题：FR-4 说"最多迭代 N 轮（默认 3 轮）"，但未定义"达标"的具体条件。是所有维度 >= 0.5？还是 overall >= 某阈值？还是所有之前低分维度都提升了？提前终止的条件不明确。
+   - 建议：补充达标条件定义，例如"当所有维度评分 >= 阈值（默认 0.5）或本轮改写后无维度提升时终止循环"。
+
+6. **T10 Alembic Migration 执行顺序建议提前**
+   - 位置：tasks.md T10
+   - 问题：T10 依赖 T1 是正确的，但 T3/T4/T5 等 service 层任务在开发时需要数据库表已存在才能做集成测试。当前任务编号暗示 T10 在 T9 之后执行。
+   - 建议：调整实际执行顺序为 T1 -> T10 -> T2 -> T3/T4/T5/T6 并行 -> T7/T8/T9 -> T11，确保 service 开发时 DB schema 已就绪。
 
 ### INFO（信息提示）
 
-1. **数据库迁移脚本路径未指定**：影响评估中提到需要 Alembic 迁移，但未指定迁移脚本的命名（如 versions/xxx_add_long_form_fields.py），实现时需注意。
+1. **ChapterVersion.source 约束无需扩展**：当前 CHECK 约束已包含 `'ai_rewrite'`，定向改写产生的版本可直接复用此值，无需新增枚举。设计合理。
 
-2. **性能估算基本合理**：1500+ 次 LLM 调用、2~4 小时生成时间、50MB 内存峰值的估算与百万字规模匹配，无明显夸大或遗漏。
+2. **Prompt 模板文件膨胀预警**：`prompts.py` 当前已 414 行，T2 将新增蓝图生成和 8 种改写类型的模板。建议实现时考虑按功能拆分为子模块（如 `prompts/blueprint.py`、`prompts/rewrite.py`），但不阻塞当前需求。
 
-3. **需求分析与技术设计的一致性良好**：F1~F6 六个功能点在技术设计中均有对应的设计决策（D1~D6），覆盖完整。
+3. **性能约束可行**："单章蓝图生成 < 15s" 和 "单次定向改写 < 60s" 与现有 LLM 调用超时设置（chapter_rewriter: 120s, chapter_generator: 600s）兼容，DeepSeek API 响应时间在此范围内可行。
 
-4. **不需要改动的部分判断合理**：LLM 客户端、DB 基础模型、API 路由框架、事件总线确实无需改动，变更范围控制得当。
+4. **Novel relationship 建议**：新增 ChapterBlueprint 建议通过 novel_id + chapter_number 直接查询，无需在 Novel model 中添加 relationship，避免 Novel model 过度膨胀（当前已有 7 个 relationship）。
+
+5. **现有 rewrite 上下文构建可复用**：`chapter_rewriter.py` 中的 `_build_rewrite_context()` 函数已实现从 DB 读取世界观、大纲、人物卡、StoryBible 等上下文，定向改写引擎（T6）可直接复用此函数，减少重复代码。
+
+---
 
 ## 总结
 
-需求分析和技术设计整体质量较高，功能覆盖完整，技术方案与现有架构兼容性好。核心目标百万字规模下的工程健壮性和一致性维护能力定义清晰，避免了生成质量这一难以量化的目标干扰工程验证。
+需求设计完整，技术方案与现有架构兼容性良好，复用了 ChapterVersion、八维质量评估、LLM client 等现有基础设施。任务拆分粒度合理（11 个任务），依赖关系基本正确。核心关注点是：(1) Blueprint 替代现有规划流程时需保留降级路径以兼容存量数据；(2) 新旧改写 API 的定位需在文档中明确区分；(3) auto-improve 的终止条件需精确定义以避免实现歧义。以上均为 SHOULD FIX 级别建议，不阻塞进入实现阶段。
 
-主要关注点集中在三个方面：(1) 三级大纲各阶段的 token 可行性需要更精确的评估，特别是卷纲阶段单次输出 35~50 章章纲是否超出 DeepSeek 输出上限；(2) pause/resume 的并发安全和状态机转换需要补充说明；(3) LongFormProgress 与 Volume 表的数据冗余需要明确归属。
-
-以上建议项均不阻塞流程，可在实现阶段逐步解决。
+**结论：APPROVED**

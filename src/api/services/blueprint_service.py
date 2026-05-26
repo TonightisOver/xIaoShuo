@@ -1,0 +1,268 @@
+"""章节蓝图服务 — 生成、查询、更新结构化蓝图"""
+
+import json
+
+import structlog
+from sqlalchemy import select, update
+
+from src.api.models.db_models import (
+    Chapter,
+    ChapterBlueprint,
+    Novel,
+    Outline,
+    StoryBible,
+)
+from src.api.services.knowledge_graph_service import KnowledgeGraphService
+from src.core.database import get_db_session
+from src.core.json_utils import safe_json_parse
+from src.core.llm.client import get_llm_client
+from src.core.llm.prompts import BLUEPRINT_GENERATION_PROMPT
+
+logger = structlog.get_logger(__name__)
+
+BLUEPRINT_FIELDS = [
+    "chapter_type",
+    "plot_goal",
+    "hook_design",
+    "foreshadow_actions",
+    "cliffhanger",
+    "pacing_target",
+    "key_characters",
+    "word_target",
+]
+
+
+class BlueprintService:
+    """章节蓝图的生成、查询与更新"""
+
+    async def generate_blueprint(
+        self,
+        novel_id: str,
+        chapter_number: int,
+        chapter_outline: dict,
+        volume_context: str = "",
+    ) -> dict:
+        """调用 LLM 生成结构化蓝图并持久化到 DB。"""
+        logger.info(
+            "generating_blueprint",
+            novel_id=novel_id,
+            chapter_number=chapter_number,
+        )
+
+        context = await self._build_context(novel_id, chapter_number, chapter_outline)
+
+        prompt = BLUEPRINT_GENERATION_PROMPT.format(
+            chapter_outline=json.dumps(chapter_outline, ensure_ascii=False),
+            previous_chapter=context["previous_chapter"],
+            story_bible=context["story_bible"],
+            kg_context=context["kg_context"],
+            volume_context=volume_context or context.get("volume_context", ""),
+        )
+
+        client = get_llm_client()
+        raw_response = await client.generate(prompt, max_tokens=2000)
+
+        blueprint_data = safe_json_parse(raw_response, fallback=None)
+        if blueprint_data is None:
+            logger.error(
+                "blueprint_json_parse_failed",
+                novel_id=novel_id,
+                chapter_number=chapter_number,
+                raw_length=len(raw_response),
+            )
+            blueprint_data = self._default_blueprint(chapter_outline)
+
+        async with get_db_session() as session:
+            await session.execute(
+                update(ChapterBlueprint)
+                .where(
+                    ChapterBlueprint.novel_id == novel_id,
+                    ChapterBlueprint.chapter_number == chapter_number,
+                    ChapterBlueprint.is_active == True,  # noqa: E712
+                )
+                .values(is_active=False)
+            )
+
+            new_bp = ChapterBlueprint(
+                novel_id=novel_id,
+                chapter_number=chapter_number,
+                chapter_type=blueprint_data.get("chapter_type", "main_advance"),
+                plot_goal=blueprint_data.get("plot_goal", ""),
+                hook_design=blueprint_data.get("hook_design", ""),
+                foreshadow_actions=blueprint_data.get("foreshadow_actions"),
+                cliffhanger=blueprint_data.get("cliffhanger", ""),
+                pacing_target=blueprint_data.get("pacing_target", "medium"),
+                key_characters=blueprint_data.get("key_characters"),
+                word_target=blueprint_data.get("word_target", 3000),
+                rewrite_actions=None,
+                is_active=True,
+            )
+            session.add(new_bp)
+
+        logger.info(
+            "blueprint_generated",
+            novel_id=novel_id,
+            chapter_number=chapter_number,
+            chapter_type=blueprint_data.get("chapter_type"),
+        )
+        return blueprint_data
+
+    async def get_blueprint(self, novel_id: str, chapter_number: int) -> dict | None:
+        """获取当前活跃蓝图"""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(ChapterBlueprint).where(
+                    ChapterBlueprint.novel_id == novel_id,
+                    ChapterBlueprint.chapter_number == chapter_number,
+                    ChapterBlueprint.is_active == True,  # noqa: E712
+                )
+            )
+            bp = result.scalar_one_or_none()
+            if bp is None:
+                return None
+            return self._model_to_dict(bp)
+
+    async def update_blueprint(
+        self, novel_id: str, chapter_number: int, updates: dict
+    ) -> dict:
+        """用户手动编辑蓝图字段"""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(ChapterBlueprint).where(
+                    ChapterBlueprint.novel_id == novel_id,
+                    ChapterBlueprint.chapter_number == chapter_number,
+                    ChapterBlueprint.is_active == True,  # noqa: E712
+                )
+            )
+            bp = result.scalar_one_or_none()
+            if bp is None:
+                raise ValueError(
+                    f"No active blueprint for novel={novel_id} chapter={chapter_number}"
+                )
+
+            for field, value in updates.items():
+                if field in BLUEPRINT_FIELDS and hasattr(bp, field):
+                    setattr(bp, field, value)
+
+        logger.info(
+            "blueprint_updated",
+            novel_id=novel_id,
+            chapter_number=chapter_number,
+            updated_fields=list(updates.keys()),
+        )
+        return self._model_to_dict(bp)
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    async def _build_context(
+        self, novel_id: str, chapter_number: int, chapter_outline: dict
+    ) -> dict:
+        """从 DB 读取蓝图生成所需的上下文"""
+        ctx: dict = {
+            "previous_chapter": "",
+            "story_bible": "",
+            "kg_context": "",
+            "volume_context": "",
+        }
+
+        async with get_db_session() as session:
+            # 前章摘要
+            if chapter_number > 1:
+                prev_res = await session.execute(
+                    select(Chapter).where(
+                        Chapter.novel_id == novel_id,
+                        Chapter.chapter_number == chapter_number - 1,
+                    )
+                )
+                prev_ch = prev_res.scalar_one_or_none()
+                if prev_ch and prev_ch.content:
+                    ctx["previous_chapter"] = prev_ch.content[:500]
+
+            # Story Bible
+            bible_res = await session.execute(
+                select(StoryBible).where(StoryBible.novel_id == novel_id)
+            )
+            bible = bible_res.scalar_one_or_none()
+            if bible:
+                parts = []
+                if bible.worldview_rules:
+                    parts.append(f"世界观规则：{bible.worldview_rules}")
+                if bible.hard_settings:
+                    parts.append(f"硬设定：{bible.hard_settings}")
+                if bible.character_cards:
+                    parts.append(
+                        f"人物卡：{json.dumps(bible.character_cards, ensure_ascii=False)}"
+                    )
+                if bible.foreshadowing_list:
+                    parts.append(
+                        f"伏笔列表：{json.dumps(bible.foreshadowing_list, ensure_ascii=False)}"
+                    )
+                ctx["story_bible"] = "\n".join(parts)
+
+            # 卷上下文
+            novel_res = await session.execute(
+                select(Novel).where(Novel.novel_id == novel_id)
+            )
+            novel = novel_res.scalar_one_or_none()
+            if novel and novel.is_long_form:
+                chapter_obj_res = await session.execute(
+                    select(Chapter).where(
+                        Chapter.novel_id == novel_id,
+                        Chapter.chapter_number == chapter_number,
+                    )
+                )
+                chapter_obj = chapter_obj_res.scalar_one_or_none()
+                if chapter_obj and chapter_obj.volume_number:
+                    vol_outline_res = await session.execute(
+                        select(Outline).where(
+                            Outline.novel_id == novel_id,
+                            Outline.level == "volume",
+                            Outline.volume_number == chapter_obj.volume_number,
+                        )
+                    )
+                    vol_outline = vol_outline_res.scalar_one_or_none()
+                    if vol_outline and vol_outline.content:
+                        ctx["volume_context"] = json.dumps(
+                            vol_outline.content, ensure_ascii=False
+                        )
+
+        # KG 上下文
+        try:
+            kg_service = KnowledgeGraphService()
+            ctx["kg_context"] = await kg_service.retrieve_context(
+                novel_id, chapter_outline
+            )
+        except Exception as e:
+            logger.warning("kg_context_retrieval_failed", error=str(e))
+
+        return ctx
+
+    @staticmethod
+    def _model_to_dict(bp: ChapterBlueprint) -> dict:
+        return {
+            "chapter_type": bp.chapter_type,
+            "plot_goal": bp.plot_goal,
+            "hook_design": bp.hook_design,
+            "foreshadow_actions": bp.foreshadow_actions,
+            "cliffhanger": bp.cliffhanger,
+            "pacing_target": bp.pacing_target,
+            "key_characters": bp.key_characters,
+            "word_target": bp.word_target,
+            "rewrite_actions": bp.rewrite_actions,
+            "is_active": bp.is_active,
+        }
+
+    @staticmethod
+    def _default_blueprint(chapter_outline: dict) -> dict:
+        return {
+            "chapter_type": "main_advance",
+            "plot_goal": chapter_outline.get("plot", ""),
+            "hook_design": "",
+            "foreshadow_actions": [],
+            "cliffhanger": "",
+            "pacing_target": "medium",
+            "key_characters": chapter_outline.get("key_characters", []),
+            "word_target": 3000,
+        }

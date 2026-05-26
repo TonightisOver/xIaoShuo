@@ -610,3 +610,41 @@ class LongFormProgress(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     novel: Mapped["Novel"] = relationship(back_populates="long_form_progress")
+
+
+class ChapterBlueprint(Base):
+    """章节蓝图 — 生成前的结构化规划"""
+
+    __tablename__ = "chapter_blueprints"
+    __table_args__ = (
+        UniqueConstraint("novel_id", "chapter_number", "is_active", name="uq_blueprint_novel_chapter_active"),
+        Index("ix_blueprint_novel_chapter", "novel_id", "chapter_number"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    chapter_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    chapter_type: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="main_advance"
+    )
+    plot_goal: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    hook_design: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    foreshadow_actions: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    cliffhanger: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    pacing_target: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="medium"
+    )
+    key_characters: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    word_target: Mapped[int] = mapped_column(Integer, default=3000)
+    rewrite_actions: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now()
+    )

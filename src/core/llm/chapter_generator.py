@@ -14,6 +14,38 @@ from src.core.llm.prompts import (
 
 logger = structlog.get_logger(__name__)
 
+
+def _format_blueprint_constraint(blueprint: dict) -> str:
+    """将蓝图 dict 格式化为结构化约束文本。"""
+    foreshadow_actions = blueprint.get("foreshadow_actions") or []
+    if isinstance(foreshadow_actions, list):
+        foreshadow_text = "; ".join(
+            f"{a.get('type', '未知')}：{a.get('description', '')}"
+            if isinstance(a, dict)
+            else str(a)
+            for a in foreshadow_actions
+        )
+    else:
+        foreshadow_text = str(foreshadow_actions)
+
+    key_characters = blueprint.get("key_characters") or []
+    if isinstance(key_characters, list):
+        characters_text = "、".join(str(c) for c in key_characters)
+    else:
+        characters_text = str(key_characters)
+
+    return f"""\
+# 章节蓝图约束（必须严格遵守）
+
+- 章节类型: {blueprint.get("chapter_type", "main_advance")}
+- 剧情推进目标: {blueprint.get("plot_goal", "")}
+- 爽点/冲突设计: {blueprint.get("hook_design", "")}
+- 伏笔操作: {foreshadow_text}
+- 章末钩子: {blueprint.get("cliffhanger", "")}
+- 节奏定位: {blueprint.get("pacing_target", "medium")}
+- 核心出场人物: {characters_text}
+- 目标字数: {blueprint.get("word_target", 3000)}"""
+
 CHAPTER_TIMEOUT_SECONDS = 600
 
 # Word count thresholds for long-form mode
@@ -111,11 +143,13 @@ async def generate_single_chapter(
     kg_service: Any | None = None,
     novel_id: str | None = None,
     target_words: int | None = None,
+    blueprint: dict | None = None,
 ) -> dict[str, Any]:
     """生成单章内容。
 
     Args:
         target_words: Target word count for long-form mode (None for standard mode)
+        blueprint: 预生成的章节蓝图（可选，传入则跳过蓝图生成/查询）
 
     Returns:
         {"chapter": int, "title": str, "content": str, "word_count": int}
@@ -133,6 +167,7 @@ async def generate_single_chapter(
                 kg_service=kg_service,
                 novel_id=novel_id,
                 target_words=target_words,
+                blueprint=blueprint,
             ),
             timeout=CHAPTER_TIMEOUT_SECONDS,
         )
@@ -159,11 +194,13 @@ async def _generate_single_chapter_inner(
     kg_service: Any | None = None,
     novel_id: str | None = None,
     target_words: int | None = None,
+    blueprint: dict | None = None,
 ) -> dict[str, Any]:
     """生成单章内容。
 
     Args:
         target_words: Target word count for long-form mode (None for standard mode)
+        blueprint: 预生成的章节蓝图（可选，传入则跳过蓝图生成/查询）
 
     Returns:
         {"chapter": int, "title": str, "content": str, "word_count": int}
@@ -201,17 +238,48 @@ async def _generate_single_chapter_inner(
         except Exception as e:
             logger.warning("story_bible_retrieval_failed", error=str(e))
 
-    # 3. 双级联第 1 阶段：调用 LLM 进行前置大纲检查与伏笔情节规划
-    planning_prompt = CHAPTER_PLANNING_PROMPT.format(
-        chapter_outline=json.dumps(chapter_outline, ensure_ascii=False),
-        previous_chapter=previous_chapter or "这是第一章",
-        story_bible=story_bible_context,
-        kg_context=kg_context or "无知识图谱上下文",
-    )
+    # 3. 结构化蓝图获取（优先）或降级到 LLM 规划
+    chapter_num = chapter_outline.get("chapter", 0)
+    blueprint_constraint: str | None = None
 
-    logger.info("generating_chapter_planning_check", chapter=chapter_outline.get("chapter", 0))
-    chapter_plan = await client.generate(planning_prompt, max_tokens=3000)
-    logger.info("chapter_planning_check_completed", chapter=chapter_outline.get("chapter", 0))
+    if blueprint:
+        blueprint_constraint = _format_blueprint_constraint(blueprint)
+        logger.info("using_provided_blueprint", chapter=chapter_num)
+    elif novel_id:
+        try:
+            from src.api.services.blueprint_service import BlueprintService
+
+            bp_service = BlueprintService()
+            existing_bp = await bp_service.get_blueprint(novel_id, chapter_num)
+            if existing_bp:
+                blueprint = existing_bp
+                blueprint_constraint = _format_blueprint_constraint(existing_bp)
+                logger.info("using_existing_blueprint", chapter=chapter_num)
+            else:
+                blueprint = await bp_service.generate_blueprint(
+                    novel_id, chapter_num, chapter_outline
+                )
+                blueprint_constraint = _format_blueprint_constraint(blueprint)
+                logger.info("generated_new_blueprint", chapter=chapter_num)
+        except Exception as e:
+            logger.warning("blueprint_fallback_to_planning", chapter=chapter_num, error=str(e))
+
+    if blueprint_constraint is None:
+        planning_prompt = CHAPTER_PLANNING_PROMPT.format(
+            chapter_outline=json.dumps(chapter_outline, ensure_ascii=False),
+            previous_chapter=previous_chapter or "这是第一章",
+            story_bible=story_bible_context,
+            kg_context=kg_context or "无知识图谱上下文",
+        )
+        logger.info("generating_chapter_planning_check", chapter=chapter_num)
+        chapter_plan = await client.generate(planning_prompt, max_tokens=3000)
+        logger.info("chapter_planning_check_completed", chapter=chapter_num)
+        blueprint_constraint = f"""\
+# 章节生成依据规划单与约束
+
+【特别提示】以下是你刚刚制定并必须严格遵守的"章节规划单"。生成正文时，你必须逐一贯彻这 7 点设定，特别是"必须遵循的旧设定"以及"本章回收的历史伏笔"、"本章种下的新伏笔"，绝对不要偏离！
+
+{chapter_plan}"""
 
     # 4. 双级联第 2 阶段：将规划约束单注入正文生成 Prompt
     if target_words is not None and target_words > 0:
@@ -234,13 +302,9 @@ async def _generate_single_chapter_inner(
             world_setting=world_setting_json,
         )
 
-    # 结构化合并前置规划约束
+    # 结构化合并蓝图/规划约束
     prompt = f"""\
-# 章节生成依据规划单与约束
-
-【特别提示】以下是你刚刚制定并必须严格遵守的“章节规划单”。生成正文时，你必须逐一贯彻这 7 点设定，特别是“必须遵循的旧设定”以及“本章回收的历史伏笔”、“本章种下的新伏笔”，绝对不要偏离！
-
-{chapter_plan}
+{blueprint_constraint}
 
 ---
 
@@ -314,9 +378,33 @@ async def _generate_single_chapter_inner(
                     error=str(e),
                 )
 
+    # 8. 同步蓝图 chapter_type 到 Chapter 记录
+    chapter_type = None
+    if blueprint and novel_id:
+        chapter_type = blueprint.get("chapter_type")
+        if chapter_type:
+            try:
+                from sqlalchemy import update
+
+                from src.api.models.db_models import Chapter
+                from src.core.database import get_db_session
+
+                async with get_db_session() as session:
+                    await session.execute(
+                        update(Chapter)
+                        .where(
+                            Chapter.novel_id == novel_id,
+                            Chapter.chapter_number == chapter_num,
+                        )
+                        .values(chapter_type=chapter_type)
+                    )
+            except Exception as e:
+                logger.warning("chapter_type_sync_failed", chapter=chapter_num, error=str(e))
+
     return {
         "chapter": chapter_outline.get("chapter", 0),
         "title": chapter_outline.get("title", ""),
         "content": content,
         "word_count": word_count,
+        "chapter_type": chapter_type,
     }

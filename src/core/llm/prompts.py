@@ -412,3 +412,184 @@ CHAPTER_PLANNING_PROMPT = PromptTemplate(
 """,
 )
 
+
+# 章节蓝图生成 Prompt
+BLUEPRINT_GENERATION_PROMPT = PromptTemplate(
+    input_variables=[
+        "chapter_outline",
+        "previous_chapter",
+        "story_bible",
+        "kg_context",
+        "volume_context",
+    ],
+    template="""你是一位精通网文节奏控制的资深策划师。请根据以下信息，为即将生成的章节输出一份结构化蓝图（Blueprint）。
+
+## 章节大纲
+{chapter_outline}
+
+## 上一章简况
+{previous_chapter}
+
+## 故事圣经核心约束
+{story_bible}
+
+## 知识图谱上下文
+{kg_context}
+
+## 本卷上下文
+{volume_context}
+
+## 输出要求
+
+请严格输出以下 JSON 格式，不要包含任何其他文字：
+
+```json
+{{
+    "chapter_type": "<main_advance|climax|aftermath|daily|setup>",
+    "plot_goal": "<本章核心剧情目标，50-100字>",
+    "hook_design": "<本章爽点/冲突/悬念设计，50-100字>",
+    "foreshadow_actions": [
+        {{"action": "<plant|callback|advance>", "name": "<伏笔名称>", "detail": "<具体操作>"}}
+    ],
+    "cliffhanger": "<章末钩子设计，30-60字>",
+    "pacing_target": "<fast|medium|slow>",
+    "key_characters": ["<角色名1>", "<角色名2>"],
+    "word_target": <目标字数整数>
+}}
+```
+
+规则：
+- chapter_type 必须为 main_advance/climax/aftermath/daily/setup 之一
+- pacing_target 必须为 fast/medium/slow 之一
+- foreshadow_actions 中 action 必须为 plant/callback/advance 之一
+- word_target 为整数，范围 2000-6000
+- 只输出 JSON，不要有任何额外说明
+""",
+)
+
+
+# 定向改写 Prompt 模板集
+TARGETED_REWRITE_PROMPTS: dict[str, str] = {
+    "compress_pacing": (
+        "你是一位节奏控制大师。请对以下章节内容进行节奏压缩改写。\n\n"
+        "## 原文\n{full_content}\n\n"
+        "## 改写指令\n{instruction}\n\n"
+        "## 上下文\n{context}\n\n"
+        "## 出场人物\n{characters}\n\n"
+        "## 世界设定\n{world_setting}\n\n"
+        "## 改写要求\n"
+        "1. 删减冗余的心理描写、环境描写和过渡段落\n"
+        "2. 保留核心情节推进和关键对话\n"
+        "3. 加快场景切换速度，减少铺垫篇幅\n"
+        "4. 保持人物性格和设定一致性\n"
+        "5. 压缩后字数应减少 20%-40%\n\n"
+        "请直接输出改写后的完整章节内容，不要包含任何说明。"
+    ),
+    "enhance_hook": (
+        "你是一位网文爽点设计专家。请对以下章节内容进行爽点/悬念强化改写。\n\n"
+        "## 原文\n{full_content}\n\n"
+        "## 改写指令\n{instruction}\n\n"
+        "## 上下文\n{context}\n\n"
+        "## 出场人物\n{characters}\n\n"
+        "## 世界设定\n{world_setting}\n\n"
+        "## 改写要求\n"
+        "1. 强化章节开头的冲突引入，前 200 字内必须出现矛盾或悬念\n"
+        "2. 增加打脸、逆转、升级等网文经典爽点\n"
+        "3. 强化章末钩子，制造强烈的阅读欲望\n"
+        "4. 对话要更有张力，减少平淡叙述\n"
+        "5. 保持人物性格和设定一致性\n\n"
+        "请直接输出改写后的完整章节内容，不要包含任何说明。"
+    ),
+    "fix_character": (
+        "你是一位人物一致性修复专家。请修复以下章节中的人物不一致问题。\n\n"
+        "## 原文\n{full_content}\n\n"
+        "## 改写指令\n{instruction}\n\n"
+        "## 上下文\n{context}\n\n"
+        "## 出场人物设定\n{characters}\n\n"
+        "## 世界设定\n{world_setting}\n\n"
+        "## 改写要求\n"
+        "1. 修正人物言行与设定不符之处（性格、能力、背景）\n"
+        "2. 修正人物称谓、关系描述错误\n"
+        "3. 确保人物能力表现符合当前等级/状态\n"
+        "4. 保持情节主线不变，只修正人物相关内容\n"
+        "5. 修正后的人物表现必须与出场人物设定完全一致\n\n"
+        "请直接输出改写后的完整章节内容，不要包含任何说明。"
+    ),
+    "trim_filler": (
+        "你是一位网文水文检测与删减专家。请删减以下章节中的水文内容。\n\n"
+        "## 原文\n{full_content}\n\n"
+        "## 改写指令\n{instruction}\n\n"
+        "## 上下文\n{context}\n\n"
+        "## 出场人物\n{characters}\n\n"
+        "## 世界设定\n{world_setting}\n\n"
+        "## 改写要求\n"
+        "1. 删除对情节推进无贡献的重复描写\n"
+        "2. 删除无意义的内心独白和感叹\n"
+        "3. 压缩过长的环境描写和背景介绍\n"
+        "4. 合并重复表达相同信息的段落\n"
+        "5. 保留所有推进主线的内容和关键伏笔\n"
+        "6. 删减后字数应减少 15%-30%\n\n"
+        "请直接输出改写后的完整章节内容，不要包含任何说明。"
+    ),
+    "enhance_plot": (
+        "你是一位主线推进强化专家。请强化以下章节的主线推进力度。\n\n"
+        "## 原文\n{full_content}\n\n"
+        "## 改写指令\n{instruction}\n\n"
+        "## 上下文\n{context}\n\n"
+        "## 出场人物\n{characters}\n\n"
+        "## 世界设定\n{world_setting}\n\n"
+        "## 改写要求\n"
+        "1. 确保本章至少推进一个主线事件\n"
+        "2. 增加与核心冲突相关的情节\n"
+        "3. 减少与主线无关的支线描写\n"
+        "4. 强化因果链条，让情节发展更有逻辑性\n"
+        "5. 保持人物性格和设定一致性\n\n"
+        "请直接输出改写后的完整章节内容，不要包含任何说明。"
+    ),
+    "add_foreshadow": (
+        "你是一位伏笔设计大师。请在以下章节中补充伏笔。\n\n"
+        "## 原文\n{full_content}\n\n"
+        "## 改写指令\n{instruction}\n\n"
+        "## 上下文\n{context}\n\n"
+        "## 出场人物\n{characters}\n\n"
+        "## 世界设定\n{world_setting}\n\n"
+        "## 改写要求\n"
+        "1. 在自然的叙事中嵌入 1-2 个新伏笔\n"
+        "2. 伏笔要隐蔽，不能让读者一眼看穿\n"
+        "3. 伏笔必须与后续情节有逻辑关联\n"
+        "4. 不改变原有情节走向和人物行为\n"
+        "5. 伏笔可以是细节描写、对话暗示或环境线索\n\n"
+        "请直接输出改写后的完整章节内容，不要包含任何说明。"
+    ),
+    "fix_world": (
+        "你是一位世界观一致性修复专家。请修复以下章节中的设定冲突。\n\n"
+        "## 原文\n{full_content}\n\n"
+        "## 改写指令\n{instruction}\n\n"
+        "## 上下文\n{context}\n\n"
+        "## 出场人物\n{characters}\n\n"
+        "## 世界设定（权威来源）\n{world_setting}\n\n"
+        "## 改写要求\n"
+        "1. 修正与世界设定矛盾的描述（地理、力量体系、社会规则）\n"
+        "2. 修正时间线错误和空间逻辑错误\n"
+        "3. 确保力量等级表现符合体系设定\n"
+        "4. 保持情节主线不变，只修正设定相关内容\n"
+        "5. 世界设定字段为权威来源，章节内容必须服从\n\n"
+        "请直接输出改写后的完整章节内容，不要包含任何说明。"
+    ),
+    "enhance_trope": (
+        "你是一位网文套路爽感强化专家。请强化以下章节的网文套路爽感。\n\n"
+        "## 原文\n{full_content}\n\n"
+        "## 改写指令\n{instruction}\n\n"
+        "## 上下文\n{context}\n\n"
+        "## 出场人物\n{characters}\n\n"
+        "## 世界设定\n{world_setting}\n\n"
+        "## 改写要求\n"
+        "1. 强化扮猪吃虎、打脸、装逼等经典网文套路\n"
+        "2. 增加配角的震惊、崇拜等烘托反应\n"
+        "3. 强化主角光环和爽感释放节奏\n"
+        "4. 适当增加金手指/外挂的展示\n"
+        "5. 保持人物性格底线和设定一致性\n\n"
+        "请直接输出改写后的完整章节内容，不要包含任何说明。"
+    ),
+}
+
