@@ -1,112 +1,98 @@
 <template>
-  <div class="max-w-3xl mx-auto px-6 py-10">
-    <div class="mb-10 text-center">
-      <h1 class="text-3xl font-extrabold tracking-tight text-slate-100 flex items-center justify-center gap-2 mb-2.5">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-8 h-8 text-purple-400">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-        </svg>
-        <span class="bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-indigo-400">开启新篇章</span>
-      </h1>
-      <p class="text-slate-400 text-sm font-medium">输入你的小说创意与文风设定，让 AI 为你雕琢专属大作</p>
+  <div class="max-w-2xl mx-auto px-6 py-8">
+    <div class="mb-8">
+      <h1 class="text-2xl font-bold text-neutral-900">开启新篇章</h1>
+      <p class="text-neutral-500 text-sm mt-1">输入你的小说创意与文风设定</p>
     </div>
 
-    <form @submit.prevent="submit" class="space-y-8 glass-panel rounded-3xl p-6 md:p-8 border border-slate-900 shadow-2xl relative overflow-hidden">
-      <!-- Background Ambient Glow -->
-      <div class="absolute -top-24 -left-24 w-48 h-48 rounded-full bg-purple-500/5 blur-3xl"></div>
-      <div class="absolute -bottom-24 -right-24 w-48 h-48 rounded-full bg-indigo-500/5 blur-3xl"></div>
-
-      <div class="space-y-2 relative z-10">
-        <label class="block text-sm font-bold text-slate-300">小说标题</label>
+    <form @submit.prevent="submit" class="card p-6 md:p-8 space-y-6">
+      <div class="space-y-1.5">
+        <label class="block text-sm font-medium text-neutral-700">小说标题</label>
         <input
           v-model="form.title"
-          class="input bg-slate-950/40 border-slate-800"
-          placeholder="给你的小说起个震撼的名字（可选，默认从创意生成）"
+          class="input"
+          placeholder="给你的小说起个名字（可选）"
           maxlength="200"
         />
       </div>
 
-      <div class="space-y-2 relative z-10">
-        <label class="block text-sm font-bold text-slate-300">小说核心创意</label>
+      <div class="space-y-1.5">
+        <label class="block text-sm font-medium text-neutral-700">小说核心创意</label>
         <textarea
           v-model="form.idea"
-          class="input min-h-[140px] resize-y bg-slate-950/40 border-slate-800 text-sm leading-relaxed"
-          placeholder="尽情描述你的核心梗或小说创意。例如：一个现代游戏程序员意外穿越到诸神修仙世界，发现可以通过编写灵力算法和自动化仙法修炼程序来逆天改命..."
+          class="input min-h-[120px] resize-y text-sm leading-relaxed"
+          placeholder="描述你的核心梗或小说创意..."
           maxlength="1000"
         ></textarea>
-        <div class="flex justify-between items-center text-xs text-slate-500 font-medium">
+        <div class="flex justify-between items-center text-xs text-neutral-400">
           <span>最少 10 个字</span>
-          <span>{{ form.idea.length }} / 1000 字符</span>
+          <span>{{ form.idea.length }} / 1000</span>
         </div>
       </div>
 
-      <div class="space-y-3 relative z-10">
-        <label class="block text-sm font-bold text-slate-300">小说类型</label>
+      <div class="space-y-2">
+        <label class="block text-sm font-medium text-neutral-700">小说类型</label>
         <div class="grid grid-cols-3 sm:grid-cols-4 gap-2">
           <button
             v-for="t in novelTypes"
             :key="t"
             type="button"
             :class="[
-              'px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all duration-200',
+              'px-3 py-2 rounded-lg text-xs font-medium border transition-colors duration-150',
               form.novel_type === t
-                ? 'border-purple-500 bg-purple-500/10 text-purple-300 shadow-inner'
-                : 'border-slate-800 bg-slate-900/20 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                ? 'border-accent-500 bg-accent-50 text-accent-700'
+                : 'border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300'
             ]"
             @click="form.novel_type = t"
           >{{ t }}</button>
         </div>
       </div>
 
-      <div class="space-y-3 relative z-10">
-        <label class="block text-sm font-bold text-slate-300">文风与风格特征</label>
+      <div class="space-y-2">
+        <label class="block text-sm font-medium text-neutral-700">文风与风格</label>
         <div class="grid grid-cols-3 sm:grid-cols-4 gap-2">
           <button
             v-for="s in writingStyles"
             :key="s"
             type="button"
             :class="[
-              'px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all duration-200',
+              'px-3 py-2 rounded-lg text-xs font-medium border transition-colors duration-150',
               form.writing_style === s
-                ? 'border-purple-500 bg-purple-500/10 text-purple-300 shadow-inner'
-                : 'border-slate-800 bg-slate-900/20 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                ? 'border-accent-500 bg-accent-50 text-accent-700'
+                : 'border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300'
             ]"
             @click="form.writing_style = s"
           >{{ s }}</button>
         </div>
 
-        <div v-if="form.writing_style === '自定义'" class="mt-4 space-y-3 p-4 bg-slate-950/30 rounded-2xl border border-slate-900">
+        <div v-if="form.writing_style === '自定义'" class="mt-3 space-y-3 p-4 bg-neutral-50 rounded-lg border border-neutral-200">
           <textarea
             v-model="form.custom_style_description"
-            class="input min-h-[70px] resize-y text-xs bg-slate-950/40 border-slate-800"
-            placeholder="请细化描述您所追求的文体，例如：类似于猫腻的半文言文风，注重角色对白，偏向灰色幽默与宿命感..."
+            class="input min-h-[60px] resize-y text-xs"
+            placeholder="描述您追求的文体风格..."
           ></textarea>
-          <div class="flex gap-2">
-            <button 
-              type="button" 
-              @click="generateStyle" 
-              class="btn-secondary text-xs px-4 py-2 flex items-center gap-1" 
-              :disabled="generatingStyle || !form.custom_style_description"
-            >
-              <svg v-if="generatingStyle" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5 animate-spin">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-              </svg>
-              <span>{{ generatingStyle ? '生成中...' : 'AI 提炼风格指令' }}</span>
-            </button>
-          </div>
-          <div v-if="form.writing_style_prompt" class="p-4 bg-slate-950/60 rounded-xl border border-slate-800/60 text-xs text-slate-300">
-            <p class="text-slate-500 font-bold mb-1.5 text-[10px] tracking-wider uppercase">生成的风格指令（您可以自由编辑微调）：</p>
-            <textarea 
-              v-model="form.writing_style_prompt" 
-              class="w-full bg-transparent border-0 text-xs resize-y min-h-[80px] focus:outline-none focus:ring-0 text-slate-300 leading-relaxed font-mono"
+          <button
+            type="button"
+            @click="generateStyle"
+            class="btn-secondary text-xs"
+            :disabled="generatingStyle || !form.custom_style_description"
+          >
+            {{ generatingStyle ? '生成中...' : 'AI 提炼风格指令' }}
+          </button>
+          <div v-if="form.writing_style_prompt" class="p-3 bg-white rounded-lg border border-neutral-200">
+            <p class="text-[10px] text-neutral-400 font-medium uppercase tracking-wider mb-1.5">生成的风格指令：</p>
+            <textarea
+              v-model="form.writing_style_prompt"
+              class="w-full bg-transparent border-0 text-xs resize-y min-h-[60px] focus:outline-none text-neutral-700 leading-relaxed"
             ></textarea>
           </div>
         </div>
       </div>
 
-      <div class="space-y-3 relative z-10">
-        <div class="flex justify-between text-sm font-bold text-slate-300">
-          <span>长篇字数目标</span>
-          <span class="text-purple-400 font-mono">{{ (form.target_words / 10000).toFixed(0) }} 万字</span>
+      <div class="space-y-2">
+        <div class="flex justify-between text-sm font-medium text-neutral-700">
+          <span>字数目标</span>
+          <span class="text-accent-600 font-mono text-xs">{{ (form.target_words / 10000).toFixed(0) }} 万字</span>
         </div>
         <input
           type="range"
@@ -114,100 +100,69 @@
           min="10000"
           max="5000000"
           :step="form.target_words >= 500000 ? 100000 : 10000"
-          class="w-full h-2 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-purple-500"
+          class="w-full h-1.5 bg-neutral-200 rounded-lg appearance-none cursor-pointer accent-accent-600"
         />
-        <div class="flex justify-between text-[10px] text-slate-500 font-bold font-mono">
+        <div class="flex justify-between text-[10px] text-neutral-400">
           <span>1 万字</span>
           <span>500 万字</span>
         </div>
-        <div v-if="isLongForm" class="mt-1 px-3 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-lg">
-          <span class="text-[11px] text-purple-300 font-semibold">长篇模式已激活（>20万字自动启用卷章结构）</span>
+        <div v-if="isLongForm" class="mt-1 px-3 py-1.5 bg-accent-50 border border-accent-200 rounded-lg">
+          <span class="text-[11px] text-accent-700 font-medium">长篇模式（>20万字自动启用卷章结构）</span>
         </div>
       </div>
 
-      <div v-if="isLongForm" class="space-y-4 relative z-10 p-5 bg-slate-950/30 rounded-2xl border border-purple-500/20">
-        <h3 class="text-sm font-bold text-purple-300 flex items-center gap-1.5">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
-          </svg>
-          长篇结构设定
-        </h3>
-
+      <div v-if="isLongForm" class="space-y-4 p-5 bg-neutral-50 rounded-lg border border-neutral-200">
+        <h3 class="text-sm font-medium text-neutral-700">长篇结构设定</h3>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div class="space-y-1.5">
-            <label class="block text-xs font-semibold text-slate-400">卷数</label>
-            <input
-              type="number"
-              v-model.number="form.volumes"
-              min="3"
-              max="20"
-              class="input text-sm bg-slate-950/40 border-slate-800 text-center"
-            />
-            <span class="text-[10px] text-slate-500">3 ~ 20 卷</span>
+          <div class="space-y-1">
+            <label class="block text-xs text-neutral-500">卷数</label>
+            <input type="number" v-model.number="form.volumes" min="3" max="20" class="input text-sm text-center" />
+            <span class="text-[10px] text-neutral-400">3 ~ 20 卷</span>
           </div>
-          <div class="space-y-1.5">
-            <label class="block text-xs font-semibold text-slate-400">每卷章数</label>
-            <input
-              type="number"
-              v-model.number="form.chapters_per_volume"
-              min="20"
-              max="60"
-              class="input text-sm bg-slate-950/40 border-slate-800 text-center"
-            />
-            <span class="text-[10px] text-slate-500">20 ~ 60 章</span>
+          <div class="space-y-1">
+            <label class="block text-xs text-neutral-500">每卷章数</label>
+            <input type="number" v-model.number="form.chapters_per_volume" min="20" max="60" class="input text-sm text-center" />
+            <span class="text-[10px] text-neutral-400">20 ~ 60 章</span>
           </div>
-          <div class="space-y-1.5">
-            <label class="block text-xs font-semibold text-slate-400">每章字数</label>
-            <input
-              type="number"
-              v-model.number="form.words_per_chapter"
-              min="2000"
-              max="4000"
-              step="100"
-              class="input text-sm bg-slate-950/40 border-slate-800 text-center"
-            />
-            <span class="text-[10px] text-slate-500">2000 ~ 4000 字</span>
+          <div class="space-y-1">
+            <label class="block text-xs text-neutral-500">每章字数</label>
+            <input type="number" v-model.number="form.words_per_chapter" min="2000" max="4000" step="100" class="input text-sm text-center" />
+            <span class="text-[10px] text-neutral-400">2000 ~ 4000 字</span>
           </div>
         </div>
-
-        <div class="flex flex-wrap gap-4 pt-2">
+        <div class="flex flex-wrap gap-4 pt-1">
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" v-model="form.auto_quality_check" class="accent-purple-500 w-4 h-4 rounded" />
-            <span class="text-xs text-slate-300 font-medium">自动质量检查</span>
+            <input type="checkbox" v-model="form.auto_quality_check" class="accent-accent-600 w-3.5 h-3.5 rounded" />
+            <span class="text-xs text-neutral-600">自动质量检查</span>
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" v-model="form.auto_filler_detection" class="accent-purple-500 w-4 h-4 rounded" />
-            <span class="text-xs text-slate-300 font-medium">自动注水检测</span>
+            <input type="checkbox" v-model="form.auto_filler_detection" class="accent-accent-600 w-3.5 h-3.5 rounded" />
+            <span class="text-xs text-neutral-600">自动注水检测</span>
           </label>
         </div>
       </div>
 
-      <div class="pt-4 flex flex-col sm:flex-row gap-3 relative z-10">
-        <button 
-          type="button" 
-          class="btn-secondary sm:flex-1 py-3" 
-          :disabled="!canSubmit || submitting || fullGenerating" 
+      <div class="pt-4 flex flex-col sm:flex-row gap-3">
+        <button
+          type="button"
+          class="btn-secondary sm:flex-1 py-2.5"
+          :disabled="!canSubmit || submitting || fullGenerating"
           @click="submit"
         >
-          {{ submitting ? '创建中...' : '生成小说设定 (分步)' }}
+          {{ submitting ? '创建中...' : '生成小说设定' }}
         </button>
-        
-        <button 
-          type="button" 
-          class="btn-primary sm:flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 py-3 shadow-lg shadow-emerald-500/10 flex items-center justify-center gap-1.5" 
-          :disabled="!canSubmit || submitting || fullGenerating" 
+        <button
+          type="button"
+          class="btn-primary sm:flex-1 py-2.5 flex items-center justify-center gap-1.5"
+          :disabled="!canSubmit || submitting || fullGenerating"
           @click="fullGenerate"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
-          </svg>
-          <span>{{ fullGenerating ? '启动流水线...' : '一键全自动生成' }}</span>
+          <span>{{ fullGenerating ? '启动中...' : '一键全自动生成' }}</span>
         </button>
-
-        <router-link to="/" class="btn-secondary text-center py-3">取消</router-link>
+        <router-link to="/" class="btn-secondary text-center py-2.5">取消</router-link>
       </div>
 
-      <div v-if="error" class="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-xs text-rose-400 font-medium relative z-10 leading-relaxed">
+      <div v-if="error" class="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
         {{ error }}
       </div>
     </form>
@@ -268,7 +223,6 @@ async function submit() {
   if (!canSubmit.value) return
   submitting.value = true
   error.value = ''
-
   try {
     const endpoint = isLongForm.value ? '/api/v1/novels/long-form' : '/api/v1/projects'
     const payload = isLongForm.value
@@ -285,18 +239,15 @@ async function submit() {
           auto_filler_detection: form.value.auto_filler_detection,
         }
       : form.value
-
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-
     if (!res.ok) {
       const data = await res.json()
       throw new Error(data.detail || `请求失败 (${res.status})`)
     }
-
     const data = await res.json()
     router.push(`/novels/${data.novel_id}`)
   } catch (e) {
@@ -310,7 +261,6 @@ async function fullGenerate() {
   if (!canSubmit.value) return
   fullGenerating.value = true
   error.value = ''
-
   try {
     const endpoint = isLongForm.value ? '/api/v1/novels/long-form' : '/api/v1/projects/full-generate'
     const payload = isLongForm.value
@@ -327,18 +277,15 @@ async function fullGenerate() {
           auto_filler_detection: form.value.auto_filler_detection,
         }
       : form.value
-
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-
     if (!res.ok) {
       const data = await res.json()
       throw new Error(data.detail || `请求失败 (${res.status})`)
     }
-
     const data = await res.json()
     router.push(isLongForm.value ? `/novels/${data.novel_id}` : `/task/${data.task_id}`)
   } catch (e) {

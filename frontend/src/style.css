@@ -4,147 +4,91 @@
 
 @layer base {
   body {
-    @apply min-h-screen bg-[#f5f5f7] text-[#1d1d1f] antialiased selection:bg-purple-100 selection:text-purple-900;
-    background-image: 
-      radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.04) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, rgba(168, 85, 247, 0.03) 0px, transparent 50%);
-    background-attachment: fixed;
+    @apply min-h-screen bg-neutral-50 text-neutral-900 antialiased selection:bg-accent-100 selection:text-accent-900;
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
   }
 
-  /* Custom high-contrast clean scrollbars */
   ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.02);
-    border-radius: 99px;
+    background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.12);
+    background: rgba(0, 0, 0, 0.1);
     border-radius: 99px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 0, 0, 0.24);
-    border: 2px solid transparent;
-    background-clip: padding-box;
+    background: rgba(0, 0, 0, 0.2);
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl font-medium
-           hover:shadow-md hover:shadow-purple-500/10 active:scale-[0.98]
-           transform transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none;
+    @apply px-4 py-2 bg-accent-600 hover:bg-accent-700 text-white rounded-lg font-medium
+           shadow-sm active:scale-[0.98] transition-colors duration-150
+           disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-secondary {
-    @apply px-6 py-2.5 bg-white border border-[#d2d2d7] text-[#1d1d1f] rounded-xl font-medium
-           hover:bg-[#f5f5f7] hover:text-black active:scale-[0.98]
-           transform transition-all duration-150 shadow-sm;
+    @apply px-4 py-2 bg-white border border-neutral-200 text-neutral-700 rounded-lg font-medium
+           hover:bg-neutral-50 hover:border-neutral-300 active:scale-[0.98]
+           transition-colors duration-150;
+  }
+
+  .btn-danger {
+    @apply px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium
+           shadow-sm active:scale-[0.98] transition-colors duration-150;
   }
 
   .card {
-    @apply bg-white rounded-2xl border border-[#e5e5ea] shadow-sm
-           hover:shadow-md hover:border-[#d2d2d7] transition-all duration-300;
+    @apply bg-white rounded-xl border border-neutral-200 shadow-sm;
   }
 
   .input {
-    @apply w-full px-4 py-2.5 bg-[#f5f5f7] border border-[#e5e5ea] rounded-xl text-[#1d1d1f]
-           focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 focus:bg-white
-           placeholder:text-slate-400 transition-all duration-150;
+    @apply w-full px-3.5 py-2.5 bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-900
+           focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 focus:bg-white
+           placeholder:text-neutral-400 transition-colors duration-150;
   }
 
   .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wide border;
+    @apply inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium;
   }
 
   .badge-pending {
-    @apply badge bg-amber-50 text-amber-700 border-amber-200;
+    @apply badge bg-amber-50 text-amber-700;
   }
 
   .badge-running {
-    @apply badge bg-purple-50 text-purple-700 border-purple-200 animate-pulse;
+    @apply badge bg-blue-50 text-blue-700;
   }
 
   .badge-completed {
-    @apply badge bg-emerald-50 text-emerald-700 border-emerald-200;
+    @apply badge bg-emerald-50 text-emerald-700;
   }
 
   .badge-failed {
-    @apply badge bg-rose-50 text-rose-700 border-rose-200;
+    @apply badge bg-red-50 text-red-700;
   }
 
-  /* Premium Glassmorphism styling */
-  .glass-panel {
-    @apply bg-white/80 backdrop-blur-xl border border-[#e5e5ea] shadow-xl;
-  }
-
-  .glass-panel-light {
-    @apply bg-white/90 backdrop-blur-xl border border-[#e5e5ea] shadow-xl;
-  }
-
-  .glass-card-hover {
-    @apply transition-all duration-300 ease-out;
-  }
-  .glass-card-hover:hover {
-    @apply -translate-y-1.5 bg-white border-purple-500/20 shadow-lg shadow-purple-500/5;
-  }
-
-  /* Realistic Typographic vertical book cover styling with dynamic text overlays */
   .book-cover {
-    @apply relative w-full aspect-[3/4] rounded-xl overflow-hidden shadow-sm border border-[#e5e5ea] transition-all duration-300;
+    @apply relative w-full aspect-[3/4] rounded-lg overflow-hidden border border-neutral-200;
   }
 
   .genre-xuanhuan {
-    background: linear-gradient(135deg, #f3e8ff 0%, #e0e7ff 100%);
-    color: #5b21b6;
+    @apply bg-indigo-50 text-indigo-700;
   }
   .genre-xianxia {
-    background: linear-gradient(135deg, #d1fae5 0%, #ecfdf5 100%);
-    color: #065f46;
+    @apply bg-emerald-50 text-emerald-700;
   }
   .genre-kehuan {
-    background: linear-gradient(135deg, #e0f2fe 0%, #e0f7fa 100%);
-    color: #0369a1;
+    @apply bg-sky-50 text-sky-700;
   }
   .genre-dushi {
-    background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%);
-    color: #1e40af;
+    @apply bg-blue-50 text-blue-700;
   }
   .genre-yanqing {
-    background: linear-gradient(135deg, #fce7f3 0%, #fff1f2 100%);
-    color: #9d174d;
-  }
-}
-
-@layer utilities {
-  .shimmer {
-    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.6) 50%, transparent 100%);
-    background-size: 200% 100%;
-    animation: shimmer 2s infinite;
-  }
-
-  @keyframes shimmer {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
-  }
-
-  @keyframes halo-pulse {
-    0%, 100% {
-      box-shadow: 0 0 10px rgba(168, 85, 247, 0.1), inset 0 0 10px rgba(168, 85, 247, 0.05);
-      border-color: rgba(168, 85, 247, 0.2);
-    }
-    50% {
-      box-shadow: 0 0 20px rgba(168, 85, 247, 0.3), inset 0 0 15px rgba(168, 85, 247, 0.15);
-      border-color: rgba(192, 132, 252, 0.5);
-    }
-  }
-
-  .generating-halo {
-    animation: halo-pulse 2.5s infinite ease-in-out;
+    @apply bg-pink-50 text-pink-700;
   }
 }

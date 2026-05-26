@@ -1,13 +1,13 @@
 {
   "mode": 10,
-  "current_stage": 7,
-  "stage_name": "单元测试",
+  "current_stage": 10,
+  "stage_name": "用户确认",
   "awaiting_gate": false,
-  "gate_number": 0,
+  "gate_number": 2,
   "started_at": "2026-05-25T14:00:00+08:00",
-  "completed_at": null,
-  "stages_completed": ["1-需求分析", "2-需求评审", "3-编码实现", "4-代码检查", "5-专家评审", "6-单元测试"],
+  "completed_at": "2026-05-26T12:00:00+08:00",
+  "stages_completed": ["1-需求分析", "2-需求评审", "3-编码实现", "4-代码检查", "5-专家评审", "6-单元测试", "7-代码推送", "8-CI验证", "9-部署验证(跳过)", "10-用户确认"],
   "change_id": "CHANGE-045",
   "change_slug": "章节节奏控制与定向改写闭环",
-  "status": "in_progress"
+  "status": "completed"
 }

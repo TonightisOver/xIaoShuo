@@ -1,38 +1,69 @@
-# Gate 2 — 交付评审报告
+# Gate 2 — 交付确认 | CHANGE-045 章节节奏控制与定向改写闭环
 
-> CHANGE-039 章节版本化评审系统 + UI Apple 风格重构
-> 日期：2026-05-21 · 评审结论：**待用户确认**
+**日期**: 2026-05-26
+**分支**: feature/change-044-long-form-generation
+**提交**: 76a9dab, 99ecdb1
 
 ---
 
-## 交付摘要
+## 需求摘要
 
-### 代码变更
-- 8 个文件修改/新增
-- 后端：3 个新 API 端点 + 3 个新 Manager 方法 + DB 迁移
-- 前端：VolumeList 完全重写为 Apple 风格 + 删除功能 + 版本面板增强
+为长篇小说生成系统新增「章节蓝图」与「定向改写闭环」能力：
+1. 章节蓝图（Blueprint）：在生成前规划节奏、伏笔、冲突点
+2. 质量→动作映射：将质量评分自动转化为改写指令
+3. 定向改写闭环：针对性改写 + 自动迭代直到达标
 
-### 功能清单
+## 代码变更清单
 
-| 功能 | 状态 | 说明 |
+### 新增文件 (7)
+| 文件 | 说明 |
+|------|------|
+| `src/api/services/blueprint_service.py` | 章节蓝图服务 (239行) |
+| `src/api/services/quality_action_service.py` | 质量→改写动作映射 (106行) |
+| `src/api/services/rewrite_loop_service.py` | 改写闭环服务 (279行) |
+| `alembic/versions/20260525_add_chapter_blueprint.py` | DB Migration |
+| `tests/unit/test_blueprint_service.py` | 蓝图服务测试 (6 cases) |
+| `tests/unit/test_quality_action_service.py` | 质量动作测试 (8 cases) |
+| `tests/unit/test_rewrite_loop_service.py` | 改写闭环测试 (4 cases) |
+
+### 修改文件 (5)
+| 文件 | 说明 |
+|------|------|
+| `src/api/models/db_models.py` | +ChapterBlueprint model |
+| `src/api/routes/projects.py` | +5 API endpoints |
+| `src/core/llm/chapter_generator.py` | 蓝图集成 + 降级路径 |
+| `src/core/llm/chapter_rewriter.py` | targeted_rewrite + batch |
+| `src/core/llm/prompts.py` | 蓝图生成 + 8种改写 Prompt |
+
+**总计**: +2205 行 / -51 行
+
+## 新增 API Endpoints
+
+| 方法 | 路径 | 说明 |
 |------|------|------|
-| Apple 风格 UI | 完成 | VolumeList 白色卡片、细线分隔、轻阴影 |
-| 章节删除 | 完成 | hover 显示删除按钮 + 确认弹窗 |
-| 版本自动创建 | 完成 | 生成章节后自动保存 source="generation" 版本 |
-| 版本对比 API | 完成 | unified diff 格式 |
-| 版本激活 | 完成 | 设为正式上下文 + 更新章节正文 |
-| 历史数据修补 | 完成 | fix-volume-numbers API |
-| ChapterEdit 增强 | 完成 | is_active 标记、quality_score、设为正式版本按钮 |
+| GET | `/projects/{id}/chapters/{ch}/blueprint` | 获取蓝图 |
+| PUT | `/projects/{id}/chapters/{ch}/blueprint` | 编辑蓝图 |
+| POST | `/projects/{id}/chapters/{ch}/blueprint/generate` | 生成蓝图 |
+| POST | `/projects/{id}/chapters/{ch}/targeted-rewrite` | 定向改写 |
+| POST | `/projects/{id}/chapters/{ch}/auto-improve` | 自动改善闭环 |
 
-### 测试结果
-- 57 unit tests passed, 0 failed
-- Python 语法检查全部通过
+## 测试结果
 
-### 部署注意事项
-1. 需要在服务器执行 Alembic 迁移：`alembic upgrade head`
-2. 对已有小说调用 `POST /api/v1/projects/{novel_id}/fix-volume-numbers` 修补历史数据
-3. 前端需要重新 build
+- 18 个单元测试全部通过 (1.22s)
+- ruff lint: import 排序已修复，E501 行长度为中文 prompt 字符串（不影响功能）
 
-### 已知限制
-- 版本对比目前返回 unified diff 文本，前端暂未实现 diff 高亮渲染（可后续迭代）
-- Apple 风格仅应用于章节 Tab 和 VolumeList，其他 Tab 保持原有风格（避免大范围改动）
+## 架构决策
+
+1. Blueprint 降级路径：LLM 不可用时自动回退到原有 CHAPTER_PLANNING_PROMPT
+2. 改写闭环独立质量评估：不依赖 LangGraph pipeline
+3. 版本管理复用 ChapterVersion (source="ai_rewrite")
+4. 批量改写链式执行：按优先级顺序，每步输出作为下步输入
+
+## 部署注意事项
+
+1. 执行 Alembic 迁移：`alembic upgrade head`（新增 chapter_blueprints 表）
+2. 现有改写 API 保持不变，新旧共存
+
+## 结论
+
+**APPROVED** — 代码已推送，测试通过，功能完整。

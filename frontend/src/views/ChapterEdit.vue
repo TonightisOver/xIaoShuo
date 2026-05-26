@@ -2,13 +2,13 @@
   <div class="max-w-7xl mx-auto px-6 py-10 transition-all duration-300">
     <div v-if="!chapter" class="text-center py-20">
       <div class="max-w-sm mx-auto">
-        <div class="w-16 h-16 bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-4">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8 text-slate-400">
+        <div class="w-16 h-16 bg-neutral-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8 text-neutral-400">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
           </svg>
         </div>
-        <h3 class="text-slate-300 font-semibold text-base mb-2">章节暂时无法访问</h3>
-        <p class="text-slate-500 text-sm mb-6 leading-relaxed">该章节可能正在重新生成中，或生成过程中出现了异常。</p>
+        <h3 class="text-neutral-900 font-semibold text-base mb-2">章节暂时无法访问</h3>
+        <p class="text-neutral-500 text-sm mb-6 leading-relaxed">该章节可能正在重新生成中，或生成过程中出现了异常。</p>
         <div class="flex items-center justify-center gap-3">
           <button @click="load" class="btn-secondary text-sm px-4 py-2 flex items-center gap-1.5">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
@@ -31,9 +31,9 @@
           <div>
             <!-- 返回与状态条 -->
             <div class="flex items-center justify-between pb-6 mb-12 border-b" :class="[activeTheme === 'dark' ? 'border-white/10' : 'border-black/5']">
-              <span class="text-xs opacity-60 tracking-wider font-semibold">📖 正在沉浸阅读《{{ chapter.novel?.title || '小说创作' }}》</span>
+              <span class="text-xs opacity-60 tracking-wider font-semibold">正在沉浸阅读《{{ chapter.novel?.title || '小说创作' }}》</span>
               <button @click="toggleReadMode" class="text-xs font-bold px-3 py-1 rounded-full border hover:scale-105 active:scale-95 transition-all" :class="[activeTheme === 'dark' ? 'border-white/20 hover:bg-white/10' : 'border-black/20 hover:bg-black/5']">
-                ✍ 切换到编辑模式
+                切换到编辑模式
               </button>
             </div>
 
@@ -43,7 +43,7 @@
             </h1>
 
             <!-- 章节正文 -->
-            <div 
+            <div
               class="leading-loose tracking-wide whitespace-pre-line text-justify select-text focus:outline-none"
               :class="[activeFont === 'serif' ? 'font-serif' : 'font-sans']"
               :style="{ fontSize: fontSize + 'px', lineHeight: '2.0' }"
@@ -54,8 +54,8 @@
 
           <!-- 阅读底栏上一章下一章导航 -->
           <div class="flex items-center justify-between gap-6 mt-20 pt-8 border-t" :class="[activeTheme === 'dark' ? 'border-white/10' : 'border-black/5']">
-            <button 
-              v-if="prevChapter" 
+            <button
+              v-if="prevChapter"
               @click="goToChapter(prevChapter.chapter_number)"
               class="flex-1 py-4 px-6 rounded-2xl border text-sm font-semibold flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
               :class="[activeTheme === 'dark' ? 'border-white/10 hover:bg-white/5 text-slate-300' : 'border-black/10 hover:bg-black/5 text-slate-700']"
@@ -64,8 +64,8 @@
             </button>
             <span v-else class="flex-1 text-center text-xs opacity-40 font-semibold py-4">已是第一章</span>
 
-            <button 
-              v-if="nextChapter" 
+            <button
+              v-if="nextChapter"
               @click="goToChapter(nextChapter.chapter_number)"
               class="flex-1 py-4 px-6 rounded-2xl border text-sm font-semibold flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
               :class="[activeTheme === 'dark' ? 'border-white/10 hover:bg-white/5 text-slate-300' : 'border-black/10 hover:bg-black/5 text-slate-700']"
@@ -79,40 +79,38 @@
         <!-- ==================== 2. 悬浮排版控制面板 (Floating Settings Panel) ==================== -->
         <div class="fixed right-6 bottom-10 z-50 flex flex-col items-end gap-3">
           <!-- 展开后的设置面板 -->
-          <div v-if="showSettings" class="glass-panel-setting p-5 rounded-2xl shadow-2xl border flex flex-col gap-4 w-72 backdrop-blur-xl animate-fade-in"
-               :class="[activeTheme === 'dark' ? 'bg-[#0f111a]/95 text-slate-200 border-white/10' : 'bg-white/95 text-slate-800 border-black/10']">
-            
-            <div class="flex items-center justify-between border-b pb-2" :class="[activeTheme === 'dark' ? 'border-white/10' : 'border-black/5']">
-              <span class="text-xs font-bold tracking-wider">⚙ 排版个性化设置</span>
-              <button @click="showSettings = false" class="text-xs opacity-60 hover:opacity-100">✕ 关闭</button>
+          <div v-if="showSettings" class="bg-white rounded-xl border border-neutral-200 shadow-lg p-5 flex flex-col gap-4 w-72"
+               :class="[activeTheme === 'dark' ? 'bg-neutral-900 text-slate-200 border-neutral-700' : '']">
+
+            <div class="flex items-center justify-between border-b pb-2" :class="[activeTheme === 'dark' ? 'border-neutral-700' : 'border-neutral-200']">
+              <span class="text-xs font-bold tracking-wider text-neutral-700">排版个性化设置</span>
+              <button @click="showSettings = false" class="text-xs text-neutral-400 hover:text-neutral-600">✕ 关闭</button>
             </div>
 
             <!-- 字号调节 -->
             <div class="flex flex-col gap-1.5">
-              <span class="text-[11px] opacity-60 font-semibold">字号大小</span>
+              <span class="text-[11px] text-neutral-500 font-semibold">字号大小</span>
               <div class="flex items-center justify-between gap-2">
-                <button @click="adjustFontSize(-2)" class="flex-1 py-1.5 rounded-lg border text-center font-bold text-sm transition-all"
-                        :class="[activeTheme === 'dark' ? 'border-white/20 hover:bg-white/10' : 'border-black/20 hover:bg-black/5']">A -</button>
-                <span class="text-xs font-mono font-bold w-12 text-center">{{ fontSize }}px</span>
-                <button @click="adjustFontSize(2)" class="flex-1 py-1.5 rounded-lg border text-center font-bold text-sm transition-all"
-                        :class="[activeTheme === 'dark' ? 'border-white/20 hover:bg-white/10' : 'border-black/20 hover:bg-black/5']">A +</button>
+                <button @click="adjustFontSize(-2)" class="flex-1 py-1.5 rounded-lg border text-center font-bold text-sm transition-all border-neutral-200 hover:bg-neutral-50">A -</button>
+                <span class="text-xs font-mono font-bold w-12 text-center text-neutral-700">{{ fontSize }}px</span>
+                <button @click="adjustFontSize(2)" class="flex-1 py-1.5 rounded-lg border text-center font-bold text-sm transition-all border-neutral-200 hover:bg-neutral-50">A +</button>
               </div>
             </div>
 
             <!-- 字体切换 -->
             <div class="flex flex-col gap-1.5">
-              <span class="text-[11px] opacity-60 font-semibold">阅读字体</span>
+              <span class="text-[11px] text-neutral-500 font-semibold">阅读字体</span>
               <div class="flex gap-2">
                 <button @click="activeFont = 'serif'" class="flex-1 py-1.5 rounded-lg border text-xs transition-all"
-                        :class="[activeFont === 'serif' ? 'border-purple-500 bg-purple-500/10 text-purple-400 font-bold' : (activeTheme === 'dark' ? 'border-white/20' : 'border-black/20')]">宋体 / 衬线</button>
+                        :class="[activeFont === 'serif' ? 'border-accent-500 bg-accent-50 text-accent-700 font-bold' : 'border-neutral-200']">宋体 / 衬线</button>
                 <button @click="activeFont = 'sans'" class="flex-1 py-1.5 rounded-lg border text-xs transition-all"
-                        :class="[activeFont === 'sans' ? 'border-purple-500 bg-purple-500/10 text-purple-400 font-bold' : (activeTheme === 'dark' ? 'border-white/20' : 'border-black/20')]">系统 / 无衬线</button>
+                        :class="[activeFont === 'sans' ? 'border-accent-500 bg-accent-50 text-accent-700 font-bold' : 'border-neutral-200']">系统 / 无衬线</button>
               </div>
             </div>
 
             <!-- 四大护眼背景主题 -->
             <div class="flex flex-col gap-1.5">
-              <span class="text-[11px] opacity-60 font-semibold">背景配色</span>
+              <span class="text-[11px] text-neutral-500 font-semibold">背景配色</span>
               <div class="grid grid-cols-4 gap-2">
                 <button @click="activeTheme = 'parchment'" class="h-9 rounded-lg border-2 flex items-center justify-center transition-all bg-[#f4ecd8] border-amber-900/10 relative"
                         :class="[activeTheme === 'parchment' ? 'border-amber-600 scale-105' : '']" title="仿古羊皮纸">
@@ -135,7 +133,7 @@
           </div>
 
           <!-- 设置开关按钮 -->
-          <button @click="showSettings = !showSettings" class="w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-xl transition-all scale-105 active:scale-95 border bg-purple-600 border-purple-500 text-white hover:bg-purple-500">
+          <button @click="showSettings = !showSettings" class="w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-xl transition-all active:scale-95 bg-accent-600 text-white hover:bg-accent-700">
             ⚙
           </button>
         </div>
@@ -147,25 +145,25 @@
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
             <div class="flex items-center gap-2 mb-1.5">
-              <router-link :to="`/novels/${novelId}`" class="text-xs text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1 group">
+              <router-link :to="`/novels/${novelId}`" class="text-xs text-accent-600 hover:text-accent-700 font-semibold flex items-center gap-1 group">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
                 </svg>
                 返回作品详情
               </router-link>
             </div>
-            <h1 class="text-2xl font-extrabold text-slate-100">
+            <h1 class="text-2xl font-extrabold text-neutral-900">
               {{ chapter.volume_number ? `第${chapter.volume_number}卷 · ` : '' }}第{{ chapter.chapter_number }}章：{{ chapter.title }}
             </h1>
-            <p class="text-xs text-slate-400 mt-2 flex items-center gap-2 font-medium">
+            <p class="text-xs text-neutral-500 mt-2 flex items-center gap-2 font-medium">
               <span>{{ contentLength }} 字</span>
-              <span class="text-slate-700">|</span>
+              <span class="text-neutral-300">|</span>
               <span>共 {{ sortedChapters.length }} 章</span>
             </p>
           </div>
           <div class="flex items-center gap-3">
-            <button @click="toggleReadMode" class="btn-secondary text-sm flex items-center gap-1.5 glass-panel hover:bg-white/10 px-4 py-2 border border-white/10 rounded-lg text-ink-300">
-              📖 沉浸阅读
+            <button @click="toggleReadMode" class="btn-secondary text-sm flex items-center gap-1.5 px-4 py-2">
+              沉浸阅读
             </button>
             <button @click="regenerate" class="btn-secondary text-sm flex items-center gap-1.5" :disabled="regenerating">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4" :class="{'animate-spin': regenerating}">
@@ -181,23 +179,23 @@
         </div>
 
         <!-- Main Layout: Sidebar & Content Editor -->
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-8 animate-fade-in">
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
           <!-- Directory Sidebar -->
           <div class="lg:col-span-1">
-            <div class="card p-5 sticky top-24 max-h-[calc(100vh-12rem)] flex flex-col bg-slate-900/50 backdrop-blur-md border border-white/5 rounded-2xl">
-              <h2 class="text-sm font-bold text-slate-200 mb-4 pb-2.5 border-b border-slate-800/80 flex items-center justify-between">
+            <div class="bg-white rounded-xl border border-neutral-200 p-4 sticky top-24 max-h-[calc(100vh-12rem)] flex flex-col">
+              <h2 class="text-sm font-bold text-neutral-900 mb-4 pb-2.5 border-b border-neutral-200 flex items-center justify-between">
                 <span class="flex items-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-purple-400">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-accent-600">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                   </svg>
                   <span>目录导航</span>
                 </span>
-                <span class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full font-semibold">TOC</span>
+                <span class="text-[10px] bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded-full font-semibold">TOC</span>
               </h2>
 
               <div class="overflow-y-auto flex-1 space-y-4 pr-1.5 custom-scrollbar">
                 <div v-for="group in groupedChapters" :key="group.title" class="space-y-1.5">
-                  <div class="text-[11px] font-bold text-slate-500 tracking-wider uppercase pl-1 pt-2 pb-1 border-b border-slate-800/40">
+                  <div class="text-[11px] font-bold text-neutral-400 tracking-wider uppercase pl-1 pt-2 pb-1 border-b border-neutral-100">
                     {{ group.title }}
                   </div>
                   <div
@@ -205,61 +203,61 @@
                     :key="ch.chapter_number"
                     @click="goToChapter(ch.chapter_number)"
                     :class="[
-                      'px-3 py-2.5 rounded-xl text-xs cursor-pointer transition-all duration-200 flex items-center justify-between',
+                      'px-3 py-2.5 rounded-lg text-xs cursor-pointer transition-all duration-200 flex items-center justify-between',
                       ch.chapter_number === parseInt(chapterNum)
-                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 font-semibold'
-                        : 'text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 border border-transparent'
+                        ? 'bg-accent-50 text-accent-700 border border-accent-200 font-semibold'
+                        : 'text-neutral-600 hover:bg-neutral-50 border border-transparent'
                     ]"
                   >
                     <span class="truncate pr-2">第{{ ch.chapter_number }}章：{{ ch.title }}</span>
-                    <span class="text-[10px] text-slate-500 font-mono shrink-0">{{ ch.content ? ch.content.length : 0 }}字</span>
+                    <span class="text-[10px] text-neutral-400 font-mono shrink-0">{{ ch.content ? ch.content.length : 0 }}字</span>
                   </div>
                 </div>
               </div>
 
               <!-- Version History Collapsible -->
-              <div class="mt-4 border-t border-slate-800/60 pt-3">
+              <div class="mt-4 border-t border-neutral-200 pt-3">
                 <button
                   @click="showVersionHistory = !showVersionHistory"
-                  class="w-full flex items-center justify-between text-xs font-bold text-slate-400 hover:text-slate-200 transition-colors py-1"
+                  class="w-full flex items-center justify-between text-xs font-bold text-neutral-500 hover:text-neutral-700 transition-colors py-1"
                 >
                   <span class="flex items-center gap-1.5">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5 text-purple-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5 text-accent-600">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     版本历史
-                    <span class="text-[10px] bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-full">{{ versions.length }}</span>
+                    <span class="text-[10px] bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded-full">{{ versions.length }}</span>
                   </span>
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3 h-3 transition-transform" :class="showVersionHistory ? 'rotate-180' : ''">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                   </svg>
                 </button>
                 <div v-if="showVersionHistory" class="mt-2 space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar">
-                  <div v-if="versions.length === 0" class="text-[11px] text-slate-600 text-center py-2">暂无版本记录</div>
+                  <div v-if="versions.length === 0" class="text-[11px] text-neutral-400 text-center py-2">暂无版本记录</div>
                   <div
                     v-for="ver in versions"
                     :key="ver.version_number"
                     @click="previewVersion(ver)"
-                    class="px-2.5 py-2 rounded-lg text-[11px] cursor-pointer transition-all border border-transparent hover:bg-slate-800/50 hover:border-slate-700/50"
-                    :class="{ 'border-indigo-500/40 bg-indigo-500/5': ver.is_active }"
+                    class="px-2.5 py-2 rounded-lg text-[11px] cursor-pointer transition-all border border-transparent hover:bg-neutral-50 hover:border-neutral-200"
+                    :class="{ 'border-accent-200 bg-accent-50': ver.is_active }"
                   >
                     <div class="flex items-center justify-between">
-                      <span class="font-semibold text-slate-300 flex items-center gap-1">
+                      <span class="font-semibold text-neutral-700 flex items-center gap-1">
                         v{{ ver.version_number }}
-                        <span v-if="ver.is_active" class="text-[9px] bg-indigo-500/20 text-indigo-400 px-1 py-0.5 rounded">活跃</span>
+                        <span v-if="ver.is_active" class="text-[9px] bg-accent-50 text-accent-700 px-1 py-0.5 rounded">活跃</span>
                       </span>
                       <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
                         :class="{
-                          'bg-blue-500/20 text-blue-400': ver.source === 'ai_rewrite',
-                          'bg-amber-500/20 text-amber-400': ver.source === 'rollback',
-                          'bg-slate-700/50 text-slate-400': ver.source === 'manual',
-                          'bg-emerald-500/20 text-emerald-400': ver.source === 'generation',
+                          'bg-blue-50 text-blue-700': ver.source === 'ai_rewrite',
+                          'bg-amber-50 text-amber-700': ver.source === 'rollback',
+                          'bg-neutral-100 text-neutral-600': ver.source === 'manual',
+                          'bg-emerald-50 text-emerald-700': ver.source === 'generation',
                         }"
                       >{{ sourceLabel(ver.source) }}</span>
                     </div>
-                    <div class="text-slate-500 mt-0.5 flex items-center gap-2">
+                    <div class="text-neutral-500 mt-0.5 flex items-center gap-2">
                       <span>{{ ver.word_count }} 字 · {{ formatDate(ver.created_at) }}</span>
-                      <span v-if="ver.quality_score" class="text-amber-400">★ {{ ver.quality_score.toFixed(1) }}</span>
+                      <span v-if="ver.quality_score" class="text-amber-600">★ {{ ver.quality_score.toFixed(1) }}</span>
                     </div>
                   </div>
                 </div>
@@ -276,42 +274,42 @@
             >
               <button
                 @click="openRewriteModal"
-                class="btn-secondary text-sm flex items-center gap-1.5 px-4 py-2 border border-white/10 rounded-lg text-ink-300 bg-purple-600/20 hover:bg-purple-600/40 border-purple-500/40"
+                class="btn-secondary text-sm flex items-center gap-1.5 px-4 py-2"
               >
-                ✦ AI 改写
+                AI 改写
               </button>
             </div>
 
-            <div class="card p-1 bg-[#090b11]/80 border-slate-800/60 shadow-inner rounded-2xl overflow-hidden border">
+            <div class="bg-white rounded-xl border border-neutral-200 shadow-sm overflow-hidden">
               <textarea
                 ref="textareaRef"
                 v-model="content"
                 @mouseup="onSelectionChange"
                 @keyup="onSelectionChange"
-                class="w-full min-h-[600px] p-6 md:p-8 text-base leading-relaxed font-sans bg-transparent text-slate-100 resize-y border-0 focus:outline-none focus:ring-0 focus:border-0"
+                class="w-full min-h-[600px] p-6 md:p-8 text-base leading-relaxed font-sans bg-transparent text-neutral-900 resize-y border-0 focus:outline-none focus:ring-0 focus:border-0"
                 placeholder="开始书写或重新生成章节正文..."
               ></textarea>
             </div>
 
             <!-- Bottom Navigation -->
-            <div class="flex flex-col sm:flex-row items-center justify-between gap-4 py-6 border-t border-slate-900">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4 py-6 border-t border-neutral-200">
               <div class="w-full sm:w-auto">
-                <button 
-                  v-if="prevChapter" 
+                <button
+                  v-if="prevChapter"
                   @click="goToChapter(prevChapter.chapter_number)"
                   class="w-full btn-secondary text-sm flex items-center justify-center gap-2 group py-3 px-5"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4 group-hover:-translate-x-0.5 transition-transform text-purple-400">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4 group-hover:-translate-x-0.5 transition-transform text-accent-600">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
                   </svg>
                   <span>上一章：{{ prevChapter.title }}</span>
                 </button>
-                <span v-else class="text-xs text-slate-600 font-semibold block text-center sm:text-left py-2">已是第一章</span>
+                <span v-else class="text-xs text-neutral-400 font-semibold block text-center sm:text-left py-2">已是第一章</span>
               </div>
 
               <div class="order-first sm:order-none">
-                <p v-if="saved" class="text-sm text-emerald-400 font-semibold flex items-center justify-center gap-1.5">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-4 h-4 animate-bounce">
+                <p v-if="saved" class="text-sm text-emerald-600 font-semibold flex items-center justify-center gap-1.5">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-4 h-4">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                   </svg>
                   <span>内容已保存（{{ contentLength }} 字）</span>
@@ -319,17 +317,17 @@
               </div>
 
               <div class="w-full sm:w-auto">
-                <button 
-                  v-if="nextChapter" 
+                <button
+                  v-if="nextChapter"
                   @click="goToChapter(nextChapter.chapter_number)"
                   class="w-full btn-secondary text-sm flex items-center justify-center gap-2 group py-3 px-5"
                 >
                   <span>下一章：{{ nextChapter.title }}</span>
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4 group-hover:translate-x-0.5 transition-transform text-purple-400">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4 group-hover:translate-x-0.5 transition-transform text-accent-600">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
                   </svg>
                 </button>
-                <span v-else class="text-xs text-slate-600 font-semibold block text-center sm:text-right py-2">已是最后一章</span>
+                <span v-else class="text-xs text-neutral-400 font-semibold block text-center sm:text-right py-2">已是最后一章</span>
               </div>
             </div>
           </div>
@@ -340,31 +338,31 @@
 
   <!-- ==================== AI 改写 Modal ==================== -->
   <Teleport to="body">
-    <div v-if="showRewriteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="closeRewriteModal">
-      <div class="bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden">
-        <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-          <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">✦ AI 改写</h3>
-          <button @click="closeRewriteModal" class="text-slate-500 hover:text-slate-300 transition-colors text-lg leading-none">✕</button>
+    <div v-if="showRewriteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @click.self="closeRewriteModal">
+      <div class="bg-white border border-neutral-200 rounded-xl shadow-xl w-full max-w-2xl mx-4 overflow-hidden">
+        <div class="px-6 py-4 border-b border-neutral-200 flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-neutral-800 flex items-center gap-2">AI 改写</h3>
+          <button @click="closeRewriteModal" class="text-neutral-400 hover:text-neutral-600 transition-colors text-lg leading-none">✕</button>
         </div>
 
         <!-- 未生成结果时：输入面板 -->
         <div v-if="!rewriteResult" class="p-6 space-y-4">
           <div>
-            <div class="text-xs font-semibold text-slate-400 mb-2">选中文本预览</div>
-            <div class="bg-slate-800/60 rounded-xl px-4 py-3 text-sm text-slate-300 leading-relaxed border border-slate-700/50 line-clamp-3">
+            <div class="text-xs font-semibold text-neutral-500 mb-2">选中文本预览</div>
+            <div class="bg-neutral-50 rounded-xl px-4 py-3 text-sm text-neutral-700 leading-relaxed border border-neutral-200 line-clamp-3">
               {{ selectionText.length > 100 ? selectionText.slice(0, 100) + '...' : selectionText }}
             </div>
           </div>
           <div>
-            <div class="text-xs font-semibold text-slate-400 mb-2">改写指令</div>
+            <div class="text-xs font-semibold text-neutral-500 mb-2">改写指令</div>
             <textarea
               v-model="rewriteInstruction"
-              class="w-full bg-slate-800/60 border border-slate-700/50 rounded-xl px-4 py-3 text-sm text-slate-100 resize-none focus:outline-none focus:border-purple-500/60 transition-colors"
+              class="input w-full resize-none"
               rows="3"
               placeholder="例如：改成更有张力的描写、增加环境渲染、调整节奏使其更紧凑..."
             ></textarea>
           </div>
-          <div v-if="rewriteError" class="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">{{ rewriteError }}</div>
+          <div v-if="rewriteError" class="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{{ rewriteError }}</div>
           <div class="flex justify-end gap-3">
             <button @click="closeRewriteModal" class="btn-secondary text-sm px-4 py-2">取消</button>
             <button @click="doRewrite" :disabled="rewriting || !rewriteInstruction.trim()" class="btn-primary text-sm px-5 py-2 flex items-center gap-2">
@@ -381,15 +379,15 @@
         <div v-else class="p-6 space-y-4">
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <div class="text-xs font-semibold text-slate-400 mb-2">原文</div>
-              <div class="bg-slate-800/40 rounded-xl px-4 py-3 text-sm text-slate-400 leading-relaxed border border-slate-700/30 max-h-48 overflow-y-auto custom-scrollbar">{{ rewriteResult.original }}</div>
+              <div class="text-xs font-semibold text-neutral-500 mb-2">原文</div>
+              <div class="bg-neutral-50 rounded-xl px-4 py-3 text-sm text-neutral-600 leading-relaxed border border-neutral-200 max-h-48 overflow-y-auto custom-scrollbar">{{ rewriteResult.original }}</div>
             </div>
             <div>
-              <div class="text-xs font-semibold text-purple-400 mb-2">AI 改写结果</div>
-              <div class="bg-purple-500/5 rounded-xl px-4 py-3 text-sm text-slate-200 leading-relaxed border border-purple-500/20 max-h-48 overflow-y-auto custom-scrollbar">{{ rewriteResult.rewritten }}</div>
+              <div class="text-xs font-semibold text-accent-600 mb-2">AI 改写结果</div>
+              <div class="bg-accent-50 rounded-xl px-4 py-3 text-sm text-neutral-800 leading-relaxed border border-accent-200 max-h-48 overflow-y-auto custom-scrollbar">{{ rewriteResult.rewritten }}</div>
             </div>
           </div>
-          <div v-if="rewriteError" class="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">{{ rewriteError }}</div>
+          <div v-if="rewriteError" class="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{{ rewriteError }}</div>
           <div class="flex justify-end gap-3">
             <button @click="rewriteResult = null; rewriteError = ''" class="btn-secondary text-sm px-4 py-2">重新生成</button>
             <button @click="closeRewriteModal" class="btn-secondary text-sm px-4 py-2">放弃</button>
@@ -402,33 +400,33 @@
 
   <!-- ==================== 版本预览 Modal ==================== -->
   <Teleport to="body">
-    <div v-if="previewVersionData" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="previewVersionData = null">
-      <div class="bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden">
-        <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-          <h3 class="text-sm font-bold text-slate-200">版本 v{{ previewVersionData.version_number }} 预览</h3>
-          <button @click="previewVersionData = null" class="text-slate-500 hover:text-slate-300 transition-colors text-lg leading-none">✕</button>
+    <div v-if="previewVersionData" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @click.self="previewVersionData = null">
+      <div class="bg-white border border-neutral-200 rounded-xl shadow-xl w-full max-w-2xl mx-4 overflow-hidden">
+        <div class="px-6 py-4 border-b border-neutral-200 flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-neutral-800">版本 v{{ previewVersionData.version_number }} 预览</h3>
+          <button @click="previewVersionData = null" class="text-neutral-400 hover:text-neutral-600 transition-colors text-lg leading-none">✕</button>
         </div>
         <div class="p-6 space-y-4">
-          <div class="flex items-center gap-3 text-xs text-slate-400">
+          <div class="flex items-center gap-3 text-xs text-neutral-500">
             <span class="px-2 py-0.5 rounded-full font-medium"
               :class="{
-                'bg-blue-500/20 text-blue-400': previewVersionData.source === 'ai_rewrite',
-                'bg-amber-500/20 text-amber-400': previewVersionData.source === 'rollback',
-                'bg-slate-700/50 text-slate-400': previewVersionData.source === 'manual',
-                'bg-emerald-500/20 text-emerald-400': previewVersionData.source === 'generation',
+                'bg-blue-50 text-blue-700': previewVersionData.source === 'ai_rewrite',
+                'bg-amber-50 text-amber-700': previewVersionData.source === 'rollback',
+                'bg-neutral-100 text-neutral-600': previewVersionData.source === 'manual',
+                'bg-emerald-50 text-emerald-700': previewVersionData.source === 'generation',
               }"
             >{{ sourceLabel(previewVersionData.source) }}</span>
             <span>{{ previewVersionData.word_count }} 字</span>
             <span>{{ formatDate(previewVersionData.created_at) }}</span>
-            <span v-if="previewVersionData.quality_score" class="text-amber-400">★ {{ previewVersionData.quality_score.toFixed(1) }}</span>
-            <span v-if="previewVersionData.model_name" class="text-slate-500">{{ previewVersionData.model_name }}</span>
+            <span v-if="previewVersionData.quality_score" class="text-amber-600">★ {{ previewVersionData.quality_score.toFixed(1) }}</span>
+            <span v-if="previewVersionData.model_name" class="text-neutral-400">{{ previewVersionData.model_name }}</span>
           </div>
-          <div class="bg-slate-800/40 rounded-xl px-4 py-3 text-sm text-slate-300 leading-relaxed border border-slate-700/30 max-h-64 overflow-y-auto custom-scrollbar whitespace-pre-wrap">
+          <div class="bg-neutral-50 rounded-xl px-4 py-3 text-sm text-neutral-700 leading-relaxed border border-neutral-200 max-h-64 overflow-y-auto custom-scrollbar whitespace-pre-wrap">
             {{ previewVersionData.content }}
           </div>
           <div class="flex justify-end gap-3">
             <button @click="previewVersionData = null" class="btn-secondary text-sm px-4 py-2">关闭</button>
-            <button @click="doActivate(previewVersionData.version_number)" class="btn-secondary text-sm px-4 py-2 border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10">设为正式版本</button>
+            <button @click="doActivate(previewVersionData.version_number)" class="btn-secondary text-sm px-4 py-2 border-accent-200 text-accent-600 hover:bg-accent-50">设为正式版本</button>
             <button @click="doRollback(previewVersionData.version_number)" class="btn-primary text-sm px-5 py-2">回滚到此版本</button>
           </div>
         </div>
@@ -542,6 +540,7 @@ async function doRewrite() {
         instruction: rewriteInstruction.value,
       }),
     })
+
     if (res.status === 504) {
       rewriteError.value = 'AI 改写超时，请稍后重试'
     } else if (!res.ok) {
@@ -761,6 +760,7 @@ async function regenerate() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chapter_start: parseInt(chapterNum.value), chapter_end: parseInt(chapterNum.value) }),
     })
+
     if (res.ok) {
       const data = await res.json()
       router.push(`/task/${data.task_id}`)
@@ -796,17 +796,6 @@ watch([novelId, chapterNum], () => {
 </script>
 
 <style scoped>
-.glass-panel {
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-.glass-panel-setting {
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.5);
-}
 .custom-scrollbar::-webkit-scrollbar {
   width: 5px;
 }
@@ -814,14 +803,12 @@ watch([novelId, chapterNum], () => {
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.1);
   border-radius: 9999px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.2);
 }
-
-/* Immersive reading view custom scrollbar */
 .custom-scrollbar-read::-webkit-scrollbar {
   width: 8px;
 }
@@ -834,13 +821,5 @@ watch([novelId, chapterNum], () => {
 }
 .custom-scrollbar-read::-webkit-scrollbar-thumb:hover {
   background: rgba(128, 128, 128, 0.45);
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.animate-fade-in {
-  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 </style>
