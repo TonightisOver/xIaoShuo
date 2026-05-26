@@ -323,12 +323,44 @@ class Outline(Base):
     chapter_number: Mapped[int | None] = mapped_column(Integer)
     content: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
+    deviation_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(),
         onupdate=func.now()
+    )
+
+
+class OutlineSyncSuggestion(Base):
+    """大纲同步建议"""
+
+    __tablename__ = "outline_sync_suggestions"
+    __table_args__ = (
+        Index("ix_sync_novel_status", "novel_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    source_level: Mapped[str] = mapped_column(String(20), nullable=False)
+    source_volume: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_chapter: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    affected_chapter: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    impact_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    severity: Mapped[str] = mapped_column(String(10), nullable=False)
+    suggestion: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 
@@ -610,6 +642,34 @@ class LongFormProgress(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     novel: Mapped["Novel"] = relationship(back_populates="long_form_progress")
+
+
+class ReaderSimulation(Base):
+    """读者视角模拟结果"""
+
+    __tablename__ = "reader_simulations"
+    __table_args__ = (
+        Index("ix_reader_sim_novel_chapter", "novel_id", "chapter_number"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=True
+    )
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    chapter_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    personas_used: Mapped[list] = mapped_column(JSON, nullable=False)
+    results: Mapped[list] = mapped_column(JSON, default=list)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", index=True
+    )
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 class ChapterBlueprint(Base):

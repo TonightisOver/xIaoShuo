@@ -38,6 +38,46 @@
         </div>
       </div>
       <p v-if="masterSaved" class="text-xs text-emerald-600 mt-2">已保存</p>
+      <p v-if="analyzing" class="text-xs text-amber-600 mt-2">正在分析影响范围...</p>
+    </div>
+
+    <!-- Sync Suggestions Panel -->
+    <div v-if="suggestions.length > 0" class="card p-5 mb-6 border-l-4 border-amber-400">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-medium text-ink-800">同步建议 ({{ suggestions.length }})</h2>
+        <div class="flex gap-2">
+          <button @click="batchAction('accept')" class="btn-primary text-xs">全部接受</button>
+          <button @click="batchAction('reject')" class="btn-secondary text-xs">全部忽略</button>
+        </div>
+      </div>
+      <div class="space-y-2 max-h-60 overflow-y-auto">
+        <div v-for="s in suggestions" :key="s.id" class="flex items-start gap-3 p-2 rounded bg-paper-50">
+          <span :class="severityClass(s.severity)" class="text-xs px-1.5 py-0.5 rounded font-medium shrink-0">
+            {{ s.severity }}
+          </span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm text-ink-700">第{{ s.affected_chapter }}章 · {{ impactLabel(s.impact_type) }}</p>
+            <p class="text-xs text-ink-500 mt-0.5 truncate">{{ s.suggestion }}</p>
+          </div>
+          <div class="flex gap-1 shrink-0">
+            <button @click="acceptOne(s.id)" class="text-emerald-600 hover:text-emerald-800 text-xs">接受</button>
+            <button @click="rejectOne(s.id)" class="text-ink-400 hover:text-ink-600 text-xs">忽略</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sync Status -->
+    <div v-if="syncStatus.length > 0" class="card p-5 mb-6">
+      <h2 class="font-medium text-ink-800 mb-3">章节同步状态</h2>
+      <div class="flex flex-wrap gap-2">
+        <span v-for="st in syncStatus" :key="st.chapter_number"
+          class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded"
+          :class="syncStatusClass(st.outline_status)">
+          <span class="w-1.5 h-1.5 rounded-full" :class="syncDotClass(st.outline_status)"></span>
+          第{{ st.chapter_number }}章
+        </span>
+      </div>
     </div>
 
     <!-- Volume Outlines -->
@@ -90,6 +130,10 @@ const masterSaved = ref(false)
 const generatingVols = ref(false)
 const generatingChs = ref(null)
 const generatingMaster = ref(false)
+const analyzing = ref(false)
+const suggestions = ref([])
+const syncStatus = ref([])
+const previousMaster = ref(null)
 
 const chaptersByVolume = computed(() => {
   const map = {}
@@ -113,6 +157,7 @@ async function load() {
         ending: c.ending || '',
         themes_text: (c.themes || []).join(', '),
       }
+      previousMaster.value = { ...master.value }
     }
     volumes.value = data.volumes || []
     // Collect chapter outlines preserving volume_number
@@ -124,6 +169,7 @@ async function load() {
     }
     chapters.value = allChs
   }
+  await Promise.all([loadSyncStatus(), loadSuggestions()])
 }
 
 async function aiGenerateMaster() {
@@ -163,6 +209,19 @@ async function saveMaster() {
   savingMaster.value = false
   masterSaved.value = true
   setTimeout(() => { masterSaved.value = false }, 2000)
+
+  if (previousMaster.value) {
+    const oldC = previousMaster.value
+    const newC = master.value
+    const changed = oldC.premise !== newC.premise || oldC.main_conflict !== newC.main_conflict || oldC.ending !== newC.ending
+    if (changed) {
+      await analyzeImpact(
+        { premise: oldC.premise, main_conflict: oldC.main_conflict, ending: oldC.ending },
+        { premise: newC.premise, main_conflict: newC.main_conflict, ending: newC.ending }
+      )
+    }
+  }
+  previousMaster.value = { ...master.value }
 }
 
 async function generateVolumes() {
@@ -193,6 +252,83 @@ async function generateVolumeContent(volNum) {
     const data = await res.json()
     router.push(`/task/${data.task_id}`)
   }
+}
+
+async function loadSyncStatus() {
+  const res = await fetch(`/api/v1/projects/${novelId}/outlines/sync/status`)
+  if (res.ok) {
+    const data = await res.json()
+    syncStatus.value = data.chapters || []
+  }
+}
+
+async function loadSuggestions() {
+  const res = await fetch(`/api/v1/projects/${novelId}/outlines/sync/suggestions?status=pending`)
+  if (res.ok) {
+    const data = await res.json()
+    suggestions.value = data.suggestions || []
+  }
+}
+
+async function analyzeImpact(oldContent, newContent) {
+  analyzing.value = true
+  try {
+    const res = await fetch(`/api/v1/projects/${novelId}/outlines/sync/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ level: 'master', old_content: oldContent, new_content: newContent }),
+    })
+    if (res.ok) {
+      await loadSuggestions()
+    }
+  } finally {
+    analyzing.value = false
+  }
+}
+
+async function acceptOne(id) {
+  await fetch(`/api/v1/projects/${novelId}/outlines/sync/suggestions/${id}/accept`, { method: 'PUT' })
+  suggestions.value = suggestions.value.filter(s => s.id !== id)
+  await loadSyncStatus()
+}
+
+async function rejectOne(id) {
+  await fetch(`/api/v1/projects/${novelId}/outlines/sync/suggestions/${id}/reject`, { method: 'PUT' })
+  suggestions.value = suggestions.value.filter(s => s.id !== id)
+}
+
+async function batchAction(action) {
+  const ids = suggestions.value.map(s => s.id)
+  await fetch(`/api/v1/projects/${novelId}/outlines/sync/suggestions/batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, action }),
+  })
+  suggestions.value = []
+  if (action === 'accept') await loadSyncStatus()
+}
+
+function severityClass(sev) {
+  if (sev === 'high') return 'bg-red-100 text-red-700'
+  if (sev === 'medium') return 'bg-amber-100 text-amber-700'
+  return 'bg-blue-100 text-blue-700'
+}
+
+function impactLabel(type) {
+  const map = { plot_conflict: '情节冲突', character_inconsistency: '人物矛盾', setting_contradiction: '设定矛盾', pacing_shift: '节奏偏移' }
+  return map[type] || type
+}
+
+function syncStatusClass(status) {
+  if (status === 'completed') return 'bg-emerald-50 text-emerald-700'
+  if (status === 'deviated') return 'bg-red-50 text-red-700'
+  return 'bg-ink-50 text-ink-600'
+}
+
+function syncDotClass(status) {
+  if (status === 'completed') return 'bg-emerald-500'
+  if (status === 'deviated') return 'bg-red-500'
+  return 'bg-ink-400'
 }
 
 onMounted(load)

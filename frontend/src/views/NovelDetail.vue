@@ -57,6 +57,16 @@
           </button>
 
           <router-link to="/" class="btn-secondary text-sm">返回书架</router-link>
+
+          <button
+            @click="showExportDialog = true"
+            class="btn-secondary text-sm flex items-center gap-1.5"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            <span>导出</span>
+          </button>
         </div>
       </div>
 
@@ -354,6 +364,14 @@
           @generate="handleGenerateChapters"
         />
 
+        <ExportDialog
+          :visible="showExportDialog"
+          :novel-id="novelId"
+          :novel-title="novel?.title"
+          :volumes="volumes"
+          @close="showExportDialog = false"
+        />
+
         <!-- Delete Confirmation Modal for Unassigned Chapters -->
         <Teleport to="body">
           <div v-if="deleteTargetUnassigned" class="fixed inset-0 z-50 flex items-center justify-center">
@@ -477,6 +495,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import VolumeList from '../components/VolumeList.vue'
 import ChapterRangeDialog from '../components/ChapterRangeDialog.vue'
+import ExportDialog from '../components/ExportDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -496,6 +515,7 @@ const generating = ref(false)
 const fullGenerating = ref(false)
 const activeTab = ref('overview')
 const showRangeDialog = ref(false)
+const showExportDialog = ref(false)
 
 const editingOverview = ref(false)
 const savingOverview = ref(false)

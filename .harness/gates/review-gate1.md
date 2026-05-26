@@ -1,68 +1,61 @@
-# plan_review 评审报告
+# 需求评审报告 - CHANGE-048
 
-**评审轮次**: 第 1 轮
-**评审对象**: 章节节奏控制与定向改写闭环 (requirements.md + tasks.md)
-**日期**: 2026-05-25
+## 评审结论: APPROVED
 
-## 评审结论
-**结果**：APPROVED
+## 评审要点
 
----
+### 1. 完整性 (Completeness)
 
-## 评审发现
+需求文档定义了 5 个功能需求 (FR-1 ~ FR-5)，任务清单的 7 个 Task 完整覆盖：
 
-### MUST FIX（必须修复）
+| 功能需求 | 对应任务 | 覆盖情况 |
+|---------|---------|---------|
+| FR-1 读者人设定义 | Task-3 (READER_PERSONAS 常量) | 完整 |
+| FR-2 模拟执行 | Task-3 (Service 层) | 完整 |
+| FR-3 结果存储 | Task-1 + Task-2 (模型 + 迁移) | 完整 |
+| FR-4 历史对比 | Task-4 (GET 列表/详情 API) | 完整 |
+| FR-5 前端交互 | Task-6 + Task-7 (面板 + 集成) | 完整 |
 
-无。
+### 2. 可行性 (Feasibility)
 
-### SHOULD FIX（建议修复）
+- LLM 调用模式与现有 `outline_sync_service.py` 一致 -- 使用 `get_llm_client()` + `safe_json_parse()` + structlog，技术路径已验证。
+- `asyncio.gather` 并行执行在项目中已有使用先例，可行。
+- FastAPI BackgroundTasks 模式在 `novels.py` 和 `projects.py` 中已大量使用，模式成熟。
+- 数据模型 `novel_id` 使用 `String(100) FK` 关联 `novels.novel_id`，与现有 Chapter、Outline 等模型一致。
+- 前端 polling GET 接口是合理的简化方案，无需引入 WebSocket。
 
-1. **Blueprint 替代现有 CHAPTER_PLANNING_PROMPT 需保留降级路径**
-   - 位置：requirements.md FR-1 "替代现有 CHAPTER_PLANNING_PROMPT"；tasks.md T5
-   - 问题：当前 `chapter_generator.py` 的双级联流程（先调用 CHAPTER_PLANNING_PROMPT 生成规划单，再注入正文生成）是核心生成逻辑。需求说"替代"，但 Blueprint 是结构化 JSON 字段，而现有规划单是自由文本 Markdown。T5 任务描述过于简略，未说明如何兼容已有小说（已生成章节无 Blueprint 的情况）。
-   - 建议：T5 描述中补充：(a) 对无 Blueprint 的章节保留现有 CHAPTER_PLANNING_PROMPT 降级路径；(b) 明确 Blueprint JSON 如何转化为注入正文 Prompt 的约束文本。
+### 3. 一致性 (Consistency)
 
-2. **定向改写 API 与现有 rewrite 端点的定位区分未说明**
-   - 位置：requirements.md FR-3
-   - 问题：现有 `POST /{novel_id}/chapters/{chapter_number}/rewrite` 是"选中文本片段改写"（需传入 selected_text），新增的 `targeted-rewrite` 是"按维度整章改写"。两者功能有重叠但粒度不同，需求文档未说明两者的定位区分和是否共存。
-   - 建议：补充一句说明：现有 rewrite 端点保留用于用户手动选段改写，新增 targeted-rewrite 用于系统自动按质量维度改写，两者共存互不影响。
+- 数据模型字段与 API 响应结构完全对齐。
+- 前端卡片内容（engagement 分数、情感反应、节奏评价、爽点/痛点、总评）与 LLM 输出 JSON 结构一一对应。
+- 路由注册遵循现有 `__init__.py` 导出 + `main.py` include_router 模式。
+- 测试命名 `test_change048_reader_simulation.py` 遵循项目既有规范。
 
-3. **T4 依赖标注不完整**
-   - 位置：tasks.md T4 "依赖: T1"
-   - 问题：T4 "Quality-to-Action 映射逻辑" 需要读取八维评分结果的数据结构（来自 `quality_check.py` 的 scores dict），但依赖仅标注了 T1（数据模型）。实现者需要了解评分输出格式才能正确映射。
-   - 建议：在 T4 描述中补充"参考 `src/core/langgraph/nodes/quality_check.py` 的评分输出格式（8 维度 key: advancement/conflict/character_consistency/world_consistency/foreshadowing/pacing/readability/trope_alignment）"。
+### 4. 范围 (Scope)
 
-4. **Blueprint.chapter_type 与 Chapter.chapter_type 字段重复**
-   - 位置：requirements.md FR-1 蓝图字段
-   - 问题：现有 `Chapter` model 已有 `chapter_type` 字段（String(30)）。Blueprint 中也定义了 `chapter_type`。需明确两者关系：Blueprint 的 chapter_type 是规划阶段的预设值，生成后是否同步写入 Chapter.chapter_type？
-   - 建议：在 T1 或 FR-1 中补充说明数据流向：Blueprint.chapter_type 为规划值，章节生成完成后自动同步到 Chapter.chapter_type。
+7 个任务，预估复杂度"中"，合理。核心工作量集中在 Task-3（Service 层 prompt 设计 + 并行调用 + 错误处理）和 Task-6（前端面板），其余为胶水代码。对单人开发者而言 1-2 天可完成。
 
-5. **auto-improve 闭环的终止条件需精确定义**
-   - 位置：requirements.md FR-4
-   - 问题：FR-4 说"最多迭代 N 轮（默认 3 轮）"，但未定义"达标"的具体条件。是所有维度 >= 0.5？还是 overall >= 某阈值？还是所有之前低分维度都提升了？提前终止的条件不明确。
-   - 建议：补充达标条件定义，例如"当所有维度评分 >= 阈值（默认 0.5）或本轮改写后无维度提升时终止循环"。
+### 5. 风险评估 (Risk)
 
-6. **T10 Alembic Migration 执行顺序建议提前**
-   - 位置：tasks.md T10
-   - 问题：T10 依赖 T1 是正确的，但 T3/T4/T5 等 service 层任务在开发时需要数据库表已存在才能做集成测试。当前任务编号暗示 T10 在 T9 之后执行。
-   - 建议：调整实际执行顺序为 T1 -> T10 -> T2 -> T3/T4/T5/T6 并行 -> T7/T8/T9 -> T11，确保 service 开发时 DB schema 已就绪。
+| 风险项 | 等级 | 缓解措施 |
+|--------|------|---------|
+| LLM 输出 JSON 不稳定 | 中 | 已规划使用 `safe_json_parse` 容错解析，单人设失败不阻塞整体 |
+| 4 路并行 LLM 调用可能触发 rate limit | 低 | DeepSeek API 并发限制较宽松；`get_llm_client()` 已内置 retry |
+| 前端轮询频率未明确 | 低 | 建议实现时设定 3s 间隔 + 最大轮询次数 |
+| 上下文截断策略（前8000+后2000字）可能丢失关键信息 | 低 | 对网文章节（通常 2000-5000 字）影响极小 |
 
-### INFO（信息提示）
+## 问题与建议
 
-1. **ChapterVersion.source 约束无需扩展**：当前 CHECK 约束已包含 `'ai_rewrite'`，定向改写产生的版本可直接复用此值，无需新增枚举。设计合理。
+### 建议项（不阻塞）
 
-2. **Prompt 模板文件膨胀预警**：`prompts.py` 当前已 414 行，T2 将新增蓝图生成和 8 种改写类型的模板。建议实现时考虑按功能拆分为子模块（如 `prompts/blueprint.py`、`prompts/rewrite.py`），但不阻塞当前需求。
+1. **ReaderFeedbackCard.vue 未单独列为任务**：需求文档前端设计部分提到了独立的 `ReaderFeedbackCard.vue` 组件，但任务清单中未单独列出。建议在 Task-6 中明确说明卡片是内联实现还是抽取为子组件。当前不阻塞，因为 Task-6 描述已包含卡片内容。
 
-3. **性能约束可行**："单章蓝图生成 < 15s" 和 "单次定向改写 < 60s" 与现有 LLM 调用超时设置（chapter_rewriter: 120s, chapter_generator: 600s）兼容，DeepSeek API 响应时间在此范围内可行。
+2. **轮询终止条件建议明确**：Task-6 描述"轮询或 polling 获取结果"，建议实现时确定：轮询间隔 3 秒，最大等待 90 秒，终止条件为 status=completed 或 failed。
 
-4. **Novel relationship 建议**：新增 ChapterBlueprint 建议通过 novel_id + chapter_number 直接查询，无需在 Novel model 中添加 relationship，避免 Novel model 过度膨胀（当前已有 7 个 relationship）。
+3. **novel_id FK 类型**：Task-1 描述 `novel_id(FK)` 但未指定类型为 `String(100)`。实现时需确保与现有模型一致（`String(100), ForeignKey("novels.novel_id", ondelete="CASCADE")`）。
 
-5. **现有 rewrite 上下文构建可复用**：`chapter_rewriter.py` 中的 `_build_rewrite_context()` 函数已实现从 DB 读取世界观、大纲、人物卡、StoryBible 等上下文，定向改写引擎（T6）可直接复用此函数，减少重复代码。
-
----
+4. **status 字段枚举**：需求文档定义了 4 种状态（pending/running/completed/failed），建议 Task-1 中添加 CheckConstraint 或在 Service 层使用 Enum 常量，与项目中其他模型保持一致。
 
 ## 总结
 
-需求设计完整，技术方案与现有架构兼容性良好，复用了 ChapterVersion、八维质量评估、LLM client 等现有基础设施。任务拆分粒度合理（11 个任务），依赖关系基本正确。核心关注点是：(1) Blueprint 替代现有规划流程时需保留降级路径以兼容存量数据；(2) 新旧改写 API 的定位需在文档中明确区分；(3) auto-improve 的终止条件需精确定义以避免实现歧义。以上均为 SHOULD FIX 级别建议，不阻塞进入实现阶段。
-
-**结论：APPROVED**
+需求文档和任务分解质量良好。功能边界清晰，技术方案与项目现有模式高度一致，依赖关系合理，无阻塞性问题。建议项均为实现细节层面的补充，可在编码阶段自然解决。批准进入实现阶段。

@@ -280,6 +280,21 @@
               </button>
             </div>
 
+            <div class="flex justify-end mb-2 gap-2">
+              <button @click="showReaderSim = !showReaderSim" class="btn-secondary text-xs flex items-center gap-1 px-3 py-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+                </svg>
+                <span>读者模拟</span>
+              </button>
+              <button @click="copyContent" class="btn-secondary text-xs flex items-center gap-1 px-3 py-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+                </svg>
+                <span>{{ copied ? '已复制' : '复制正文' }}</span>
+              </button>
+            </div>
+
             <div class="bg-white rounded-xl border border-neutral-200 shadow-sm overflow-hidden">
               <textarea
                 ref="textareaRef"
@@ -330,6 +345,9 @@
                 <span v-else class="text-xs text-neutral-400 font-semibold block text-center sm:text-right py-2">已是最后一章</span>
               </div>
             </div>
+
+            <!-- Reader Simulation Panel -->
+            <ReaderSimPanel v-if="showReaderSim" :novel-id="novelId" :chapter-number="parseInt(chapterNum)" />
           </div>
         </div>
       </div>
@@ -438,6 +456,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import ReaderSimPanel from '../components/ReaderSimPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -451,6 +470,8 @@ const allVolumes = ref([])
 const saving = ref(false)
 const saved = ref(false)
 const regenerating = ref(false)
+const copied = ref(false)
+const showReaderSim = ref(false)
 
 // Reading Mode state
 const isReadMode = ref(false)
@@ -733,6 +754,14 @@ const nextChapter = computed(() => {
 
 function goToChapter(num) {
   router.push(`/novels/${novelId.value}/chapters/${num}`)
+}
+
+async function copyContent() {
+  try {
+    await navigator.clipboard.writeText(content.value)
+    copied.value = true
+    setTimeout(() => { copied.value = false }, 2000)
+  } catch { /* clipboard API not available */ }
 }
 
 async function save() {

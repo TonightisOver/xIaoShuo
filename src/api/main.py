@@ -11,11 +11,14 @@ from fastapi.staticfiles import StaticFiles
 
 from src.api.routes import (
     conversations_router,
+    export_router,
     health_router,
     knowledge_graph_router,
     novels_router,
+    outline_sync_router,
     outlines_router,
     projects_router,
+    reader_simulation_router,
     story_bible_router,
     storylines_router,
     style_router,
@@ -105,6 +108,9 @@ app.include_router(storylines_router)
 app.include_router(knowledge_graph_router)
 app.include_router(ws_router)
 app.include_router(story_bible_router)
+app.include_router(export_router)
+app.include_router(outline_sync_router)
+app.include_router(reader_simulation_router)
 
 # 挂载前端静态文件
 if FRONTEND_DIR.exists():
