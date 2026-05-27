@@ -341,7 +341,7 @@ class TestChapterEditorEndpoints:
         ), patch(
             "src.core.llm.chapter_rewriter.get_llm_client",
         ) as mock_llm, patch(
-            "src.core.context.NovelContextBuilder",
+            "src.api.services.novel_context_service.NovelContextBuilder",
             return_value=mock_builder,
         ), patch(
             "src.core.database.get_db_session",
@@ -394,7 +394,7 @@ class TestChapterEditorEndpoints:
         ), patch(
             "src.core.llm.chapter_rewriter.get_llm_client",
         ) as mock_llm, patch(
-            "src.core.context.NovelContextBuilder",
+            "src.api.services.novel_context_service.NovelContextBuilder",
             return_value=mock_builder,
         ), patch(
             "src.core.database.get_db_session",

@@ -21,7 +21,7 @@ class TestNovelContextBuilder:
 
     @pytest.fixture
     def builder(self):
-        from src.core.context.novel_context import NovelContextBuilder
+        from src.api.services.novel_context_service import NovelContextBuilder
 
         return NovelContextBuilder()
 
