@@ -1,7 +1,6 @@
 """章节 AI 改写引擎"""
 
 import asyncio
-import json
 
 import structlog
 
@@ -19,6 +18,8 @@ async def rewrite_chapter_segment(
     full_content: str,
     selected_text: str,
     instruction: str,
+    *,
+    context: dict,
 ) -> str:
     """对章节中选中的文本片段进行 AI 改写。
 
@@ -31,6 +32,9 @@ async def rewrite_chapter_segment(
         full_content: 章节完整正文
         selected_text: 用户选中的文本片段
         instruction: 改写指令
+        context: 预构建的改写上下文 dict，包含 world_setting / chapter_outline /
+            prev_chapter_summary / next_chapter_summary / characters /
+            story_bible / writing_style 等字段
 
     Returns:
         改写后的文本（仅替换片段，不含其他内容）
@@ -45,8 +49,6 @@ async def rewrite_chapter_segment(
         selected_length=len(selected_text),
         instruction=instruction,
     )
-
-    context = await _build_rewrite_context(novel_id, chapter_number)
 
     prompt = _build_rewrite_prompt(
         context=context,
@@ -68,117 +70,6 @@ async def rewrite_chapter_segment(
         result_length=len(result),
     )
     return result.strip()
-
-
-async def _build_rewrite_context(novel_id: str, chapter_number: int) -> dict:
-    """从数据库读取改写所需的上下文信息。"""
-    from sqlalchemy import select
-
-    from src.api.models.db_models import Chapter, Novel, Outline, StoryBible
-    from src.core.database import get_db_session
-
-    ctx: dict = {
-        "world_setting": "",
-        "chapter_outline": "",
-        "prev_chapter_summary": "",
-        "next_chapter_summary": "",
-        "characters": "",
-        "story_bible": "",
-        "writing_style": "",
-    }
-
-    async with get_db_session() as session:
-        # 小说基本信息（文风）
-        novel_res = await session.execute(
-            select(Novel).where(Novel.novel_id == novel_id)
-        )
-        novel = novel_res.scalar_one_or_none()
-        if novel:
-            ctx["writing_style"] = novel.writing_style_prompt or novel.writing_style or ""
-
-        # 世界观
-        from src.api.models.db_models import WorldSetting
-        ws_res = await session.execute(
-            select(WorldSetting).where(WorldSetting.novel_id == novel_id)
-        )
-        ws = ws_res.scalar_one_or_none()
-        if ws:
-            parts = []
-            if ws.background:
-                parts.append(f"背景：{ws.background}")
-            if ws.geography:
-                parts.append(f"地理：{ws.geography}")
-            if ws.culture:
-                parts.append(f"文化：{ws.culture}")
-            if ws.rules:
-                parts.append(f"规则：{ws.rules}")
-            ctx["world_setting"] = "\n".join(parts)
-
-        # 章节大纲
-        outline_res = await session.execute(
-            select(Outline).where(
-                Outline.novel_id == novel_id,
-                Outline.level == "chapter",
-                Outline.chapter_number == chapter_number,
-            )
-        )
-        outline = outline_res.scalar_one_or_none()
-        if outline and outline.content:
-            ctx["chapter_outline"] = json.dumps(outline.content, ensure_ascii=False)
-
-        # 前一章摘要（取正文前 300 字）
-        if chapter_number > 1:
-            prev_res = await session.execute(
-                select(Chapter).where(
-                    Chapter.novel_id == novel_id,
-                    Chapter.chapter_number == chapter_number - 1,
-                )
-            )
-            prev_ch = prev_res.scalar_one_or_none()
-            if prev_ch and prev_ch.content:
-                ctx["prev_chapter_summary"] = prev_ch.content[:300]
-
-        # 后一章摘要（取正文前 300 字）
-        next_res = await session.execute(
-            select(Chapter).where(
-                Chapter.novel_id == novel_id,
-                Chapter.chapter_number == chapter_number + 1,
-            )
-        )
-        next_ch = next_res.scalar_one_or_none()
-        if next_ch and next_ch.content:
-            ctx["next_chapter_summary"] = next_ch.content[:300]
-
-        # 人物卡
-        from src.api.models.db_models import Character
-        chars_res = await session.execute(
-            select(Character).where(Character.novel_id == novel_id)
-        )
-        chars = chars_res.scalars().all()
-        if chars:
-            char_list = [
-                f"- {c.name}（{c.role or '未知'}）：{c.description or ''}"
-                for c in chars
-            ]
-            ctx["characters"] = "\n".join(char_list)
-
-        # Story Bible
-        bible_res = await session.execute(
-            select(StoryBible).where(StoryBible.novel_id == novel_id)
-        )
-        bible = bible_res.scalar_one_or_none()
-        if bible:
-            char_cards_str = json.dumps(bible.character_cards or [], ensure_ascii=False, indent=2)
-            foreshadowings_str = json.dumps(bible.foreshadowing_list or [], ensure_ascii=False, indent=2)
-            ctx["story_bible"] = f"""世界观规则：{bible.worldview_rules or "未设定"}
-人物卡：{char_cards_str}
-势力关系：{bible.faction_relations or "未设定"}
-地点设定：{bible.location_settings or "未设定"}
-道具设定：{bible.prop_settings or "未设定"}
-伏笔列表：{foreshadowings_str}
-禁止违背的硬设定：{bible.hard_settings or "未设定"}"""
-
-    return ctx
 
 
 def _build_rewrite_prompt(
@@ -238,6 +129,8 @@ async def targeted_rewrite(
     full_content: str,
     rewrite_type: str,
     instruction: str = "",
+    *,
+    context: dict,
 ) -> str:
     """按改写类型对整章内容执行定向改写。
 
@@ -247,6 +140,7 @@ async def targeted_rewrite(
         full_content: 章节完整正文
         rewrite_type: 改写类型
         instruction: 额外改写指令（可选）
+        context: 预构建的改写上下文 dict
 
     Returns:
         改写后的完整章节内容
@@ -268,8 +162,6 @@ async def targeted_rewrite(
         rewrite_type=rewrite_type,
         content_length=len(full_content),
     )
-
-    context = await _build_rewrite_context(novel_id, chapter_number)
 
     prompt_template = TARGETED_REWRITE_PROMPTS[rewrite_type]
     prompt = prompt_template.format(
@@ -301,6 +193,8 @@ async def batch_targeted_rewrite(
     chapter_number: int,
     full_content: str,
     actions: list[dict],
+    *,
+    context: dict,
 ) -> str:
     """按优先级顺序依次执行多个改写动作。
 
@@ -311,6 +205,7 @@ async def batch_targeted_rewrite(
         chapter_number: 章节号
         full_content: 章节完整正文
         actions: list of {action_type, dimension, score, instruction, priority}
+        context: 预构建的改写上下文 dict
 
     Returns:
         最终改写后的完整章节内容
@@ -350,6 +245,7 @@ async def batch_targeted_rewrite(
                 full_content=current_content,
                 rewrite_type=action_type,
                 instruction=instruction,
+                context=context,
             )
             logger.info(
                 "batch_rewrite_step_done",

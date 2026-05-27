@@ -5,23 +5,147 @@
 
 from typing import Any
 
-import json
 import structlog
 
 from src.api.models.requests import CreateNovelRequest
+from src.api.services.chapter_persistence_service import (
+    persist_chapters_with_replace,
+    persist_generated_chapters,
+    persist_langgraph_result,
+    persist_quality_to_version,
+)
+from src.api.services.long_form_generation_helpers import (
+    generate_master_outline,
+    generate_volume_chapters,
+    generate_volume_outline,
+    generate_volume_quality_report,
+)
+from src.api.services.long_form_progress_service import get_long_form_progress_service
 from src.api.services.novel_manager import get_novel_manager
 from src.api.services.progress_event_bus import (
     EventType,
     ProgressEvent,
     get_event_bus,
-    register_progress_callback,
-    unregister_progress_callback,
 )
 from src.api.services.task_manager import get_task_manager
+from src.core.context import NovelContextBuilder
 from src.core.langgraph.graph import create_novel_graph
-from src.api.services.long_form_progress_service import get_long_form_progress_service
 
 logger = structlog.get_logger(__name__)
+
+_context_builder = NovelContextBuilder()
+
+
+async def _emit_progress(
+    task_id: str,
+    event_type: EventType,
+    data: dict[str, Any],
+    *,
+    update_status: bool = False,
+    status: str = "running",
+) -> None:
+    """Emit a progress event and optionally update task status.
+
+    Reduces repetitive event_bus.publish + task_manager.update_status patterns.
+    """
+    event_bus = get_event_bus()
+    await event_bus.publish(ProgressEvent(
+        task_id=task_id,
+        event_type=event_type,
+        data=data,
+    ))
+    if update_status:
+        task_manager = get_task_manager()
+        await task_manager.update_status(task_id, status, progress=data)
+
+
+async def _get_story_bible_context(novel_id: str, chapter_outline: dict) -> str | None:
+    """Query StoryBible and extract relevant constraints for a chapter."""
+    try:
+        from sqlalchemy import select
+
+        from src.api.models.db_models import StoryBible
+        from src.api.services.story_bible_service import extract_relevant_constraints
+        from src.core.database import get_db_session
+
+        async with get_db_session() as session:
+            stmt = select(StoryBible).where(StoryBible.novel_id == novel_id)
+            res = await session.execute(stmt)
+            bible = res.scalar_one_or_none()
+            if bible:
+                chapter_num = chapter_outline.get("chapter", 0)
+                return extract_relevant_constraints(bible, chapter_outline, chapter_num)
+    except Exception as e:
+        logger.warning("story_bible_context_fetch_failed", error=str(e))
+    return None
+
+
+async def _get_blueprint(novel_id: str, chapter_outline: dict) -> dict | None:
+    """Fetch or generate a blueprint for a chapter."""
+    chapter_num = chapter_outline.get("chapter", 0)
+    try:
+        from src.api.services.blueprint_service import BlueprintService
+
+        bp_service = BlueprintService()
+        existing_bp = await bp_service.get_blueprint(novel_id, chapter_num)
+        if existing_bp:
+            return existing_bp
+        return await bp_service.generate_blueprint(
+            novel_id, chapter_num, chapter_outline
+        )
+    except Exception as e:
+        logger.warning("blueprint_fetch_failed", chapter=chapter_num, error=str(e))
+    return None
+
+
+async def _sync_chapter_type_to_db(
+    novel_id: str, chapter_num: int, chapter_type: str | None
+) -> None:
+    """Sync chapter_type from generation result to the Chapter DB record."""
+    if not chapter_type:
+        return
+    try:
+        from sqlalchemy import update
+
+        from src.api.models.db_models import Chapter
+        from src.core.database import get_db_session
+
+        async with get_db_session() as session:
+            await session.execute(
+                update(Chapter)
+                .where(
+                    Chapter.novel_id == novel_id,
+                    Chapter.chapter_number == chapter_num,
+                )
+                .values(chapter_type=chapter_type)
+            )
+    except Exception as e:
+        logger.warning("chapter_type_sync_failed", chapter=chapter_num, error=str(e))
+
+
+async def _prepare_chapter_context(
+    novel_id: str, chapter_outline: dict
+) -> tuple[str | None, dict | None]:
+    """Prepare story_bible_context and blueprint for a chapter.
+
+    This combines _get_story_bible_context and _get_blueprint into a single
+    callable suitable for injection into the chapter_generation node.
+
+    Returns:
+        (story_bible_context, blueprint)
+    """
+    story_bible_ctx = await _get_story_bible_context(novel_id, chapter_outline)
+    bp = await _get_blueprint(novel_id, chapter_outline)
+    return story_bible_ctx, bp
+
+
+async def _persist_quality_to_version(
+    novel_id: str, chapter_number: int, quality_scores: dict, consistency_warnings: list
+) -> None:
+    """将质量评分回写到章节的活跃版本记录 (delegates to persistence service)"""
+    await persist_quality_to_version(
+        novel_id, chapter_number, quality_scores, consistency_warnings,
+    )
 
 STAGE_ORDER = [
     "idea_expansion",
@@ -87,17 +211,14 @@ async def generate_novel_background(
 ) -> None:
     """后台执行小说生成"""
     task_manager = get_task_manager()
-    event_bus = get_event_bus()
     novel_id: str | None = None
 
     try:
         await task_manager.update_status(task_id, "running")
-
-        await event_bus.publish(ProgressEvent(
-            task_id=task_id,
-            event_type=EventType.STAGE_START,
-            data={"stage": "idea_expansion", "percentage": 0},
-        ))
+        await _emit_progress(
+            task_id, EventType.STAGE_START,
+            {"stage": "idea_expansion", "percentage": 0},
+        )
 
         logger.info("novel_generation_starting", task_id=task_id)
 
@@ -112,11 +233,10 @@ async def generate_novel_background(
         if novel_id:
             await _persist_to_novel(novel_id, result)
 
-        await event_bus.publish(ProgressEvent(
-            task_id=task_id,
-            event_type=EventType.COMPLETED,
-            data={"percentage": 100, "current_stage": "completed"},
-        ))
+        await _emit_progress(
+            task_id, EventType.COMPLETED,
+            {"percentage": 100, "current_stage": "completed"},
+        )
 
         logger.info(
             "novel_generation_completed",
@@ -127,11 +247,7 @@ async def generate_novel_background(
     except Exception as e:
         logger.exception("novel_generation_failed", task_id=task_id)
         await task_manager.fail_task(task_id, str(e))
-        await event_bus.publish(ProgressEvent(
-            task_id=task_id,
-            event_type=EventType.ERROR,
-            data={"error": str(e)},
-        ))
+        await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
         if novel_id:
             try:
                 from src.api.services.novel_manager import get_novel_manager
@@ -214,11 +330,33 @@ async def _run_langgraph_pipeline(
             data=progress_data,
         ))
 
-    register_progress_callback(task_id, _chapter_progress_callback)
+    # Build configurable dict with injected dependencies for LangGraph nodes
+    from src.api.services.knowledge_graph_service import get_knowledge_graph_service
+    from src.api.services.story_bible_service import detect_bible_conflicts
+    from src.core.config import get_settings
+
+    settings = get_settings()
+    kg_service = (
+        get_knowledge_graph_service()
+        if settings.KNOWLEDGE_GRAPH_ENABLED
+        else None
+    )
+
+    configurable: dict[str, Any] = {
+        "thread_id": task_id,
+        # chapter_generation node dependencies
+        "kg_service": kg_service,
+        "progress_callback": _chapter_progress_callback,
+        "prepare_chapter_context": _prepare_chapter_context,
+        "sync_chapter_type": _sync_chapter_type_to_db,
+        # quality_check node dependencies
+        "detect_bible_conflicts": detect_bible_conflicts,
+        "persist_quality": _persist_quality_to_version,
+    }
 
     result: dict[str, Any] = {}
     try:
-        config = {"configurable": {"thread_id": task_id}}
+        config = {"configurable": configurable}
         async for event in graph.astream(initial_state, config=config):
             for node_name, state_update in event.items():
                 result = state_update
@@ -252,7 +390,7 @@ async def _run_langgraph_pipeline(
                         data={"stage": next_stage, "percentage": percentage},
                     ))
     finally:
-        unregister_progress_callback(task_id)
+        pass  # No callback registry cleanup needed; callback is local
 
     return result
 
@@ -271,7 +409,6 @@ async def generate_novel_full_background(
     Stage 13: 自动创作对话
     """
     task_manager = get_task_manager()
-    event_bus = get_event_bus()
     novel_id: str | None = None
 
     try:
@@ -283,11 +420,10 @@ async def generate_novel_full_background(
         initial_state, novel_id = await _build_initial_state(task_id, request)
 
         # --- Stage 1-7: Run LangGraph pipeline ---
-        await event_bus.publish(ProgressEvent(
-            task_id=task_id,
-            event_type=EventType.STAGE_START,
-            data={"stage": "idea_expansion", "percentage": 0},
-        ))
+        await _emit_progress(
+            task_id, EventType.STAGE_START,
+            {"stage": "idea_expansion", "percentage": 0},
+        )
 
         result = await _run_langgraph_pipeline(task_id, initial_state, stage_offset=0)
 
@@ -338,24 +474,19 @@ async def generate_novel_full_background(
             label="自动对话",
         )
 
-        # Final completion — mark task complete and publish event
+        # Final completion
         await task_manager.complete_task(task_id, result)
-        await event_bus.publish(ProgressEvent(
-            task_id=task_id,
-            event_type=EventType.COMPLETED,
-            data={"percentage": 100, "current_stage": "completed", "pipeline": "full"},
-        ))
+        await _emit_progress(
+            task_id, EventType.COMPLETED,
+            {"percentage": 100, "current_stage": "completed", "pipeline": "full"},
+        )
 
         logger.info("full_generation_completed", task_id=task_id)
 
     except Exception as e:
         logger.exception("full_generation_failed", task_id=task_id)
         await task_manager.fail_task(task_id, str(e))
-        await event_bus.publish(ProgressEvent(
-            task_id=task_id,
-            event_type=EventType.ERROR,
-            data={"error": str(e)},
-        ))
+        await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
         if novel_id:
             try:
                 from src.api.services.novel_manager import get_novel_manager
@@ -378,39 +509,31 @@ async def _run_sub_feature(
     Each sub-feature runs in its own try-catch so failure does not block
     subsequent features.
     """
+    from src.api.services.ai_generation_service import get_ai_generation_service
     from src.api.services.conversation_service import get_conversation_service
     from src.api.services.outline_service import get_outline_service
-    from src.api.services.storyline_service import get_storyline_service
 
-    event_bus = get_event_bus()
     task_manager = get_task_manager()
 
     percentage = _full_generate_percentage(feature_index)
 
-    await event_bus.publish(ProgressEvent(
-        task_id=task_id,
-        event_type=EventType.SUB_FEATURE_START,
-        data={"feature": feature_name, "label": label, "percentage": percentage},
-    ))
+    await _emit_progress(
+        task_id, EventType.SUB_FEATURE_START,
+        {"feature": feature_name, "label": label, "percentage": percentage},
+    )
 
     try:
         if feature_name == "power_systems" and novel_id:
-            sl_service = get_storyline_service()
-            ps_result = await sl_service.generate_power_systems_ai(novel_id)
-            await event_bus.publish(ProgressEvent(
-                task_id=task_id,
-                event_type=EventType.SUB_FEATURE_COMPLETE,
-                data={
-                    "feature": feature_name, "label": label,
-                    "percentage": percentage, "count": len(ps_result),
-                },
-            ))
+            ai_service = get_ai_generation_service()
+            ps_result = await ai_service.generate_power_systems_ai(novel_id)
+            await _emit_progress(task_id, EventType.SUB_FEATURE_COMPLETE, {
+                "feature": feature_name, "label": label,
+                "percentage": percentage, "count": len(ps_result),
+            })
 
         elif feature_name == "outline_persist" and novel_id:
             outline_service = get_outline_service()
-            # Generate master outline from novel settings
             await outline_service.generate_master_from_novel(novel_id)
-            # Generate volume outlines
             try:
                 await outline_service.generate_volume_outlines(
                     novel_id, request.novel_type, request.target_words,
@@ -419,65 +542,44 @@ async def _run_sub_feature(
                 logger.warning(
                 "Volume outline generation failed, continuing", exc_info=True,
             )
-            # Persist from LangGraph result
             persist_result = await outline_service.persist_outlines_from_result(novel_id, result)
-            await event_bus.publish(ProgressEvent(
-                task_id=task_id,
-                event_type=EventType.SUB_FEATURE_COMPLETE,
-                data={
-                    "feature": feature_name, "label": label,
-                    "percentage": percentage, **persist_result,
-                },
-            ))
+            await _emit_progress(task_id, EventType.SUB_FEATURE_COMPLETE, {
+                "feature": feature_name, "label": label,
+                "percentage": percentage, **persist_result,
+            })
 
         elif feature_name == "storylines" and novel_id:
-            sl_service = get_storyline_service()
-            sl_result = await sl_service.generate_storylines_ai(novel_id)
-            await event_bus.publish(ProgressEvent(
-                task_id=task_id,
-                event_type=EventType.SUB_FEATURE_COMPLETE,
-                data={
-                    "feature": feature_name, "label": label,
-                    "percentage": percentage, "count": len(sl_result),
-                },
-            ))
+            ai_service = get_ai_generation_service()
+            sl_result = await ai_service.generate_storylines_ai(novel_id)
+            await _emit_progress(task_id, EventType.SUB_FEATURE_COMPLETE, {
+                "feature": feature_name, "label": label,
+                "percentage": percentage, "count": len(sl_result),
+            })
 
         elif feature_name == "character_arcs" and novel_id:
-            sl_service = get_storyline_service()
-            arc_result = await sl_service.generate_arcs_ai(novel_id)
-            await event_bus.publish(ProgressEvent(
-                task_id=task_id,
-                event_type=EventType.SUB_FEATURE_COMPLETE,
-                data={
-                    "feature": feature_name, "label": label,
-                    "percentage": percentage, "count": len(arc_result),
-                },
-            ))
+            ai_service = get_ai_generation_service()
+            arc_result = await ai_service.generate_arcs_ai(novel_id)
+            await _emit_progress(task_id, EventType.SUB_FEATURE_COMPLETE, {
+                "feature": feature_name, "label": label,
+                "percentage": percentage, "count": len(arc_result),
+            })
 
         elif feature_name == "scenes" and novel_id:
-            sl_service = get_storyline_service()
-            scene_result = await sl_service.generate_scenes_ai(novel_id)
-            await event_bus.publish(ProgressEvent(
-                task_id=task_id,
-                event_type=EventType.SUB_FEATURE_COMPLETE,
-                data={
-                    "feature": feature_name, "label": label,
-                    "percentage": percentage, "count": len(scene_result),
-                },
-            ))
+            ai_service = get_ai_generation_service()
+            scene_result = await ai_service.generate_scenes_ai(novel_id)
+            await _emit_progress(task_id, EventType.SUB_FEATURE_COMPLETE, {
+                "feature": feature_name, "label": label,
+                "percentage": percentage, "count": len(scene_result),
+            })
 
         elif feature_name == "auto_conversation" and novel_id:
             conv_service = get_conversation_service()
             conv_result = await conv_service.generate_auto_conversation(novel_id)
-            await event_bus.publish(ProgressEvent(
-                task_id=task_id,
-                event_type=EventType.SUB_FEATURE_COMPLETE,
-                data={
-                    "feature": feature_name, "label": label,
-                    "percentage": percentage,
-                    "conversation_id": conv_result.get("conversation_id"),
-                },
-            ))
+            await _emit_progress(task_id, EventType.SUB_FEATURE_COMPLETE, {
+                "feature": feature_name, "label": label,
+                "percentage": percentage,
+                "conversation_id": conv_result.get("conversation_id"),
+            })
 
         # Update progress after sub-feature completion
         await task_manager.update_status(task_id, "running", progress={
@@ -489,11 +591,98 @@ async def _run_sub_feature(
 
     except Exception as e:
         logger.warning(f"Sub-feature '{feature_name}' failed (non-blocking): {e}", exc_info=True)
-        await event_bus.publish(ProgressEvent(
-            task_id=task_id,
-            event_type=EventType.ERROR,
-            data={"feature": feature_name, "label": label, "error": str(e), "non_blocking": True},
-        ))
+        await _emit_progress(task_id, EventType.ERROR, {
+            "feature": feature_name, "label": label, "error": str(e), "non_blocking": True,
+        })
+
+
+async def _generate_chapters_batch(
+    task_id: str,
+    novel_id: str,
+    chapter_outlines: list[dict],
+    prev_context: str,
+    default_previous_text: str = "这是起始章节",
+) -> list[dict]:
+    """Unified chapter generation loop used by volume and range generators.
+
+    Iterates over chapter_outlines, generates each chapter sequentially,
+    emits progress, syncs chapter_type, and returns the list of generated chapters.
+
+    Args:
+        task_id: Task identifier for progress events.
+        novel_id: Novel identifier.
+        chapter_outlines: Ordered list of chapter outline dicts
+            (must have "chapter" key).
+        prev_context: Text context from previous chapters
+            (before the first outline).
+        default_previous_text: Fallback text when prev_context is empty
+            for the first chapter.
+
+    Returns:
+        List of generated chapter result dicts.
+    """
+    from src.core.database import get_db_session
+    from src.core.llm.chapter_generator import generate_single_chapter
+    from src.core.llm.client import get_llm_client
+
+    client = get_llm_client()
+
+    # Build context via NovelContextBuilder
+    async with get_db_session() as session:
+        gen_ctx = await _context_builder.build_generation_context(session, novel_id)
+
+    chars_str = gen_ctx.chars_str
+    world_str = gen_ctx.world_str
+    sl_str = gen_ctx.storylines_str
+    style_instruction = gen_ctx.style_instruction
+
+    total_chapters = len(chapter_outlines)
+    generated_chapters: list[dict] = []
+
+    for i, ch_outline in enumerate(chapter_outlines):
+        # Determine previous chapter text
+        if i == 0:
+            previous_chapter = prev_context
+        else:
+            last_content = generated_chapters[-1].get("content") or ""
+            previous_chapter = last_content[:500]
+
+        # Prepare story bible context and blueprint
+        story_bible_ctx = await _get_story_bible_context(novel_id, ch_outline)
+        bp = await _get_blueprint(novel_id, ch_outline)
+
+        chapter_result = await generate_single_chapter(
+            client=client,
+            chapter_outline=ch_outline,
+            previous_chapter=previous_chapter or default_previous_text,
+            characters_json=chars_str,
+            world_setting_json=world_str,
+            storylines_json=sl_str,
+            style_instruction=style_instruction,
+            novel_id=novel_id,
+            blueprint=bp,
+            story_bible_context=story_bible_ctx,
+        )
+        generated_chapters.append(chapter_result)
+
+        # Sync chapter_type to DB
+        ch_num = ch_outline.get("chapter", i + 1)
+        await _sync_chapter_type_to_db(
+            novel_id, ch_num, chapter_result.get("chapter_type")
+        )
+
+        # Emit progress
+        progress_data = {
+            "current_stage": "chapter_generation",
+            "completed_chapters": len(generated_chapters),
+            "total_chapters": total_chapters,
+            "percentage": int((len(generated_chapters) / total_chapters) * 100),
+        }
+        await _emit_progress(
+            task_id, EventType.CHAPTER_PROGRESS, progress_data, update_status=True,
+        )
+
+    return generated_chapters
 
 
 async def generate_volume_background(
@@ -501,7 +690,6 @@ async def generate_volume_background(
 ) -> None:
     """按卷生成章节内容"""
     task_manager = get_task_manager()
-    event_bus = get_event_bus()
     novel_manager = get_novel_manager()
 
     try:
@@ -531,17 +719,7 @@ async def generate_volume_background(
         else:
             chapters_data = vol["outline"].get("chapters", [])
 
-        novel = await novel_manager.get_novel(novel_id)
-
-        # Fetch context: characters, world setting, and previous chapters
-        world = await novel_manager.get_world_setting(novel_id)
-        characters = await novel_manager.list_characters(novel_id)
-        from src.api.services.storyline_service import get_storyline_service
-        try:
-            storylines = await get_storyline_service().list_storylines(novel_id)
-        except Exception:
-            storylines = []
-
+        # Fetch context: previous chapters from earlier volumes
         prev_context = ""
         prev_chapters = await novel_manager.list_chapters(novel_id)
         prev_in_earlier_vols = [c for c in prev_chapters if (c.get("volume_number") or 0) < volume_number]
@@ -549,95 +727,24 @@ async def generate_volume_background(
             last_ch = prev_in_earlier_vols[-1]
             prev_context = f"前文最后一章《{last_ch.get('title', '')}》结尾：{(last_ch.get('content', '') or '')[-500:]}"
 
-        import json
-
-        from src.api.models.db_models import Chapter
-        from src.core.database import get_db_session
-        from src.core.llm.chapter_generator import generate_single_chapter
-        from src.core.llm.client import get_llm_client
-        from src.core.validation import get_style_instruction
-
-        client = get_llm_client()
-        style_instruction = get_style_instruction(
-            novel.get("writing_style", ""),
-            novel.get("writing_style_prompt", ""),
+        # Generate chapters using unified batch function
+        generated_chapters = await _generate_chapters_batch(
+            task_id=task_id,
+            novel_id=novel_id,
+            chapter_outlines=chapters_data,
+            prev_context=prev_context,
+            default_previous_text="这是本卷第一章",
         )
 
-        # Build context strings
-        chars_str = json.dumps([{
-            "name": c.get("name"), "role": c.get("role"),
-            "personality": c.get("personality"), "description": c.get("description"),
-        } for c in characters], ensure_ascii=False) if characters else "暂无人物"
-
-        world_str = json.dumps({
-            "background": (world or {}).get("background", ""),
-            "rules": (world or {}).get("rules", ""),
-            "geography": (world or {}).get("geography", ""),
-            "culture": (world or {}).get("culture", ""),
-        }, ensure_ascii=False) if world else "暂无世界观"
-
-        sl_str = json.dumps([{
-            "name": s.get("name"), "type": s.get("type"),
-            "description": s.get("description"),
-        } for s in storylines], ensure_ascii=False) if storylines else ""
-
-        generated_chapters = []
-        for i, ch_outline in enumerate(chapters_data):
-            if i == 0:
-                previous_chapter = prev_context
-            else:
-                last_content = (
-                    generated_chapters[-1].get("content") or ""
-                    if generated_chapters
-                    else ""
-                )
-                previous_chapter = last_content[:500]
-
-            chapter_result = await generate_single_chapter(
-                client=client,
-                chapter_outline=ch_outline,
-                previous_chapter=previous_chapter or "这是本卷第一章",
-                characters_json=chars_str,
-                world_setting_json=world_str,
-                storylines_json=sl_str,
-                style_instruction=style_instruction,
-            )
-            generated_chapters.append(chapter_result)
-
-            progress_data = {
-                "current_stage": "chapter_generation",
-                "completed_chapters": len(generated_chapters),
-                "total_chapters": len(chapters_data),
-                "percentage": int((len(generated_chapters) / len(chapters_data)) * 100),
-            }
-            await task_manager.update_status(task_id, "running", progress=progress_data)
-            await event_bus.publish(ProgressEvent(
-                task_id=task_id,
-                event_type=EventType.CHAPTER_PROGRESS,
-                data=progress_data,
-            ))
-
         # Persist chapters to DB
-        async with get_db_session() as session:
-            for ch in generated_chapters:
-                chapter = Chapter(
-                    novel_id=novel_id,
-                    volume_number=volume_number,
-                    chapter_number=ch["chapter"],
-                    title=ch["title"],
-                    content=ch["content"],
-                    word_count=ch["word_count"],
-                    status="generated",
-                )
-                session.add(chapter)
+        await persist_generated_chapters(novel_id, generated_chapters, volume_number)
 
         await novel_manager.update_volume(novel_id, volume_number, status="completed")
         await task_manager.complete_task(task_id, {"chapters": generated_chapters})
-        await event_bus.publish(ProgressEvent(
-            task_id=task_id,
-            event_type=EventType.COMPLETED,
-            data={"percentage": 100, "volume_number": volume_number},
-        ))
+        await _emit_progress(
+            task_id, EventType.COMPLETED,
+            {"percentage": 100, "volume_number": volume_number},
+        )
 
         logger.info(
             "volume_generation_completed",
@@ -649,11 +756,7 @@ async def generate_volume_background(
         logger.exception("volume_generation_failed", error=str(e))
         await task_manager.fail_task(task_id, str(e))
         await novel_manager.update_volume(novel_id, volume_number, status="failed")
-        await event_bus.publish(ProgressEvent(
-            task_id=task_id,
-            event_type=EventType.ERROR,
-            data={"error": str(e)},
-        ))
+        await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
 
 
 async def generate_chapters_background(
@@ -661,13 +764,11 @@ async def generate_chapters_background(
 ) -> None:
     """按章节范围生成"""
     task_manager = get_task_manager()
-    event_bus = get_event_bus()
     novel_manager = get_novel_manager()
 
     try:
         await task_manager.update_status(task_id, "running")
 
-        novel = await novel_manager.get_novel(novel_id)
         all_chapters = await novel_manager.list_chapters(novel_id)
 
         prev_context = ""
@@ -676,170 +777,39 @@ async def generate_chapters_background(
             if prev_chs:
                 prev_context = (prev_chs[0].get("content", "") or "")[-500:]
 
-        import json
-
-        from sqlalchemy import delete
-
-        from src.api.models.db_models import Chapter
-        from src.core.database import get_db_session
-        from src.core.llm.chapter_generator import generate_single_chapter
-        from src.core.llm.client import get_llm_client
-        from src.core.validation import get_style_instruction
-
-        client = get_llm_client()
-        style_instruction = get_style_instruction(
-            novel.get("writing_style", ""),
-            novel.get("writing_style_prompt", ""),
-        )
-
-        # Fetch context: characters, world setting, and storylines
-        world = await novel_manager.get_world_setting(novel_id)
-        characters = await novel_manager.list_characters(novel_id)
-        from src.api.services.storyline_service import get_storyline_service
-        try:
-            storylines = await get_storyline_service().list_storylines(novel_id)
-        except Exception:
-            storylines = []
-
-        chars_str = json.dumps([{
-            "name": c.get("name"), "role": c.get("role"),
-            "personality": c.get("personality"), "description": c.get("description"),
-        } for c in characters], ensure_ascii=False) if characters else "暂无人物"
-
-        world_str = json.dumps({
-            "background": (world or {}).get("background", ""),
-            "rules": (world or {}).get("rules", ""),
-            "geography": (world or {}).get("geography", ""),
-            "culture": (world or {}).get("culture", ""),
-        }, ensure_ascii=False) if world else "暂无世界观"
-
-        sl_str = json.dumps([{
-            "name": s.get("name"), "type": s.get("type"),
-            "description": s.get("description"),
-        } for s in storylines], ensure_ascii=False) if storylines else ""
-
+        # Build ordered chapter outlines for the requested range
         volumes = await novel_manager.list_volumes(novel_id)
-        chapter_outlines = []
+        all_outlines = []
         for vol in volumes:
             outline = vol.get("outline") or {}
             for ch in outline.get("chapters", []):
-                chapter_outlines.append(ch)
+                all_outlines.append(ch)
 
-        total_to_generate = chapter_end - chapter_start + 1
-        generated_chapters = []
-
+        chapter_outlines_for_range = []
         for ch_num in range(chapter_start, chapter_end + 1):
             ch_outline = next(
-                (co for co in chapter_outlines if co.get("chapter") == ch_num),
-                {"chapter": ch_num, "title": f"第{ch_num}章", "plot": "续写情节", "words": 5000}
+                (co for co in all_outlines if co.get("chapter") == ch_num),
+                {"chapter": ch_num, "title": f"第{ch_num}章", "plot": "续写情节", "words": 5000},
             )
+            chapter_outlines_for_range.append(ch_outline)
 
-            if not generated_chapters:
-                previous = prev_context
-            else:
-                last_content = generated_chapters[-1].get("content") or ""
-                previous = last_content[:500]
+        # Generate chapters using unified batch function
+        generated_chapters = await _generate_chapters_batch(
+            task_id=task_id,
+            novel_id=novel_id,
+            chapter_outlines=chapter_outlines_for_range,
+            prev_context=prev_context,
+            default_previous_text="这是起始章节",
+        )
 
-            chapter_result = await generate_single_chapter(
-                client=client,
-                chapter_outline=ch_outline,
-                previous_chapter=previous or "这是起始章节",
-                characters_json=chars_str,
-                world_setting_json=world_str,
-                storylines_json=sl_str,
-                style_instruction=style_instruction,
-            )
-            generated_chapters.append(chapter_result)
-
-            progress_data = {
-                "current_stage": "chapter_generation",
-                "completed_chapters": len(generated_chapters),
-                "total_chapters": total_to_generate,
-                "percentage": int((len(generated_chapters) / total_to_generate) * 100),
-            }
-            await task_manager.update_status(task_id, "running", progress=progress_data)
-            await event_bus.publish(ProgressEvent(
-                task_id=task_id,
-                event_type=EventType.CHAPTER_PROGRESS,
-                data=progress_data,
-            ))
-
-        def _find_volume_number(ch_num: int) -> int | None:
-            # 先通过 outline 中的 chapters 数组精确匹配
-            for vol in volumes:
-                outline = vol.get("outline") or {}
-                for ch in outline.get("chapters", []):
-                    if ch.get("chapter") == ch_num:
-                        return vol.get("volume_number")
-            # fallback: 通过 chapter_start/chapter_end 范围匹配
-            for vol in volumes:
-                ch_start = vol.get("chapter_start")
-                ch_end = vol.get("chapter_end")
-                if ch_start is not None and ch_end is not None:
-                    if ch_start <= ch_num <= ch_end:
-                        return vol.get("volume_number")
-            return None
-
-        # 只替换成功生成的章节，保留失败章节的旧数据
-        successful_chapters = [ch for ch in generated_chapters if ch.get("content") and ch.get("word_count", 0) > 0]
-
-        async with get_db_session() as session:
-            for ch in successful_chapters:
-                await session.execute(
-                    delete(Chapter).where(
-                        Chapter.novel_id == novel_id,
-                        Chapter.chapter_number == ch["chapter"],
-                    )
-                )
-                chapter = Chapter(
-                    novel_id=novel_id,
-                    chapter_number=ch["chapter"],
-                    volume_number=_find_volume_number(ch["chapter"]),
-                    title=ch["title"],
-                    content=ch["content"],
-                    word_count=ch["word_count"],
-                    status="regenerated",
-                )
-                session.add(chapter)
-
-        # 补充可能遗漏的 volume_number
-        await novel_manager.fix_volume_numbers(novel_id)
-
-        # Auto-create version records
-        for ch in successful_chapters:
-            if ch.get("content"):
-                try:
-                    await novel_manager.create_chapter_version(
-                        novel_id=novel_id,
-                        chapter_number=ch["chapter"],
-                        content=ch["content"],
-                        source="generation",
-                        model_name="deepseek",
-                        is_active=True,
-                    )
-                except (ValueError, Exception):
-                    pass
-
-        # 反向更新 StoryBible（每章生成后立即更新，确保后续章节读到最新数据）
-        for ch in successful_chapters:
-            if ch.get("content"):
-                try:
-                    from src.api.services.story_bible_service import update_bible_after_generation
-                    await update_bible_after_generation(
-                        novel_id=novel_id,
-                        chapter_number=ch["chapter"],
-                        chapter_content=ch["content"],
-                        chapter_outline=ch,
-                    )
-                except Exception as e:
-                    logger.warning("story_bible_update_failed chapter=%s: %s", ch.get("chapter"), e)
+        # Persist chapters (replace existing, create versions, update StoryBible)
+        await persist_chapters_with_replace(novel_id, generated_chapters, volumes)
 
         await task_manager.complete_task(task_id, {"chapters": generated_chapters})
-        await event_bus.publish(ProgressEvent(
-            task_id=task_id,
-            event_type=EventType.COMPLETED,
-            data={"percentage": 100, "chapter_start": chapter_start, "chapter_end": chapter_end},
-        ))
+        await _emit_progress(
+            task_id, EventType.COMPLETED,
+            {"percentage": 100, "chapter_start": chapter_start, "chapter_end": chapter_end},
+        )
 
         logger.info(
             "chapters_generation_completed",
@@ -851,124 +821,13 @@ async def generate_chapters_background(
     except Exception as e:
         logger.exception("chapters_generation_failed", error=str(e))
         await task_manager.fail_task(task_id, str(e))
-        await event_bus.publish(ProgressEvent(
-            task_id=task_id,
-            event_type=EventType.ERROR,
-            data={"error": str(e)},
-        ))
+        await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
 
 
 async def _persist_to_novel(novel_id: str, result: dict[str, Any]) -> None:
-    """Persist LangGraph result into novel sub-tables."""
+    """Persist LangGraph result (delegates to persistence service)."""
     manager = get_novel_manager()
-
-    try:
-        # World setting
-        ws = result.get("world_setting")
-        if ws and isinstance(ws, dict):
-            await manager.upsert_world_setting(
-                novel_id,
-                background=ws.get("background") or ws.get("世界背景"),
-                geography=ws.get("geography") or ws.get("地理环境"),
-                culture=ws.get("culture") or ws.get("文化体系"),
-                rules=ws.get("rules") or ws.get("世界规则"),
-                extra={k: v for k, v in ws.items()
-                       if k not in ("background", "geography", "culture", "rules",
-                                    "世界背景", "地理环境", "文化体系", "世界规则")},
-            )
-
-        # Characters (upsert: update existing by name, insert new)
-        characters = result.get("characters", [])
-        for char in characters:
-            if isinstance(char, dict) and char.get("name"):
-                char_data = dict(
-                    name=char.get("name", ""),
-                    role=char.get("role") or char.get("角色"),
-                    description=char.get("description") or char.get("描述"),
-                    personality=char.get("personality") or char.get("性格"),
-                    abilities=char.get("abilities") or char.get("能力"),
-                    background_story=char.get("background_story") or char.get("背景"),
-                )
-                existing = await manager.get_character_by_name(novel_id, char_data["name"])
-                if existing:
-                    await manager.update_character(novel_id, existing["id"], **char_data)
-                else:
-                    await manager.create_character(novel_id, **char_data)
-
-        # Volumes
-        volumes = result.get("volumes", [])
-        for vol in volumes:
-            if isinstance(vol, dict):
-                vol_chapters = vol.get("chapters", [])
-                ch_start = vol_chapters[0].get("chapter", 1) if vol_chapters else None
-                ch_end = vol_chapters[-1].get("chapter", 1) if vol_chapters else None
-                await manager.create_volume(
-                    novel_id,
-                    volume_number=vol.get("volume_number", 1),
-                    title=vol.get("title"),
-                    summary=vol.get("summary"),
-                    outline=vol,
-                    chapter_start=ch_start,
-                    chapter_end=ch_end,
-                )
-
-        # Chapters
-        chapters = result.get("chapters", [])
-        from datetime import UTC, datetime
-
-        from sqlalchemy import delete
-
-        from src.api.models.db_models import Chapter
-        from src.core.database import get_db_session
-
-        async with get_db_session() as session:
-            for ch in chapters:
-                if isinstance(ch, dict):
-                    ch_num = ch.get("chapter", 0)
-                    if hasattr(Chapter, "__table__"):
-                        await session.execute(
-                            delete(Chapter).where(
-                                Chapter.novel_id == novel_id,
-                                Chapter.chapter_number == ch_num,
-                            )
-                        )
-                    chapter = Chapter(
-                        novel_id=novel_id,
-                        volume_number=ch.get("volume_number"),
-                        chapter_number=ch_num,
-                        title=ch.get("title", ""),
-                        content=ch.get("content", ""),
-                        word_count=ch.get("word_count", 0),
-                        status="generated",
-                        updated_at=datetime.now(UTC),
-                    )
-                    session.add(chapter)
-
-        # 补充可能遗漏的 volume_number
-        await manager.fix_volume_numbers(novel_id)
-
-        # Auto-create version records for generated chapters
-        for ch in chapters:
-            if isinstance(ch, dict) and ch.get("content"):
-                try:
-                    await manager.create_chapter_version(
-                        novel_id=novel_id,
-                        chapter_number=ch.get("chapter", 0),
-                        content=ch.get("content", ""),
-                        source="generation",
-                        model_name="deepseek",
-                        is_active=True,
-                    )
-                except (ValueError, Exception):
-                    pass
-
-        # Update novel status
-        await manager.update_novel(novel_id, status="completed")
-
-        logger.info("persist_results_completed", novel_id=novel_id)
-
-    except Exception as e:
-        logger.error("persist_results_failed", novel_id=novel_id, error=str(e))
+    await persist_langgraph_result(novel_id, result, manager=manager)
 
 
 async def generate_long_form_background(
@@ -990,7 +849,6 @@ async def generate_long_form_background(
         request: LongFormNovelRequest
     """
     task_manager = get_task_manager()
-    event_bus = get_event_bus()
     progress_service = get_long_form_progress_service()
 
     try:
@@ -1006,13 +864,12 @@ async def generate_long_form_background(
         )
 
         # Stage 1: Generate master outline
-        await event_bus.publish(ProgressEvent(
-            task_id=task_id,
-            event_type=EventType.STAGE_START,
-            data={"stage": "master_outline", "percentage": 0},
-        ))
+        await _emit_progress(
+            task_id, EventType.STAGE_START,
+            {"stage": "master_outline", "percentage": 0},
+        )
 
-        master_outline = await _generate_master_outline(
+        master_outline = await generate_master_outline(
             novel_id=novel_id,
             request=request,
         )
@@ -1029,11 +886,10 @@ async def generate_long_form_background(
             is_long_form=True,
         )
 
-        await event_bus.publish(ProgressEvent(
-            task_id=task_id,
-            event_type=EventType.STAGE_COMPLETE,
-            data={"stage": "master_outline", "percentage": 5},
-        ))
+        await _emit_progress(
+            task_id, EventType.STAGE_COMPLETE,
+            {"stage": "master_outline", "percentage": 5},
+        )
 
         # Stage 2: Generate volume by volume
         total_volumes = request.volumes
@@ -1052,19 +908,15 @@ async def generate_long_form_background(
             )
 
             vol_percentage = 5 + int((vol_num - 1) / total_volumes * 90)
-            await event_bus.publish(ProgressEvent(
-                task_id=task_id,
-                event_type=EventType.STAGE_START,
-                data={
-                    "stage": f"volume_{vol_num}",
-                    "volume_number": vol_num,
-                    "percentage": vol_percentage,
-                },
-            ))
+            await _emit_progress(task_id, EventType.STAGE_START, {
+                "stage": f"volume_{vol_num}",
+                "volume_number": vol_num,
+                "percentage": vol_percentage,
+            })
 
             try:
                 # Generate volume outline
-                vol_outline = await _generate_volume_outline(
+                vol_outline = await generate_volume_outline(
                     novel_id=novel_id,
                     master_outline=master_outline,
                     volume_number=vol_num,
@@ -1075,7 +927,7 @@ async def generate_long_form_background(
 
                 # Generate chapters for this volume
                 chapter_end = global_chapter_start + chapters_per_vol - 1
-                vol_chapters = await _generate_volume_chapters(
+                vol_chapters = await generate_volume_chapters(
                     task_id=task_id,
                     novel_id=novel_id,
                     volume_number=vol_num,
@@ -1089,7 +941,7 @@ async def generate_long_form_background(
                 all_chapters_generated.extend(vol_chapters)
 
                 # Generate quality report for this volume
-                quality_report = await _generate_volume_quality_report(
+                quality_report = await generate_volume_quality_report(
                     novel_id=novel_id,
                     volume_number=vol_num,
                     chapters=vol_chapters,
@@ -1104,15 +956,11 @@ async def generate_long_form_background(
                     quality_report=quality_report,
                 )
 
-                await event_bus.publish(ProgressEvent(
-                    task_id=task_id,
-                    event_type=EventType.STAGE_COMPLETE,
-                    data={
-                        "stage": f"volume_{vol_num}",
-                        "volume_number": vol_num,
-                        "percentage": vol_percentage + int(90 / total_volumes),
-                    },
-                ))
+                await _emit_progress(task_id, EventType.STAGE_COMPLETE, {
+                    "stage": f"volume_{vol_num}",
+                    "volume_number": vol_num,
+                    "percentage": vol_percentage + int(90 / total_volumes),
+                })
 
                 global_chapter_start = chapter_end + 1
 
@@ -1139,11 +987,10 @@ async def generate_long_form_background(
             "total_chapters": len(all_chapters_generated),
         })
 
-        await event_bus.publish(ProgressEvent(
-            task_id=task_id,
-            event_type=EventType.COMPLETED,
-            data={"percentage": 100, "current_stage": "completed"},
-        ))
+        await _emit_progress(
+            task_id, EventType.COMPLETED,
+            {"percentage": 100, "current_stage": "completed"},
+        )
 
         logger.info(
             "long_form_generation_completed",
@@ -1155,367 +1002,5 @@ async def generate_long_form_background(
     except Exception as e:
         logger.exception("long_form_generation_failed", task_id=task_id)
         await task_manager.fail_task(task_id, str(e))
-        await event_bus.publish(ProgressEvent(
-            task_id=task_id,
-            event_type=EventType.ERROR,
-            data={"error": str(e)},
-        ))
+        await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
 
-
-async def _generate_master_outline(
-    novel_id: str,
-    request: Any,
-) -> dict[str, Any]:
-    """Generate master outline for long-form novel.
-
-    Args:
-        novel_id: Novel ID
-        request: LongFormNovelRequest
-
-    Returns:
-        Master outline dict
-    """
-    from src.core.json_utils import safe_json_parse
-    from src.core.llm.client import get_llm_client
-    from src.core.llm.prompts import MASTER_OUTLINE_PROMPT
-    from src.core.validation import get_style_instruction
-
-    client = get_llm_client()
-
-    prompt = MASTER_OUTLINE_PROMPT.format(
-        idea=request.idea,
-        novel_type=request.novel_type,
-        target_words=request.target_words,
-        volumes=request.volumes,
-        chapters_per_volume=request.chapters_per_volume,
-        words_per_chapter=request.words_per_chapter,
-    )
-
-    style_instruction = get_style_instruction(
-        request.writing_style,
-        request.writing_style_prompt,
-    )
-    if style_instruction:
-        prompt = f"{style_instruction}\n\n{prompt}"
-
-    response = await client.generate(prompt, max_tokens=6000)
-
-    # Fallback
-    fallback_volumes = []
-    for i in range(1, request.volumes + 1):
-        fallback_volumes.append({
-            "volume_number": i,
-            "title": f"第{i}卷",
-            "summary": "本卷主要情节",
-            "chapter_types": {
-                "main_advance": int(request.chapters_per_volume * 0.45),
-                "climax": int(request.chapters_per_volume * 0.12),
-                "aftermath": int(request.chapters_per_volume * 0.08),
-                "daily": int(request.chapters_per_volume * 0.15),
-                "setup": int(request.chapters_per_volume * 0.15),
-                "filler": 0,
-            },
-            "key_events": [],
-            "foreshadows_planted": [],
-            "foreshadows_resolved": [],
-        })
-
-    fallback_data = {
-        "title": request.idea[:20],
-        "synopsis": request.idea,
-        "main_conflict": "待展开",
-        "main_theme": "待确定",
-        "volumes": fallback_volumes,
-        "foreshadow_plan": [],
-        "character_plan": [],
-    }
-
-    return safe_json_parse(response, fallback=fallback_data, extract_partial=True)
-
-
-async def _generate_volume_outline(
-    novel_id: str,
-    master_outline: dict[str, Any],
-    volume_number: int,
-    chapters_per_volume: int,
-    words_per_chapter: int,
-    request: Any,
-) -> dict[str, Any]:
-    """Generate volume outline.
-
-    Args:
-        novel_id: Novel ID
-        master_outline: Master outline
-        volume_number: Volume number
-        chapters_per_volume: Chapters per volume
-        words_per_chapter: Words per chapter
-        request: LongFormNovelRequest
-
-    Returns:
-        Volume outline dict
-    """
-    from src.core.json_utils import safe_json_parse
-    from src.core.llm.client import get_llm_client
-    from src.core.llm.prompts import VOLUME_OUTLINE_PROMPT
-    from src.core.validation import get_style_instruction
-
-    client = get_llm_client()
-
-    volumes = master_outline.get("volumes", [])
-    vol_info = next(
-        (v for v in volumes if v.get("volume_number") == volume_number),
-        {"title": f"第{volume_number}卷", "summary": "待生成"}
-    )
-
-    # Build previous volumes summary
-    prev_summary = "这是第一卷，无前序卷摘要。"
-    if volume_number > 1:
-        prev_parts = []
-        for v in volumes:
-            if v.get("volume_number", 0) < volume_number:
-                prev_parts.append(
-                    f"- 第{v.get('volume_number')}卷《{v.get('title', '')}》：{v.get('summary', '')}"
-                )
-        if prev_parts:
-            prev_summary = "\n".join(prev_parts)
-
-    chapter_types = vol_info.get("chapter_types", {})
-    chapter_types_str = f"""
-- main_advance（主线推进）：约 {chapter_types.get('main_advance', int(chapters_per_volume * 0.45))} 章
-- climax（高潮章）：约 {chapter_types.get('climax', int(chapters_per_volume * 0.12))} 章
-- aftermath（余波章）：约 {chapter_types.get('aftermath', int(chapters_per_volume * 0.08))} 章
-- daily（日常章）：约 {chapter_types.get('daily', int(chapters_per_volume * 0.15))} 章
-- setup（铺垫章）：约 {chapter_types.get('setup', int(chapters_per_volume * 0.15))} 章
-- filler（注水章）：约 0 章
-"""
-
-    prompt = VOLUME_OUTLINE_PROMPT.format(
-        master_outline=json.dumps(
-            {k: v for k, v in master_outline.items() if k != "volumes"},
-            ensure_ascii=False,
-        ),
-        volume_number=volume_number,
-        volume_summary=vol_info.get("summary", ""),
-        previous_volumes_summary=prev_summary,
-        chapters_count=chapters_per_volume,
-        words_per_chapter=words_per_chapter,
-        chapter_types=chapter_types_str,
-    )
-
-    style_instruction = get_style_instruction(
-        request.writing_style,
-        request.writing_style_prompt,
-    )
-    if style_instruction:
-        prompt = f"{style_instruction}\n\n{prompt}"
-
-    response = await client.generate(prompt, max_tokens=6000)
-
-    # Fallback
-    fallback_chapters = []
-    for i in range(1, chapters_per_volume + 1):
-        fallback_chapters.append({
-            "chapter": i,
-            "title": f"第{i}章",
-            "chapter_type": "main_advance" if i % 3 != 0 else "daily",
-            "plot": "情节待展开",
-            "key_characters": [],
-            "foreshadows_planted": [],
-            "foreshadows_resolved": [],
-            "turning_point": "",
-            "emotional_arc": "平静->推进",
-        })
-
-    fallback_data = {
-        "volume_number": volume_number,
-        "title": vol_info.get("title", f"第{volume_number}卷"),
-        "chapters": fallback_chapters,
-    }
-
-    result = safe_json_parse(response, fallback=fallback_data, extract_partial=True)
-
-    # Add volume_number to each chapter
-    for ch in result.get("chapters", []):
-        ch["volume_number"] = volume_number
-
-    return result
-
-
-async def _generate_volume_chapters(
-    task_id: str,
-    novel_id: str,
-    volume_number: int,
-    chapter_start: int,
-    chapter_end: int,
-    vol_outline: dict[str, Any],
-    words_per_chapter: int,
-    request: Any,
-) -> list[dict[str, Any]]:
-    """Generate chapters for a volume.
-
-    Args:
-        task_id: Task ID
-        novel_id: Novel ID
-        volume_number: Volume number
-        chapter_start: Start chapter number
-        chapter_end: End chapter number
-        vol_outline: Volume outline
-        words_per_chapter: Target words per chapter
-        request: LongFormNovelRequest
-
-    Returns:
-        List of generated chapter dicts
-    """
-    from src.api.models.db_models import Chapter
-    from src.api.services.novel_manager import get_novel_manager
-    from src.core.database import get_db_session
-    from src.core.llm.chapter_generator import generate_single_chapter
-    from src.core.llm.client import get_llm_client
-    from src.core.validation import get_style_instruction
-
-    manager = get_novel_manager()
-    client = get_llm_client()
-    event_bus = get_event_bus()
-
-    # Get context
-    novel = await manager.get_novel(novel_id)
-    world = await manager.get_world_setting(novel_id)
-    characters = await manager.list_characters(novel_id)
-
-    style_instruction = get_style_instruction(
-        novel.get("writing_style", ""),
-        novel.get("writing_style_prompt", ""),
-    )
-
-    chars_str = json.dumps([{
-        "name": c.get("name"), "role": c.get("role"),
-        "personality": c.get("personality"), "description": c.get("description"),
-    } for c in characters], ensure_ascii=False) if characters else "暂无人物"
-
-    world_str = json.dumps({
-        "background": (world or {}).get("background", ""),
-        "rules": (world or {}).get("rules", ""),
-        "geography": (world or {}).get("geography", ""),
-        "culture": (world or {}).get("culture", ""),
-    }, ensure_ascii=False) if world else "暂无世界观"
-
-    # Get previous chapter context
-    prev_context = ""
-    if chapter_start > 1:
-        prev_chapters = await manager.list_chapters(novel_id)
-        prev_in_earlier = [c for c in prev_chapters if c.get("chapter_number", 0) == chapter_start - 1]
-        if prev_in_earlier:
-            prev_context = (prev_in_earlier[0].get("content", "") or "")[-500:]
-
-    chapters_data = vol_outline.get("chapters", [])
-    generated_chapters = []
-
-    for i, ch_outline in enumerate(chapters_data):
-        ch_num = ch_outline.get("chapter", i + 1)
-
-        if i == 0:
-            previous_chapter = prev_context or "这是本卷第一章"
-        else:
-            last_content = generated_chapters[-1].get("content", "") if generated_chapters else ""
-            previous_chapter = last_content[:500] if last_content else "续写"
-
-        try:
-            chapter_result = await generate_single_chapter(
-                client=client,
-                chapter_outline=ch_outline,
-                previous_chapter=previous_chapter,
-                characters_json=chars_str,
-                world_setting_json=world_str,
-                style_instruction=style_instruction,
-                target_words=words_per_chapter,
-            )
-            generated_chapters.append(chapter_result)
-        except Exception as ch_error:
-            logger.error(
-                "chapter_generation_failed",
-                novel_id=novel_id,
-                chapter=ch_num,
-                error=str(ch_error),
-            )
-            generated_chapters.append({
-                "chapter": ch_num,
-                "title": ch_outline.get("title", f"第{ch_num}章"),
-                "content": f"[章节生成失败: {str(ch_error)}]",
-                "word_count": 0,
-                "generation_failed": True,
-            })
-
-        # Emit progress
-        progress_data = {
-            "current_stage": "chapter_generation",
-            "volume_number": volume_number,
-            "completed_chapters": len(generated_chapters),
-            "total_chapters": len(chapters_data),
-            "percentage": int((len(generated_chapters) / len(chapters_data)) * 100),
-        }
-        await event_bus.publish(ProgressEvent(
-            task_id=task_id,
-            event_type=EventType.CHAPTER_PROGRESS,
-            data=progress_data,
-        ))
-
-    # Persist successful chapters
-    successful = [ch for ch in generated_chapters if not ch.get("generation_failed")]
-
-    async with get_db_session() as session:
-        for ch in successful:
-            chapter = Chapter(
-                novel_id=novel_id,
-                volume_number=volume_number,
-                chapter_number=ch["chapter"],
-                title=ch["title"],
-                content=ch["content"],
-                word_count=ch["word_count"],
-                chapter_type=ch_outline.get("chapter_type"),
-                status="generated",
-            )
-            session.add(chapter)
-
-    return generated_chapters
-
-
-async def _generate_volume_quality_report(
-    novel_id: str,
-    volume_number: int,
-    chapters: list[dict[str, Any]],
-) -> dict[str, Any]:
-    """Generate quality report for a volume.
-
-    Args:
-        novel_id: Novel ID
-        volume_number: Volume number
-        chapters: List of generated chapter dicts
-
-    Returns:
-        Quality report dict
-    """
-    total_word_count = sum(ch.get("word_count", 0) for ch in chapters)
-    chapter_count = len(chapters)
-
-    # Simple quality metrics
-    avg_scores = {
-        "advancement": 0.7,
-        "character_consistency": 0.7,
-        "world_consistency": 0.7,
-        "pacing": 0.7,
-        "conflict": 0.7,
-        "foreshadowing": 0.7,
-        "dialogue_quality": 0.7,
-        "emotional_impact": 0.7,
-    }
-
-    return {
-        "volume_number": volume_number,
-        "chapter_count": chapter_count,
-        "total_word_count": total_word_count,
-        "avg_scores": avg_scores,
-        "avg_quality_score": sum(avg_scores.values()) / len(avg_scores),
-        "warnings": [],
-        "filler_chapters": [],
-        "stalled_chapters": [],
-    }

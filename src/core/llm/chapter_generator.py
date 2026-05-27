@@ -144,15 +144,18 @@ async def generate_single_chapter(
     novel_id: str | None = None,
     target_words: int | None = None,
     blueprint: dict | None = None,
+    story_bible_context: str | None = None,
 ) -> dict[str, Any]:
     """生成单章内容。
 
     Args:
         target_words: Target word count for long-form mode (None for standard mode)
         blueprint: 预生成的章节蓝图（可选，传入则跳过蓝图生成/查询）
+        story_bible_context: 故事圣经约束文本（由调用方查询后传入）
 
     Returns:
-        {"chapter": int, "title": str, "content": str, "word_count": int}
+        {"chapter": int, "title": str, "content": str, "word_count": int,
+         "chapter_type": str | None}
     """
     try:
         return await asyncio.wait_for(
@@ -168,6 +171,7 @@ async def generate_single_chapter(
                 novel_id=novel_id,
                 target_words=target_words,
                 blueprint=blueprint,
+                story_bible_context=story_bible_context,
             ),
             timeout=CHAPTER_TIMEOUT_SECONDS,
         )
@@ -195,15 +199,18 @@ async def _generate_single_chapter_inner(
     novel_id: str | None = None,
     target_words: int | None = None,
     blueprint: dict | None = None,
+    story_bible_context: str | None = None,
 ) -> dict[str, Any]:
     """生成单章内容。
 
     Args:
         target_words: Target word count for long-form mode (None for standard mode)
         blueprint: 预生成的章节蓝图（可选，传入则跳过蓝图生成/查询）
+        story_bible_context: 故事圣经约束文本（由调用方查询后传入）
 
     Returns:
-        {"chapter": int, "title": str, "content": str, "word_count": int}
+        {"chapter": int, "title": str, "content": str, "word_count": int,
+         "chapter_type": str | None}
     """
     # 1. 检索知识图谱上下文
     kg_context = ""
@@ -216,55 +223,17 @@ async def _generate_single_chapter_inner(
         except Exception as e:
             logger.warning("kg_context_retrieval_failed", error=str(e))
 
-    # 2. 检索故事圣经 (Story Bible) 精准约束抽取
-    story_bible_context = "无历史圣经数据"
-    if novel_id:
-        try:
-            from sqlalchemy import select
+    # 2. 使用调用方传入的故事圣经上下文
+    if not story_bible_context:
+        story_bible_context = "无历史圣经数据"
 
-            from src.api.models.db_models import StoryBible
-            from src.api.services.story_bible_service import (
-                extract_relevant_constraints,
-            )
-            from src.core.database import get_db_session
-
-            async with get_db_session() as session:
-                stmt = select(StoryBible).where(StoryBible.novel_id == novel_id)
-                res = await session.execute(stmt)
-                bible = res.scalar_one_or_none()
-                if bible:
-                    chapter_num = chapter_outline.get("chapter", 0)
-                    story_bible_context = extract_relevant_constraints(
-                        bible, chapter_outline, chapter_num
-                    )
-        except Exception as e:
-            logger.warning("story_bible_retrieval_failed", error=str(e))
-
-    # 3. 结构化蓝图获取（优先）或降级到 LLM 规划
+    # 3. 结构化蓝图（由调用方传入）或降级到 LLM 规划
     chapter_num = chapter_outline.get("chapter", 0)
     blueprint_constraint: str | None = None
 
     if blueprint:
         blueprint_constraint = _format_blueprint_constraint(blueprint)
         logger.info("using_provided_blueprint", chapter=chapter_num)
-    elif novel_id:
-        try:
-            from src.api.services.blueprint_service import BlueprintService
-
-            bp_service = BlueprintService()
-            existing_bp = await bp_service.get_blueprint(novel_id, chapter_num)
-            if existing_bp:
-                blueprint = existing_bp
-                blueprint_constraint = _format_blueprint_constraint(existing_bp)
-                logger.info("using_existing_blueprint", chapter=chapter_num)
-            else:
-                blueprint = await bp_service.generate_blueprint(
-                    novel_id, chapter_num, chapter_outline
-                )
-                blueprint_constraint = _format_blueprint_constraint(blueprint)
-                logger.info("generated_new_blueprint", chapter=chapter_num)
-        except Exception as e:
-            logger.warning("blueprint_fallback_to_planning", chapter=chapter_num, error=str(e))
 
     if blueprint_constraint is None:
         planning_prompt = CHAPTER_PLANNING_PROMPT.format(
@@ -380,28 +349,8 @@ async def _generate_single_chapter_inner(
                     error=str(e),
                 )
 
-    # 8. 同步蓝图 chapter_type 到 Chapter 记录
-    chapter_type = None
-    if blueprint and novel_id:
-        chapter_type = blueprint.get("chapter_type")
-        if chapter_type:
-            try:
-                from sqlalchemy import update
-
-                from src.api.models.db_models import Chapter
-                from src.core.database import get_db_session
-
-                async with get_db_session() as session:
-                    await session.execute(
-                        update(Chapter)
-                        .where(
-                            Chapter.novel_id == novel_id,
-                            Chapter.chapter_number == chapter_num,
-                        )
-                        .values(chapter_type=chapter_type)
-                    )
-            except Exception as e:
-                logger.warning("chapter_type_sync_failed", chapter=chapter_num, error=str(e))
+    # 8. 提取 chapter_type 到返回值（由调用方负责 DB 更新）
+    chapter_type = blueprint.get("chapter_type") if blueprint else None
 
     return {
         "chapter": chapter_outline.get("chapter", 0),

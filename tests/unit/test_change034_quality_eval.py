@@ -63,7 +63,7 @@ class TestQualityCheckNode:
         """
 
         with patch(
-            "src.core.llm.client.get_llm_client"
+            "src.core.quality.evaluator.get_llm_client"
         ) as mock_get_client, patch(
             "src.core.config.get_settings"
         ) as mock_settings:
@@ -118,7 +118,7 @@ class TestQualityCheckNode:
         }
 
         with patch(
-            "src.core.llm.client.get_llm_client",
+            "src.core.quality.evaluator.get_llm_client",
             side_effect=RuntimeError("API Key Invalid or Timeout"),
         ), patch(
             "src.core.config.get_settings"
@@ -162,7 +162,7 @@ class TestQualityCheckNode:
         """
 
         with patch(
-            "src.core.llm.client.get_llm_client"
+            "src.core.quality.evaluator.get_llm_client"
         ) as mock_get_client, patch(
             "src.core.config.get_settings"
         ) as mock_settings:
@@ -180,4 +180,4 @@ class TestQualityCheckNode:
         # Should recover safely
         assert updated_state["current_stage"] == "quality_check_completed"
         scores = updated_state["quality_scores"]
-        assert scores["overall"] == 0.82  # Default fallback
+        assert scores["overall"] == 0.8  # Default from evaluator fallback

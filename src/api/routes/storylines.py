@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from src.api.services.ai_generation_service import get_ai_generation_service
 from src.api.services.storyline_service import get_storyline_service
 
 router = APIRouter(prefix="/api/v1/projects", tags=["storylines"])
@@ -154,7 +155,7 @@ async def get_relations(novel_id: str):
 
 @router.post("/{novel_id}/storylines/from-conversation/{conv_id}")
 async def generate_storylines_from_conversation(novel_id: str, conv_id: int):
-    service = get_storyline_service()
+    service = get_ai_generation_service()
     try:
         created = await service.generate_from_conversation(novel_id, conv_id)
         return {"status": "generated", "storylines": created, "count": len(created)}
@@ -164,20 +165,20 @@ async def generate_storylines_from_conversation(novel_id: str, conv_id: int):
 
 @router.post("/{novel_id}/storylines/generate-ai")
 async def generate_storylines_ai(novel_id: str):
-    service = get_storyline_service()
+    service = get_ai_generation_service()
     created = await service.generate_storylines_ai(novel_id)
     return {"status": "generated", "storylines": created, "count": len(created)}
 
 
 @router.post("/{novel_id}/character-arcs/generate-ai")
 async def generate_arcs_ai(novel_id: str):
-    service = get_storyline_service()
+    service = get_ai_generation_service()
     created = await service.generate_arcs_ai(novel_id)
     return {"status": "generated", "arcs": created, "count": len(created)}
 
 
 @router.post("/{novel_id}/scenes/generate-ai")
 async def generate_scenes_ai(novel_id: str):
-    service = get_storyline_service()
+    service = get_ai_generation_service()
     created = await service.generate_scenes_ai(novel_id)
     return {"status": "generated", "scenes": created, "count": len(created)}

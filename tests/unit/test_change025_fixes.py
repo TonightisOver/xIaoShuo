@@ -32,7 +32,7 @@ class TestOutlineVolumeNumberFix:
         with patch.object(service, "get_master_outline", side_effect=mock_get_master), \
              patch.object(service, "upsert_volume_outline", side_effect=mock_upsert), \
              patch("src.api.services.outline_service.get_llm_client") as mock_llm, \
-             patch("src.api.services.outline_service.safe_json_parse", return_value=llm_volumes):
+             patch("src.api.services.outline_service.generate_and_parse_json", return_value=llm_volumes):
 
             mock_client = AsyncMock()
             mock_client.generate = AsyncMock(return_value="[]")
@@ -71,7 +71,7 @@ class TestOutlineVolumeNumberFix:
         with patch.object(service, "get_master_outline", side_effect=mock_get_master), \
              patch.object(service, "upsert_volume_outline", side_effect=mock_upsert), \
              patch("src.api.services.outline_service.get_llm_client") as mock_llm, \
-             patch("src.api.services.outline_service.safe_json_parse", return_value=llm_volumes):
+             patch("src.api.services.outline_service.generate_and_parse_json", return_value=llm_volumes):
 
             mock_client = AsyncMock()
             mock_client.generate = AsyncMock(return_value="[]")
@@ -91,9 +91,9 @@ class TestArcGenerationFix:
     @pytest.mark.asyncio
     async def test_arcs_use_actual_character_ids(self):
         """Arc generation should map to actual DB character IDs, not LLM-invented ones."""
-        from src.api.services.storyline_service import StorylineService
+        from src.api.services.ai_generation_service import AIGenerationService
 
-        service = StorylineService()
+        service = AIGenerationService()
 
         actual_characters = [
             {"id": 101, "name": "张三", "role": "主角"},
@@ -115,8 +115,13 @@ class TestArcGenerationFix:
 
         with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
-             patch("src.core.json_utils.safe_json_parse", return_value=llm_arcs), \
-             patch.object(service, "create_character_arc", side_effect=mock_create_arc):
+             patch("src.core.llm.helpers.safe_json_parse", return_value=llm_arcs), \
+             patch("src.api.services.storyline_service.get_storyline_service") as mock_sl:
+
+            mock_sl_instance = AsyncMock()
+            mock_sl_instance.create_character_arc = AsyncMock(side_effect=mock_create_arc)
+            mock_sl_instance.list_storylines = AsyncMock(return_value=[])
+            mock_sl.return_value = mock_sl_instance
 
             mock_manager = AsyncMock()
             mock_manager.list_characters = AsyncMock(return_value=actual_characters)
@@ -136,9 +141,9 @@ class TestArcGenerationFix:
     @pytest.mark.asyncio
     async def test_arcs_limited_to_available_characters(self):
         """If LLM returns more arcs than characters, extras are skipped."""
-        from src.api.services.storyline_service import StorylineService
+        from src.api.services.ai_generation_service import AIGenerationService
 
-        service = StorylineService()
+        service = AIGenerationService()
 
         actual_characters = [{"id": 10, "name": "主角", "role": "主角"}]
         llm_arcs = [
@@ -156,8 +161,13 @@ class TestArcGenerationFix:
 
         with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
-             patch("src.core.json_utils.safe_json_parse", return_value=llm_arcs), \
-             patch.object(service, "create_character_arc", side_effect=mock_create_arc):
+             patch("src.core.llm.helpers.safe_json_parse", return_value=llm_arcs), \
+             patch("src.api.services.storyline_service.get_storyline_service") as mock_sl:
+
+            mock_sl_instance = AsyncMock()
+            mock_sl_instance.create_character_arc = AsyncMock(side_effect=mock_create_arc)
+            mock_sl_instance.list_storylines = AsyncMock(return_value=[])
+            mock_sl.return_value = mock_sl_instance
 
             mock_manager = AsyncMock()
             mock_manager.list_characters = AsyncMock(return_value=actual_characters)
@@ -176,9 +186,9 @@ class TestArcGenerationFix:
     @pytest.mark.asyncio
     async def test_arcs_returns_empty_when_no_characters(self):
         """Arc generation returns empty list when no characters exist."""
-        from src.api.services.storyline_service import StorylineService
+        from src.api.services.ai_generation_service import AIGenerationService
 
-        service = StorylineService()
+        service = AIGenerationService()
 
         with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr:
             mock_manager = AsyncMock()
