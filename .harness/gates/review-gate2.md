@@ -65,10 +65,13 @@
 - [x] 数据库 schema 未变动
 - [x] 现有测试全部通过
 - [x] core/llm 和 core/langgraph/nodes 无反向依赖 services 层
+- [ ] core/context 层级边界：novel_context.py 仍导入 src.api.models.db_models（遗留问题，由 CHANGE-050/T1 修正）
 
 ## 结论
 
 **APPROVED** — 架构优化目标达成，测试通过，代码评审无阻塞项。建议交付。
+
+**补充说明（2026-05-27）**：Gate 2 审核时未覆盖 core/context 子模块，novel_context.py 存在 core→api 反向依赖，已在 CHANGE-050 中修正。
 
 ---
 

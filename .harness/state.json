@@ -2,11 +2,11 @@
   "mode": 10,
   "current_stage": 10,
   "stage_name": "用户确认",
-  "awaiting_gate": false,
+  "awaiting_gate": true,
   "gate_number": 2,
-  "started_at": "2026-05-26T21:00:00+08:00",
+  "started_at": "2026-05-27T00:00:00+08:00",
   "stages_completed": ["1-需求分析", "2-需求评审", "3-编码实现", "4-编码评审", "5-单元测试编写", "6-单元测试评审", "7-代码推送", "8-CI验证", "10-用户确认"],
-  "change_id": "CHANGE-049",
-  "change_slug": "项目优化解耦与冗余消除",
-  "status": "completed"
+  "change_id": "CHANGE-050",
+  "change_slug": "工程质量修复-层级边界与前端测试",
+  "status": "in_progress"
 }

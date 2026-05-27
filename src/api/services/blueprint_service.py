@@ -9,7 +9,7 @@ from src.api.models.db_models import (
     ChapterBlueprint,
 )
 from src.api.services.knowledge_graph_service import KnowledgeGraphService
-from src.core.context import NovelContextBuilder
+from src.api.services.novel_context_service import NovelContextBuilder
 from src.core.database import get_db_session
 from src.core.llm.client import get_llm_client
 from src.core.llm.helpers import generate_and_parse_json

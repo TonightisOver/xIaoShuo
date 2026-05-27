@@ -636,7 +636,7 @@ async def rewrite_chapter_segment(novel_id: str, chapter_number: int, request: R
     if not chapter:
         raise HTTPException(status_code=404, detail="Chapter not found")
 
-    from src.core.context import NovelContextBuilder
+    from src.api.services.novel_context_service import NovelContextBuilder
     from src.core.database import get_db_session
     from src.core.llm.chapter_rewriter import rewrite_chapter_segment as do_rewrite
 
@@ -852,7 +852,7 @@ async def targeted_rewrite_chapter(
     novel_id: str, chapter_number: int, request: TargetedRewriteRequest
 ):
     """定向改写章节"""
-    from src.core.context import NovelContextBuilder
+    from src.api.services.novel_context_service import NovelContextBuilder
     from src.core.database import get_db_session
     from src.core.llm.chapter_rewriter import (
         batch_targeted_rewrite,

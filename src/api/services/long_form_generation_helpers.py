@@ -18,7 +18,7 @@ from src.api.services.progress_event_bus import (
     ProgressEvent,
     get_event_bus,
 )
-from src.core.context import NovelContextBuilder
+from src.api.services.novel_context_service import NovelContextBuilder
 
 logger = structlog.get_logger(__name__)
 
