@@ -1,3 +1,77 @@
+# Gate 2 — 交付确认 | CHANGE-049 全局架构优化
+
+**日期**: 2026-05-26
+**分支**: feature/change-049-refactoring-decouple
+
+---
+
+## 需求摘要
+
+对 xIaoShuo 项目进行全局架构优化，兼顾模块解耦与冗余消除。
+
+## 架构改善指标
+
+| 指标 | 重构前 | 重构后 | 改善 |
+|------|--------|--------|------|
+| core 层反向依赖 | 6 处 | 0 处 | 100% 消除 |
+| novel_generator.py 行数 | 1627 | 1012 | -38% |
+| 重复上下文构建 | 5 处 | 1 处 | -80% |
+| 重复质量评估 Prompt | 2 处 | 1 处 | -50% |
+| 重复 LLM 调用模式 | 12 处 | 0 处 | 100% 消除 |
+| storyline_service 职责 | CRUD + AI | 纯 CRUD | 职责单一 |
+
+## 代码变更清单
+
+- 37 files changed, +3995 insertions, -2259 deletions
+
+### 新增文件 (8)
+| 文件 | 说明 |
+|------|------|
+| `src/core/context/__init__.py` | 上下文构建模块包 |
+| `src/core/context/novel_context.py` | NovelContextBuilder 统一上下文构建 |
+| `src/core/quality/__init__.py` | 质量评估模块包 |
+| `src/core/quality/evaluator.py` | 统一质量评估函数 |
+| `src/core/llm/helpers.py` | generate_and_parse_json 辅助函数 |
+| `src/api/services/ai_generation_service.py` | AI 生成逻辑（从 storyline_service 分离） |
+| `src/api/services/chapter_persistence_service.py` | 章节持久化（从 novel_generator 分离） |
+| `src/api/services/long_form_generation_helpers.py` | 长篇生成辅助（从 novel_generator 分离） |
+
+### 修改文件 (关键)
+| 文件 | 说明 |
+|------|------|
+| `src/core/llm/chapter_generator.py` | 去除 DB 依赖，参数化上下文 |
+| `src/core/llm/chapter_rewriter.py` | 去除 DB 依赖，接收 context 参数 |
+| `src/core/langgraph/nodes/chapter_generation.py` | config 注入依赖 |
+| `src/core/langgraph/nodes/quality_check.py` | config 注入依赖 |
+| `src/api/services/novel_generator.py` | 拆分职责，1627→1012 行 |
+| `src/api/services/storyline_service.py` | 只保留 CRUD |
+
+## 测试结果
+
+- 379 个单元测试全部通过（含新增 18 个）
+- 无循环依赖
+- ruff 无新增 error
+
+## 评审结论汇总
+
+- 需求评审 (Gate 1): APPROVED
+- 编码评审: APPROVED（4 个 SHOULD FIX，非阻塞）
+- 测试评审: APPROVED（3 个 SHOULD FIX，非阻塞）
+- CI 验证: PASSED
+
+## 约束验证
+
+- [x] API 接口合约保持不变
+- [x] 数据库 schema 未变动
+- [x] 现有测试全部通过
+- [x] core/llm 和 core/langgraph/nodes 无反向依赖 services 层
+
+## 结论
+
+**APPROVED** — 架构优化目标达成，测试通过，代码评审无阻塞项。建议交付。
+
+---
+
 # Gate 2 — 交付确认 | CHANGE-048 读者视角模拟
 
 **日期**: 2026-05-26
