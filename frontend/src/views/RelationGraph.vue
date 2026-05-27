@@ -192,27 +192,20 @@
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
-import * as d3 from 'd3'
+import { useRelationGraph } from '../composables/useRelationGraph.js'
+import { useKnowledgeGraph } from '../composables/useKnowledgeGraph.js'
 
 const route = useRoute()
 const novelId = route.params.id
 
-const activeTab = ref('structure')
-const loading = ref(true)
-const relations = ref(null)
+// --- DOM refs ---
 const treeContainer = ref(null)
-
-// Three-layer knowledge graph state
-const kgLoading = ref(false)
-const kgData = ref(null) // holds { character_graph, plot_graph, foreshadowing_graph }
 const kgContainer = ref(null)
-const activeSubLayer = ref('character')
 
-const extracting = ref(false)
-const extractProgress = ref('')
+// --- UI state ---
+const activeTab = ref('structure')
+const activeSubLayer = ref('character')
 const showAll = ref(false)
-const generatingStorylines = ref(false)
-const storylineGenError = ref('')
 
 const subLayers = [
   { id: 'character', name: '角色关系谱', icon: '👥', activeBg: 'bg-blue-600' },
@@ -220,11 +213,22 @@ const subLayers = [
   { id: 'foreshadowing', name: '伏笔填坑谱', icon: '🔮', activeBg: 'bg-purple-600' }
 ]
 
+// --- Relation graph (structure tab) ---
+const { relations, loading, load } = useRelationGraph(novelId, treeContainer)
+
 const hasData = computed(() => {
   if (!relations.value) return false
   const r = relations.value
   return r.storylines.length || r.character_arcs.length || r.scenes.length
 })
+
+// --- Knowledge graph (knowledge tab) ---
+const {
+  kgData, kgLoading, extracting, extractProgress,
+  generatingStorylines, storylineGenError,
+  loadThreeLayerGraph, reExtractKG: _reExtractKG, generateStorylines: _generateStorylines,
+  renderKnowledgeGraph, getActiveGraphData,
+} = useKnowledgeGraph(novelId, kgContainer, activeSubLayer)
 
 const kgHasData = computed(() => {
   if (!kgData.value) return false
@@ -232,421 +236,34 @@ const kgHasData = computed(() => {
   return activeGraph && activeGraph.nodes && activeGraph.nodes.length > 0
 })
 
-const nodeColors = {
-  root: '#8b5cf6',
-  category: '#1d1d1f',
-  storyline: '#3b82f6',
-  character: '#10b981',
-  arc: '#8b5cf6',
-  scene: '#f59e0b',
-  event: '#8e8e93',
-  stage: '#a78bfa',
-}
-
-function getActiveGraphData() {
-  if (!kgData.value) return null
-  if (activeSubLayer.value === 'character') return kgData.value.character_graph
-  if (activeSubLayer.value === 'plot') return kgData.value.plot_graph
-  if (activeSubLayer.value === 'foreshadowing') return kgData.value.foreshadowing_graph
-  return null
-}
-
+// --- Tab / sub-layer actions ---
 function changeSubLayer(layerId) {
   activeSubLayer.value = layerId
   nextTick(() => {
     const data = getActiveGraphData()
-    if (data) {
-      renderKnowledgeGraph(data)
-    }
+    if (data) renderKnowledgeGraph(data)
   })
 }
 
-function transformToTree(data) {
-  const children = []
-
-  // Storylines branch
-  if (data.storylines.length) {
-    const slChildren = data.storylines.map(sl => {
-      const slNode = {
-        name: `[${sl.type}] ${sl.name}`,
-        type: 'storyline',
-        children: [],
-      }
-      const links = data.storyline_character_links.filter(l => l.storyline_id === sl.id)
-      links.forEach(l => {
-        slNode.children.push({ name: `人物#${l.character_id} (${l.role_in_line || '参与'})`, type: 'character' })
-      })
-      if (sl.key_events) {
-        sl.key_events.forEach(ev => {
-          slNode.children.push({ name: `${ev.event} Ch.${ev.chapter}`, type: 'event' })
-        })
-      }
-      if (!slNode.children.length) {
-        slNode.children.push({ name: '(空)', type: 'event' })
-      }
-      return slNode
-    })
-    children.push({ name: '故事主线', type: 'category', children: slChildren })
-  }
-
-  // Character arcs branch
-  if (data.character_arcs.length) {
-    const arcChildren = data.character_arcs.map(arc => {
-      const arcNode = {
-        name: `角色#${arc.character_id}: ${arc.arc_type}`,
-        type: 'arc',
-        children: [],
-      }
-      if (arc.stages) {
-        arc.stages.forEach(s => {
-          arcNode.children.push({ name: `${s.state} (Ch.${s.chapter_range?.[0] || '?'}-${s.chapter_range?.[1] || '?'})`, type: 'stage' })
-        })
-      }
-      if (arc.description) {
-        arcNode.children.push({ name: arc.description, type: 'event' })
-      }
-      if (!arcNode.children.length) {
-        arcNode.children.push({ name: '(空)', type: 'event' })
-      }
-      return arcNode
-    })
-    children.push({ name: '人物成长弧光', type: 'category', children: arcChildren })
-  }
-
-  // Scenes branch
-  if (data.scenes.length) {
-    const sceneChildren = data.scenes.map(sc => {
-      const scNode = {
-        name: sc.name + (sc.location ? ` (${sc.location})` : ''),
-        type: 'scene',
-        children: [],
-      }
-      if (sc.appearances) {
-        sc.appearances.forEach(a => {
-          scNode.children.push({ name: `${a.event || '出现'} Ch.${a.chapter}`, type: 'event' })
-        })
-      }
-      if (!scNode.children.length) {
-        scNode.children.push({ name: '(空)', type: 'event' })
-      }
-      return scNode
-    })
-    children.push({ name: '剧情场景', type: 'category', children: sceneChildren })
-  }
-
-  return { name: '小说核心大纲架构', type: 'root', children }
-}
-
-function renderTree(data) {
-  const container = treeContainer.value
-  if (!container) return
-
-  container.innerHTML = ''
-
-  const margin = { top: 20, right: 200, bottom: 20, left: 120 }
-  const width = Math.max(container.clientWidth, 800)
-
-  const root = d3.hierarchy(data)
-  const treeHeight = Math.max(root.descendants().length * 28, 450)
-
-  const treeLayout = d3.tree().size([treeHeight, width - margin.left - margin.right])
-  treeLayout(root)
-
-  const svg = d3.select(container)
-    .append('svg')
-    .attr('width', width)
-    .attr('height', treeHeight + margin.top + margin.bottom)
-
-  const g = svg.append('g')
-    .attr('transform', `translate(${margin.left},${margin.top})`)
-
-  // Links
-  g.selectAll('.link')
-    .data(root.links())
-    .join('path')
-    .attr('class', 'link')
-    .attr('fill', 'none')
-    .attr('stroke', '#e5e5ea')
-    .attr('stroke-width', 1.5)
-    .attr('d', d3.linkHorizontal().x(d => d.y).y(d => d.x))
-
-  // Nodes
-  const node = g.selectAll('.node')
-    .data(root.descendants())
-    .join('g')
-    .attr('class', 'node')
-    .attr('transform', d => `translate(${d.y},${d.x})`)
-
-  node.append('circle')
-    .attr('r', d => d.children ? 6 : 4)
-    .attr('fill', d => nodeColors[d.data.type] || '#8e8e93')
-    .attr('stroke', '#ffffff')
-    .attr('stroke-width', 1.5)
-    .style('filter', 'drop-shadow(0 1px 2px rgba(0,0,0,0.1))')
-
-  node.append('text')
-    .attr('dy', '0.35em')
-    .attr('x', d => d.children ? -10 : 10)
-    .attr('text-anchor', d => d.children ? 'end' : 'start')
-    .attr('font-size', '11px')
-    .attr('font-weight', '500')
-    .attr('fill', '#1d1d1f')
-    .text(d => d.data.name.length > 30 ? d.data.name.slice(0, 30) + '...' : d.data.name)
-    .style('text-shadow', '0 1px 2px #ffffff, 0 0 4px #ffffff')
-
-  // Tooltip
-  node.append('title')
-    .text(d => d.data.name)
-}
-
-async function load() {
-  loading.value = true
-  try {
-    const res = await fetch(`/api/v1/projects/${novelId}/relations`)
-    if (res.ok) {
-      relations.value = await res.json()
-      await nextTick()
-      if (hasData.value) {
-        const treeData = transformToTree(relations.value)
-        renderTree(treeData)
-      }
-    }
-  } finally {
-    loading.value = false
-  }
+async function toggleShowAll() {
+  showAll.value = !showAll.value
+  await loadThreeLayerGraph(showAll.value)
 }
 
 async function switchToKnowledge() {
   activeTab.value = 'knowledge'
   if (!kgData.value) {
-    await loadThreeLayerGraph()
+    await loadThreeLayerGraph(showAll.value)
   }
 }
 
-async function loadThreeLayerGraph() {
-  kgLoading.value = true
-  try {
-    const minFreq = showAll.value ? 1 : 2
-    const res = await fetch(`/api/v1/projects/${novelId}/knowledge-graph/three-layer?min_frequency=${minFreq}`)
-    if (res.ok) {
-      kgData.value = await res.json()
-      await nextTick()
-      const currentGraph = getActiveGraphData()
-      if (currentGraph) {
-        renderKnowledgeGraph(currentGraph)
-      }
-    }
-  } finally {
-    kgLoading.value = false
-  }
+// Wrappers that pass the load callback where needed
+function reExtractKG() {
+  _reExtractKG(load)
 }
 
-async function reExtractKG() {
-  if (extracting.value) return
-  extracting.value = true
-  extractProgress.value = '正在读取章节文本并清除旧数据...'
-  try {
-    const res = await fetch(`/api/v1/projects/${novelId}/knowledge-graph/extract-all`, {
-      method: 'POST'
-    })
-    if (res.ok) {
-      const data = await res.json()
-      extractProgress.value = `抽取成功！共重新测绘 ${data.total_entities} 个实体，${data.total_triples} 组三元组。`
-      await loadThreeLayerGraph()
-    } else {
-      const err = await res.json().catch(() => ({}))
-      extractProgress.value = `提取异常：${err.detail || '服务错误'}`
-    }
-  } catch (err) {
-    console.error(err)
-    extractProgress.value = '提取网络通信异常，请重试'
-  } finally {
-    setTimeout(() => {
-      extracting.value = false
-      extractProgress.value = ''
-    }, 4500)
-  }
-}
-
-async function toggleShowAll() {
-  showAll.value = !showAll.value
-  await loadThreeLayerGraph()
-}
-
-async function generateStorylines() {
-  if (generatingStorylines.value) return
-  generatingStorylines.value = true
-  storylineGenError.value = ''
-  try {
-    const res = await fetch(`/api/v1/projects/${novelId}/storylines/generate-ai`, { method: 'POST' })
-    if (res.ok) {
-      await load()
-    } else {
-      const err = await res.json().catch(() => ({}))
-      storylineGenError.value = err.detail || '生成失败，请重试'
-    }
-  } catch (e) {
-    storylineGenError.value = '网络错误，请重试'
-  } finally {
-    generatingStorylines.value = false
-  }
-}
-
-function renderKnowledgeGraph(data) {
-  const container = kgContainer.value
-  if (!container) return
-  container.innerHTML = ''
-
-  const width = Math.max(container.clientWidth, 800)
-  const height = 600
-
-  const svg = d3.select(container)
-    .append('svg')
-    .attr('width', width)
-    .attr('height', height)
-    .style('border-radius', '12px')
-
-  // Theme customization colors based on active tab
-  let themeColor = '#8b5cf6' // Purple
-  if (activeSubLayer.value === 'character') {
-    themeColor = '#3b82f6' // Blue
-  } else if (activeSubLayer.value === 'plot') {
-    themeColor = '#f59e0b' // Amber
-  }
-
-  // Defined Arrow Markers for Link Directions
-  svg.append('defs').append('marker')
-    .attr('id', 'arrow')
-    .attr('viewBox', '0 -5 10 10')
-    .attr('refX', 22) // node radius offset
-    .attr('refY', 0)
-    .attr('markerWidth', 6)
-    .attr('markerHeight', 6)
-    .attr('orient', 'auto')
-    .append('path')
-    .attr('d', 'M0,-5L10,0L0,5')
-    .attr('fill', '#8e8e93')
-
-  // Deep clone data to avoid simulation mutating state
-  const nodes = data.nodes.map(d => ({ ...d }))
-  const edges = data.edges.map(d => ({ ...d }))
-
-  const simulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(edges).id(d => d.id).distance(150))
-    .force('charge', d3.forceManyBody().strength(-450))
-    .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('collision', d3.forceCollide().radius(28))
-
-  // Render Lines
-  const link = svg.append('g')
-    .selectAll('line')
-    .data(edges)
-    .join('line')
-    .attr('stroke', d => {
-      if (d.type === 'narrative_flow') return 'rgba(245, 158, 11, 0.4)' // dashed temporal flow
-      return 'rgba(0, 0, 0, 0.08)'
-    })
-    .attr('stroke-width', d => d.type === 'narrative_flow' ? 1.5 : 2)
-    .attr('stroke-dasharray', d => d.type === 'narrative_flow' ? '5,5' : '0')
-    .attr('marker-end', 'url(#arrow)')
-
-  // Render Link labels
-  const linkLabel = svg.append('g')
-    .selectAll('text')
-    .data(edges)
-    .join('text')
-    .attr('font-size', '9px')
-    .attr('font-weight', '500')
-    .attr('fill', '#636366')
-    .attr('text-anchor', 'middle')
-    .attr('dy', -4)
-    .text(d => d.predicate)
-    .style('text-shadow', '0 1px 2px #ffffff, 0 0 4px #ffffff')
-
-  // Render Nodes
-  const node = svg.append('g')
-    .selectAll('g')
-    .data(nodes)
-    .join('g')
-    .style('cursor', 'grab')
-    .call(d3.drag()
-      .on('start', (event, d) => { 
-        if (!event.active) simulation.alphaTarget(0.3).restart()
-        d.fx = d.x
-        d.fy = d.y 
-      })
-      .on('drag', (event, d) => { 
-        d.fx = event.x
-        d.fy = event.y 
-      })
-      .on('end', (event, d) => { 
-        if (!event.active) simulation.alphaTarget(0)
-        d.fx = null
-        d.fy = null 
-      })
-    )
-
-  // Outer circle node with high contrast drop shadow
-  node.append('circle')
-    .attr('r', 11)
-    .attr('fill', d => {
-      if (d.type === 'foreshadowing') return '#a78bfa'
-      if (d.type === 'event') return '#f59e0b'
-      return '#3b82f6'
-    })
-    .style('filter', `drop-shadow(0px 2px 5px ${themeColor})`)
-    .attr('stroke', '#ffffff')
-    .attr('stroke-width', 2)
-
-  node.append('circle')
-    .attr('r', 3)
-    .attr('fill', '#ffffff')
-
-  // Text labels with white shadow drop shadow for outstanding high contrast
-  node.append('text')
-    .attr('dx', 16)
-    .attr('dy', '0.35em')
-    .attr('font-size', '12px')
-    .attr('font-weight', '700')
-    .attr('fill', '#1c1c1e')
-    .text(d => d.name)
-    .style('text-shadow', '0 1px 2px #ffffff, 0 0 4px #ffffff')
-
-  node.append('title')
-    .text(d => {
-      let desc = `${d.name} (${d.type === 'character' ? '人物' : d.type === 'event' ? '事件' : '伏笔'})`
-      if (d.attributes && Object.keys(d.attributes).length) {
-        desc += `\n属性: ${JSON.stringify(d.attributes, null, 2)}`
-      }
-      return desc
-    })
-
-  simulation.on('tick', () => {
-    link
-      .attr('x1', d => d.source.x)
-      .attr('y1', d => d.source.y)
-      .attr('x2', d => d.target.x)
-      .attr('y2', d => d.target.y)
-    
-    linkLabel
-      .attr('x', d => (d.source.x + d.target.x) / 2)
-      .attr('y', d => (d.source.y + d.target.y) / 2)
-      .attr('transform', d => {
-        const x = (d.source.x + d.target.x) / 2
-        const y = (d.source.y + d.target.y) / 2
-        const dx = d.target.x - d.source.x
-        const dy = d.target.y - d.source.y
-        const angle = Math.atan2(dy, dx) * 180 / Math.PI
-        const rotation = (angle > 90 || angle < -90) ? angle + 180 : angle
-        return `rotate(${rotation}, ${x}, ${y})`
-      })
-
-    node.attr('transform', d => {
-      d.x = Math.max(20, Math.min(width - 20, d.x))
-      d.y = Math.max(20, Math.min(height - 20, d.y))
-      return `translate(${d.x},${d.y})`
-    })
-  })
+function generateStorylines() {
+  _generateStorylines(load)
 }
 
 onMounted(load)

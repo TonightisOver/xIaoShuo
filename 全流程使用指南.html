@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>xIaoShuo 全流程使用指南</title>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-light: #818cf8;
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --surface-light: #334155;
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --accent: #22d3ee;
+            --success: #34d399;
+            --warning: #fbbf24;
+            --border: #475569;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            padding: 0;
+        }
+        .hero {
+            background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e293b 100%);
+            padding: 80px 40px;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+        }
+        .hero h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #818cf8, #22d3ee);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 16px;
+        }
+        .hero p { font-size: 1.2rem; color: var(--text-muted); max-width: 700px; margin: 0 auto; }
+        .container { max-width: 1000px; margin: 0 auto; padding: 40px 24px; }
+        nav.toc {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px 32px;
+            margin-bottom: 48px;
+        }
+        nav.toc h2 { font-size: 1.1rem; color: var(--accent); margin-bottom: 12px; }
+        nav.toc ol { padding-left: 20px; }
+        nav.toc li { margin: 6px 0; }
+        nav.toc a { color: var(--primary-light); text-decoration: none; }
+        nav.toc a:hover { text-decoration: underline; }
+        section { margin-bottom: 56px; }
+        h2 {
+            font-size: 1.8rem;
+            color: var(--accent);
+            margin-bottom: 20px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--surface-light);
+        }
+        h3 { font-size: 1.3rem; color: var(--primary-light); margin: 24px 0 12px; }
+        h4 { font-size: 1.1rem; color: var(--text); margin: 16px 0 8px; }
+        p { margin-bottom: 12px; color: var(--text); }
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            margin: 16px 0;
+        }
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            margin: 16px 0;
+        }
+        .step {
+            background: var(--surface);
+            border-left: 4px solid var(--primary);
+            padding: 16px 20px;
+            margin: 12px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .step-number {
+            display: inline-block;
+            width: 28px; height: 28px;
+            background: var(--primary);
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 28px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            margin-right: 8px;
+        }
+        code {
+            background: var(--surface-light);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.9em;
+            color: var(--accent);
+        }
+        pre {
+            background: #0d1117;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 20px;
+            overflow-x: auto;
+            margin: 12px 0;
+            font-size: 0.88rem;
+            line-height: 1.5;
+        }
+        pre code { background: none; padding: 0; color: var(--text); }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 0.92rem;
+        }
+        th, td {
+            padding: 10px 14px;
+            border: 1px solid var(--border);
+            text-align: left;
+        }
+        th { background: var(--surface-light); color: var(--accent); font-weight: 600; }
+        td { background: var(--surface); }
+        .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .badge-required { background: #7f1d1d; color: #fca5a5; }
+        .badge-optional { background: #1e3a5f; color: #93c5fd; }
+        .tip {
+            background: #1a2e1a;
+            border: 1px solid #166534;
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin: 12px 0;
+            color: #86efac;
+        }
+        .tip::before { content: "TIP: "; font-weight: 700; }
+        .warning {
+            background: #2d1f0e;
+            border: 1px solid #92400e;
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin: 12px 0;
+            color: #fde68a;
+        }
+        .warning::before { content: "NOTE: "; font-weight: 700; }
+        .flow-diagram {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            font-family: monospace;
+            white-space: pre;
+            overflow-x: auto;
+            line-height: 1.4;
+            color: var(--text-muted);
+        }
+        ul { padding-left: 20px; margin: 8px 0; }
+        li { margin: 4px 0; }
+        footer {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+<div class="hero">
+    <h1>xIaoShuo 全流程使用指南</h1>
+    <p>从环境搭建到小说生成，一步步掌握 AI 多智能体协同创作平台的完整使用方法</p>
+</div>
+
+<div class="container">
+
+<nav class="toc">
+    <h2>目录</h2>
+    <ol>
+        <li><a href="#install">环境搭建与部署</a></li>
+        <li><a href="#quickstart">快速开始：创建第一本小说</a></li>
+        <li><a href="#pipeline">生成流水线详解</a></li>
+        <li><a href="#story-bible">故事圣经管理</a></li>
+        <li><a href="#knowledge-graph">知识图谱使用</a></li>
+        <li><a href="#chapter-version">章节版本与回滚</a></li>
+        <li><a href="#quality">质量评估与修改</a></li>
+        <li><a href="#conversation">对话式共创</a></li>
+        <li><a href="#task-management">任务管理与监控</a></li>
+        <li><a href="#api-reference">API 速查表</a></li>
+        <li><a href="#faq">常见问题</a></li>
+    </ol>
+</nav>
+
+<!-- PLACEHOLDER_SECTION_1 -->
+
+<section id="install">
+<h2>1. 环境搭建与部署</h2>
+
+<h3>系统要求</h3>
+<table>
+    <tr><th>组件</th><th>版本要求</th><th>说明</th></tr>
+    <tr><td>Python</td><td>3.11+</td><td>后端运行时</td></tr>
+    <tr><td>Node.js</td><td>20+</td><td>前端构建</td></tr>
+    <tr><td>PostgreSQL</td><td>15+</td><td>数据存储</td></tr>
+    <tr><td>Docker</td><td>24+</td><td>容器化部署（可选）</td></tr>
+</table>
+
+<h3>方案 A：Docker Compose 一键部署（推荐）</h3>
+
+<div class="step">
+    <span class="step-number">1</span>
+    <strong>克隆项目并配置环境变量</strong>
+<pre><code>git clone &lt;repo-url&gt;
+cd xiaoshuo_review
+cp .env.example .env</code></pre>
+    <p>编辑 <code>.env</code> 文件，填入你的 DeepSeek API Key：</p>
+<pre><code>DEEPSEEK_API_KEY=sk-your-api-key-here</code></pre>
+</div>
+
+<div class="step">
+    <span class="step-number">2</span>
+    <strong>启动所有服务</strong>
+<pre><code>docker-compose up -d --build</code></pre>
+    <p>这会启动 PostgreSQL、后端 API、Nginx 反向代理和前端静态服务。</p>
+</div>
+
+<div class="step">
+    <span class="step-number">3</span>
+    <strong>访问平台</strong>
+    <ul>
+        <li>前端界面：<code>http://localhost</code></li>
+        <li>API 文档：<code>http://localhost:8000/docs</code></li>
+    </ul>
+</div>
+
+<h3>方案 B：本地开发环境</h3>
+
+<div class="step">
+    <span class="step-number">1</span>
+    <strong>后端启动</strong>
+<pre><code># 安装 Python 依赖
+poetry install
+
+# 配置 .env
+DATABASE_URL=postgresql+asyncpg://xiaoshuo:password@localhost:5432/xiaoshuo
+DEEPSEEK_API_KEY=sk-your-key
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+
+# 执行数据库迁移
+poetry run alembic upgrade head
+
+# 启动 API 服务
+poetry run uvicorn src.api.main:app --host 127.0.0.1 --port 8000 --reload</code></pre>
+</div>
+
+<div class="step">
+    <span class="step-number">2</span>
+    <strong>前端启动</strong>
+<pre><code>cd frontend
+npm install
+npm run dev
+# 访问 http://localhost:5173</code></pre>
+</div>
+
+<h3>环境变量说明</h3>
+<table>
+    <tr><th>变量</th><th>必填</th><th>默认值</th><th>说明</th></tr>
+    <tr><td><code>DEEPSEEK_API_KEY</code></td><td><span class="badge badge-required">必填</span></td><td>—</td><td>DeepSeek API 密钥</td></tr>
+    <tr><td><code>DATABASE_URL</code></td><td><span class="badge badge-required">必填</span></td><td>见 .env.example</td><td>PostgreSQL 连接串</td></tr>
+    <tr><td><code>DEEPSEEK_MODEL</code></td><td><span class="badge badge-optional">可选</span></td><td>deepseek-v4-pro</td><td>使用的模型</td></tr>
+    <tr><td><code>DEEPSEEK_TEMPERATURE</code></td><td><span class="badge badge-optional">可选</span></td><td>0.7</td><td>生成温度</td></tr>
+    <tr><td><code>DEEPSEEK_TIMEOUT</code></td><td><span class="badge badge-optional">可选</span></td><td>120</td><td>请求超时(秒)</td></tr>
+    <tr><td><code>KNOWLEDGE_GRAPH_ENABLED</code></td><td><span class="badge badge-optional">可选</span></td><td>true</td><td>启用知识图谱</td></tr>
+    <tr><td><code>API_PORT</code></td><td><span class="badge badge-optional">可选</span></td><td>8000</td><td>API 端口</td></tr>
+</table>
+</section>
+
+<!-- PLACEHOLDER_SECTION_2 -->
+
+<section id="quickstart">
+<h2>2. 快速开始：创建第一本小说</h2>
+
+<h3>通过前端界面</h3>
+<div class="step">
+    <span class="step-number">1</span>
+    <strong>创建项目</strong>
+    <p>点击首页的"新建项目"按钮，填写小说基本信息：</p>
+    <ul>
+        <li><strong>标题</strong>：你的小说名称</li>
+        <li><strong>类型</strong>：玄幻修真 / 都市异能 / 仙侠 / 科幻 等</li>
+        <li><strong>核心创意</strong>：一句话描述故事核心卖点</li>
+        <li><strong>目标字数</strong>：全书预期总字数</li>
+        <li><strong>写作风格</strong>：热血/轻松/暗黑/搞笑 等</li>
+    </ul>
+</div>
+
+<div class="step">
+    <span class="step-number">2</span>
+    <strong>启动全流程生成</strong>
+    <p>在项目详情页点击"全流程生成"按钮，系统将自动执行 13 阶段流水线：</p>
+    <p>创意扩展 → 世界构建 → 人物设计 → 大纲生成 → 章节生成 → 质量评估 → 人工审阅</p>
+</div>
+
+<div class="step">
+    <span class="step-number">3</span>
+    <strong>监控进度</strong>
+    <p>在任务大厅实时查看生成进度，WebSocket 推送每个阶段的完成状态。</p>
+</div>
+
+<h3>通过 API</h3>
+<pre><code># 1. 创建项目
+curl -X POST http://localhost:8000/api/v1/projects \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "大荒武神",
+    "novel_type": "玄幻修真",
+    "idea": "天生石脉的凡人少年，偶得上古传承，踏上逆天修仙之路",
+    "target_words": 500000,
+    "writing_style": "热血、快节奏、升级流"
+  }'
+
+# 2. 启动全流程生成（返回 task_id）
+curl -X POST http://localhost:8000/api/v1/projects/{novel_id}/generate-full
+
+# 3. 查看任务状态
+curl http://localhost:8000/api/v1/novels/{task_id}
+
+# 4. 生成完成后查看章节
+curl http://localhost:8000/api/v1/projects/{novel_id}/chapters</code></pre>
+
+<div class="tip">全流程生成通常需要 5-15 分钟（取决于章节数量和 API 响应速度）。你可以通过 WebSocket 连接 <code>/api/v1/ws</code> 实时接收进度事件。</div>
+</section>
+
+<section id="pipeline">
+<h2>3. 生成流水线详解</h2>
+
+<div class="flow-diagram">
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│  创意扩展   │───▶│  世界构建   │───▶│  人物设计   │───▶│  大纲生成   │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+                                                                │
+                   ┌─────────────────────────────────────────────┘
+                   ▼
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│  章节生成   │───▶│  质量评估   │───▶│  人工审阅   │
+│ (含约束注入)│    │ (8维+冲突)  │    │ (可选介入)  │
+└─────────────┘    └─────────────┘    └─────────────┘
+       ▲                  │
+       │    ┌─────────┐   │ 分数 &lt; 0.80
+       └────│  重写   │◀──┘
+            └─────────┘
+</div>
+
+<h3>各阶段说明</h3>
+
+<div class="card-grid">
+    <div class="card">
+        <h4>创意扩展</h4>
+        <p>将用户的一句话创意扩展为完整的故事概念，包括核心冲突、主题、卖点分析。</p>
+    </div>
+    <div class="card">
+        <h4>世界构建</h4>
+        <p>生成世界观设定：地理、文化、力量体系、社会结构、历史背景。</p>
+    </div>
+    <div class="card">
+        <h4>人物设计</h4>
+        <p>创建主要角色：性格、背景、能力、人际关系、成长弧光。</p>
+    </div>
+    <div class="card">
+        <h4>大纲生成</h4>
+        <p>规划全书结构：卷划分、章节大纲、情节节点、高潮安排。</p>
+    </div>
+    <div class="card">
+        <h4>章节生成</h4>
+        <p>双级联生成：先规划本章要点，再生成正文。注入精准 StoryBible 约束。</p>
+    </div>
+    <div class="card">
+        <h4>质量评估</h4>
+        <p>8 维度打分 + 知识图谱一致性 + StoryBible 冲突检测。低于 0.80 自动重写。</p>
+    </div>
+</div>
+
+<h3>单独生成章节</h3>
+<p>除了全流程生成，你也可以单独生成指定范围的章节：</p>
+<pre><code># 生成第 5-10 章
+curl -X POST http://localhost:8000/api/v1/projects/{novel_id}/generate-chapters \
+  -H "Content-Type: application/json" \
+  -d '{"start_chapter": 5, "end_chapter": 10}'</code></pre>
+</section>
+
+<section id="story-bible">
+<h2>4. 故事圣经管理</h2>
+
+<p>故事圣经（Story Bible）是每本小说的核心约束文档，确保长篇创作的一致性。</p>
+
+<h3>圣经包含的内容</h3>
+<table>
+    <tr><th>字段</th><th>说明</th><th>用途</th></tr>
+    <tr><td><code>worldview_rules</code></td><td>世界观规则</td><td>全局约束，每章必注入</td></tr>
+    <tr><td><code>hard_settings</code></td><td>硬设定</td><td>不可违反的铁律</td></tr>
+    <tr><td><code>banned_elements</code></td><td>禁用元素</td><td>明确禁止出现的内容</td></tr>
+    <tr><td><code>character_cards</code></td><td>人物卡片</td><td>按出场人物精准注入</td></tr>
+    <tr><td><code>faction_relations</code></td><td>势力关系</td><td>阵营与利益格局</td></tr>
+    <tr><td><code>foreshadowing_list</code></td><td>伏笔列表</td><td>按相关性筛选注入</td></tr>
+    <tr><td><code>timeline_events</code></td><td>时间线事件</td><td>只注入最近 5 章</td></tr>
+    <tr><td><code>unresolved_hooks</code></td><td>未回收悬念</td><td>提醒 AI 回收</td></tr>
+    <tr><td><code>main_goals</code></td><td>主线目标</td><td>只注入活跃目标</td></tr>
+</table>
+
+<h3>精准约束注入机制</h3>
+<div class="card">
+    <p>生成每章时，系统不会全量注入所有圣经内容（避免 token 浪费），而是：</p>
+    <ul>
+        <li>解析本章大纲中的出场人物和场景地点</li>
+        <li>只抽取出场人物的 character_cards</li>
+        <li>只抽取与本章人物/场景相关的伏笔</li>
+        <li>只取最近 5 章的时间线事件</li>
+        <li>全局约束（worldview_rules, hard_settings, banned_elements）始终包含</li>
+    </ul>
+</div>
+
+<h3>生成后自动反向更新</h3>
+<div class="card">
+    <p>每章生成完成后，系统自动用 LLM 分析章节内容，提取并更新：</p>
+    <ul>
+        <li>新发生的事件 → 追加到 <code>timeline_events</code></li>
+        <li>新种下的悬念 → 追加到 <code>unresolved_hooks</code></li>
+        <li>已回收的悬念 → 标记为 <code>resolved</code></li>
+        <li>人物新属性/变化 → 更新 <code>character_cards</code></li>
+        <li>主线目标进展 → 更新 <code>main_goals</code></li>
+    </ul>
+</div>
+
+<h3>API 操作</h3>
+<pre><code># 查看故事圣经
+curl http://localhost:8000/api/v1/projects/{novel_id}/story-bible
+
+# 更新故事圣经（部分更新，只传需要修改的字段）
+curl -X PUT http://localhost:8000/api/v1/projects/{novel_id}/story-bible \
+  -H "Content-Type: application/json" \
+  -d '{
+    "banned_elements": [
+      {"element": "穿越", "reason": "本书设定不允许", "scope": "全局"},
+      {"element": "现代科技", "reason": "纯古代背景", "scope": "全局"}
+    ],
+    "main_goals": [
+      {"goal_id": "g1", "description": "主角突破金丹期", "owner": "主角", "status": "active", "progress": "筑基后期"}
+    ]
+  }'</code></pre>
+</section>
+
+<!-- PLACEHOLDER_SECTION_3 -->
+
+<section id="knowledge-graph">
+<h2>5. 知识图谱使用</h2>
+
+<p>活态知识图谱自动追踪小说中的实体和关系，防止"吃设定"、"死人复活"等一致性问题。</p>
+
+<h3>实体类型</h3>
+<div class="card-grid">
+    <div class="card">
+        <h4>角色 (character)</h4>
+        <p>人物实体，追踪状态：存活、死亡、失踪、黑化等</p>
+    </div>
+    <div class="card">
+        <h4>地点 (location)</h4>
+        <p>场景地点，追踪状态：完好、毁灭、封印等</p>
+    </div>
+    <div class="card">
+        <h4>势力 (faction)</h4>
+        <p>组织阵营，追踪状态：活跃、解散、合并等</p>
+    </div>
+    <div class="card">
+        <h4>秘宝 (treasure)</h4>
+        <p>重要道具，追踪状态：完整、损毁、遗失等</p>
+    </div>
+</div>
+
+<h3>三层图谱可视化</h3>
+<p>前端提供 D3.js 驱动的三层图谱视图：</p>
+<ul>
+    <li><strong>人物层</strong>：角色节点及其关系（师徒、敌对、恋人等）</li>
+    <li><strong>事件层</strong>：关键事件节点及参与者</li>
+    <li><strong>伏笔层</strong>：悬念节点及关联人物（始终全量显示）</li>
+</ul>
+
+<h3>频次筛选</h3>
+<p>当实体过多时，可通过 <code>min_frequency</code> 参数筛选主要实体：</p>
+<pre><code># 只显示出现 2 次以上的实体（默认）
+curl "http://localhost:8000/api/v1/projects/{novel_id}/knowledge-graph/three-layer?min_frequency=2"
+
+# 显示全部实体
+curl "http://localhost:8000/api/v1/projects/{novel_id}/knowledge-graph/three-layer?min_frequency=1"</code></pre>
+
+<div class="tip">伏笔类型的实体不受频次筛选影响，始终全量显示——每个伏笔都有业务意义。</div>
+</section>
+
+<section id="chapter-version">
+<h2>6. 章节版本与回滚</h2>
+
+<p>每次章节生成或重写都会自动创建版本快照，支持对比和回滚。</p>
+
+<h3>版本管理操作</h3>
+
+<div class="step">
+    <span class="step-number">1</span>
+    <strong>查看版本历史</strong>
+<pre><code>curl http://localhost:8000/api/v1/projects/{novel_id}/chapters/{chapter_number}/versions</code></pre>
+    <p>返回该章节的所有版本，包含版本号、来源（generation/rewrite/manual）、质量评分、创建时间。</p>
+</div>
+
+<div class="step">
+    <span class="step-number">2</span>
+    <strong>对比两个版本</strong>
+<pre><code>curl "http://localhost:8000/api/v1/projects/{novel_id}/chapters/{chapter_number}/versions/compare?v1=1&v2=3"</code></pre>
+</div>
+
+<div class="step">
+    <span class="step-number">3</span>
+    <strong>回滚到指定版本</strong>
+<pre><code>curl -X POST http://localhost:8000/api/v1/projects/{novel_id}/chapters/{chapter_number}/versions/2/rollback</code></pre>
+    <p>回滚会创建一个新版本（内容与目标版本相同），不会删除历史记录。</p>
+</div>
+
+<h3>AI 片段重写</h3>
+<p>可以选择章节中的特定段落进行 AI 重写：</p>
+<pre><code>curl -X POST http://localhost:8000/api/v1/projects/{novel_id}/chapters/{chapter_number}/rewrite \
+  -H "Content-Type: application/json" \
+  -d '{
+    "start_text": "张三拔出长剑",
+    "end_text": "敌人倒地不起",
+    "instruction": "让战斗更加激烈，加入内力对撞的描写，增加紧迫感"
+  }'</code></pre>
+<p>重写完成后自动创建新版本，原版本保留可回滚。</p>
+</section>
+
+<section id="quality">
+<h2>7. 质量评估与修改</h2>
+
+<h3>8 维度评分体系</h3>
+<table>
+    <tr><th>维度</th><th>评估重点</th><th>不合格表现</th></tr>
+    <tr><td>主线推进度</td><td>本章是否实质推进剧情</td><td>注水、无意义日常</td></tr>
+    <tr><td>冲突与悬念</td><td>是否有爽点和钩子</td><td>平淡无波、缺乏期待感</td></tr>
+    <tr><td>角色一致性</td><td>行为是否符合人设</td><td>智商下线、性格突变</td></tr>
+    <tr><td>世界观一致性</td><td>是否遵守设定规则</td><td>违反力量体系、凭空创造</td></tr>
+    <tr><td>伏笔与回收</td><td>是否有暗线埋设或回收</td><td>无伏笔、长期不回收</td></tr>
+    <tr><td>叙事节奏</td><td>是否拖沓</td><td>大段废话、水字数</td></tr>
+    <tr><td>语言精炼度</td><td>文笔通顺程度</td><td>车轱辘话、错别字</td></tr>
+    <tr><td>题材契合度</td><td>是否符合网文套路</td><td>缺乏爽感、不符合类型期待</td></tr>
+</table>
+
+<h3>StoryBible 冲突检测</h3>
+<p>在质量评估阶段，系统额外检测 4 类冲突：</p>
+<div class="card-grid">
+    <div class="card">
+        <h4>人物性格漂移</h4>
+        <p>对比章节中人物行为与 character_cards 中的性格描述，检测矛盾。</p>
+    </div>
+    <div class="card">
+        <h4>时间线冲突</h4>
+        <p>对比章节事件与 timeline_events 中已记录的事件顺序。</p>
+    </div>
+    <div class="card">
+        <h4>设定矛盾</h4>
+        <p>对比章节内容与 worldview_rules + hard_settings + banned_elements。</p>
+    </div>
+    <div class="card">
+        <h4>伏笔遗忘</h4>
+        <p>检查超过 10 章未回收的悬念，输出提醒（无需 LLM，纯规则检测）。</p>
+    </div>
+</div>
+
+<div class="warning">质量评估和冲突检测均有优雅降级机制——LLM 调用失败时不会阻断生成流程，系统会使用默认评分继续执行。</div>
+</section>
+
+<section id="conversation">
+<h2>8. 对话式共创</h2>
+
+<p>通过对话界面与 AI 进行交互式创作讨论：</p>
+
+<pre><code># 创建对话
+curl -X POST http://localhost:8000/api/v1/projects/{novel_id}/conversations \
+  -H "Content-Type: application/json" \
+  -d '{"topic": "讨论第三卷的反派设计"}'
+
+# 发送消息
+curl -X POST http://localhost:8000/api/v1/projects/{novel_id}/conversations/{conv_id}/messages \
+  -H "Content-Type: application/json" \
+  -d '{"content": "我想让反派有一个悲惨的过去，让读者能共情，你觉得怎么设计？"}'</code></pre>
+
+<p>AI 会基于当前小说的世界观、人物设定和剧情进展给出建议。对话历史保留，可随时回顾。</p>
+</section>
+
+<section id="task-management">
+<h2>9. 任务管理与监控</h2>
+
+<h3>任务生命周期</h3>
+<p><code>pending</code> → <code>running</code> → <code>completed</code> / <code>failed</code></p>
+
+<h3>实时进度监控</h3>
+<p>通过 WebSocket 连接接收实时事件：</p>
+<pre><code>// JavaScript 示例
+const ws = new WebSocket('ws://localhost:8000/api/v1/ws');
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    console.log(`[${data.event_type}] ${data.stage}: ${data.progress}%`);
+};</code></pre>
+
+<h3>清理操作</h3>
+<pre><code># 清理超过 2 小时的过期任务
+curl -X POST http://localhost:8000/api/v1/novels/cleanup/stale
+
+# 取消指定任务
+curl -X POST http://localhost:8000/api/v1/novels/{task_id}/cancel
+
+# 清理失败章节（字数低于 100 的）
+curl -X DELETE http://localhost:8000/api/v1/projects/{novel_id}/chapters/cleanup</code></pre>
+</section>
+
+<section id="api-reference">
+<h2>10. API 速查表</h2>
+
+<table>
+    <tr><th>操作</th><th>方法</th><th>端点</th></tr>
+    <tr><td>创建项目</td><td>POST</td><td><code>/api/v1/projects</code></td></tr>
+    <tr><td>全流程生成</td><td>POST</td><td><code>/api/v1/projects/{id}/generate-full</code></td></tr>
+    <tr><td>生成指定章节</td><td>POST</td><td><code>/api/v1/projects/{id}/generate-chapters</code></td></tr>
+    <tr><td>查看章节列表</td><td>GET</td><td><code>/api/v1/projects/{id}/chapters</code></td></tr>
+    <tr><td>AI 重写片段</td><td>POST</td><td><code>/api/v1/projects/{id}/chapters/{n}/rewrite</code></td></tr>
+    <tr><td>版本历史</td><td>GET</td><td><code>/api/v1/projects/{id}/chapters/{n}/versions</code></td></tr>
+    <tr><td>版本回滚</td><td>POST</td><td><code>/api/v1/projects/{id}/chapters/{n}/versions/{v}/rollback</code></td></tr>
+    <tr><td>查看故事圣经</td><td>GET</td><td><code>/api/v1/projects/{id}/story-bible</code></td></tr>
+    <tr><td>更新故事圣经</td><td>PUT</td><td><code>/api/v1/projects/{id}/story-bible</code></td></tr>
+    <tr><td>知识图谱实体</td><td>GET</td><td><code>/api/v1/projects/{id}/knowledge-graph/entities</code></td></tr>
+    <tr><td>三层图谱</td><td>GET</td><td><code>/api/v1/projects/{id}/knowledge-graph/three-layer</code></td></tr>
+    <tr><td>大纲树</td><td>GET</td><td><code>/api/v1/projects/{id}/outlines</code></td></tr>
+    <tr><td>故事线管理</td><td>GET/POST</td><td><code>/api/v1/projects/{id}/storylines</code></td></tr>
+    <tr><td>对话共创</td><td>POST</td><td><code>/api/v1/projects/{id}/conversations/{cid}/messages</code></td></tr>
+    <tr><td>任务状态</td><td>GET</td><td><code>/api/v1/novels/{task_id}</code></td></tr>
+    <tr><td>健康检查</td><td>GET</td><td><code>/api/v1/health</code></td></tr>
+</table>
+
+<div class="tip">完整的交互式 API 文档可在 <code>http://localhost:8000/docs</code>（Swagger UI）或 <code>http://localhost:8000/redoc</code>（ReDoc）查看。</div>
+</section>
+
+<section id="faq">
+<h2>11. 常见问题</h2>
+
+<div class="card">
+    <h4>Q: 生成速度很慢怎么办？</h4>
+    <p>A: 章节生成速度主要取决于 DeepSeek API 的响应时间。可以尝试：降低 <code>DEEPSEEK_MAX_TOKENS</code>、减少单次生成章节数、确保网络到 API 端点的延迟较低。</p>
+</div>
+
+<div class="card">
+    <h4>Q: 任务一直显示"渲染中"怎么办？</h4>
+    <p>A: 可能是任务超时或 API 异常。使用"清理过期任务"功能（POST <code>/api/v1/novels/cleanup/stale</code>）清理超过 2 小时的僵尸任务。</p>
+</div>
+
+<div class="card">
+    <h4>Q: 章节打不开显示 404？</h4>
+    <p>A: 可能是生成失败但记录残留。使用"清理失败章节"功能（DELETE <code>/api/v1/projects/{id}/chapters/cleanup</code>）删除字数不足的异常章节。</p>
+</div>
+
+<div class="card">
+    <h4>Q: 如何手动编辑故事圣经？</h4>
+    <p>A: 通过 PUT <code>/api/v1/projects/{id}/story-bible</code> 接口，只传需要修改的字段即可（部分更新，不传的字段保持不变）。前端也提供了可视化编辑界面。</p>
+</div>
+
+<div class="card">
+    <h4>Q: 知识图谱节点太多看不清？</h4>
+    <p>A: 使用频次筛选功能，设置 <code>min_frequency=3</code> 或更高值只显示核心实体。前端提供"只显示主要/显示全部"切换按钮。</p>
+</div>
+
+<div class="card">
+    <h4>Q: 如何回滚到之前的章节版本？</h4>
+    <p>A: 在章节详情页的"版本历史"面板中选择目标版本，点击"回滚"。也可通过 API：POST <code>/api/v1/projects/{id}/chapters/{n}/versions/{v}/rollback</code>。回滚不会删除历史版本。</p>
+</div>
+</section>
+
+</div>
+
+<footer>
+    <p>xIaoShuo AI 小说多智能体协同共创平台 &copy; 2026 TonightisOver</p>
+    <p>Powered by LangGraph + DeepSeek + FastAPI + Vue 3</p>
+</footer>
+</div>
+</body>
+</html>

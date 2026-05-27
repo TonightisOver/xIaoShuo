@@ -133,3 +133,92 @@
 需求文档对架构问题的分析准确且全面，经代码验证所有描述的耦合点和重复模式均真实存在。任务拆分粒度合理，Phase 分层和依赖关系设计正确，优先级排序（先提取公共模块、再消除反向依赖、最后重划职责边界）符合重构最佳实践。SHOULD FIX 项主要是行数描述偏差和实施细节建议，不影响整体方案的可行性和正确性。
 
 **结论: APPROVED**
+
+---
+
+# plan_review 评审报告 — CHANGE-050 工程质量收尾
+
+**评审对象**: `.harness/requirements.md` + `.harness/tasks.md`
+**评审轮次**: 第 1 轮
+**评审日期**: 2026-05-27
+
+---
+
+## 评审结论
+
+**结果**: APPROVED
+
+---
+
+## 代码验证结果
+
+### 1. core/context 层级边界违规 — 已确认
+
+`src/core/context/novel_context.py` 第 16 行：
+- `from src.api.models.db_models import (Chapter, Character, Novel, Outline, StoryBible, Storyline, WorldSetting)`
+
+`src/core/context/__init__.py` 当前从 `novel_context` re-export，链式依赖存在。
+
+`src/api/services/novel_context_service.py` 尚不存在（Glob 返回空），需由 T1 新建。
+
+**结论**: 需求描述准确，问题真实存在，T1 方案（迁移 + re-export）可行。
+
+### 2. 调用方 import 路径 — 已确认
+
+6 处调用方均通过 `from src.core.context import NovelContextBuilder` 导入，T1 的 re-export 方案可保证向后兼容，T2 为可选清理。
+
+**额外发现**：`tests/unit/test_change049_refactoring.py` 第 24 行直接从 `src.core.context.novel_context` 导入 `NovelContextBuilder`；`tests/unit/test_change037_chapter_editor.py` 第 344、397 行 mock 路径为 `src.core.context.NovelContextBuilder`。T1 的 re-export 方案可维持这些测试路径有效，但 T2 若直接删除 `src/core/context/novel_context.py` 的实现（而非保留 re-export）将导致测试失败。tasks.md T1 步骤 2 已明确保留 re-export，风险可控。
+
+### 3. 前端测试体系缺失 — 已确认
+
+`frontend/package.json` 无 `test` 命令，`devDependencies` 中无 vitest/test-utils。三个 Vue 文件行数经实测：NovelDetail.vue 738 行、ChapterEdit.vue 854 行、RelationGraph.vue 669 行，与需求描述完全一致。
+
+### 4. 遗留资料文件 — 已确认
+
+`git status` 显示 CHANGE-033~036 目录、`story-bible.md`、`全流程使用指南.html` 均为 untracked，与需求描述一致。
+
+---
+
+## 评审发现
+
+### MUST FIX（必须修复）
+
+无。
+
+### SHOULD FIX（建议修复）
+
+1. **T1 验收标准与测试文件存在潜在冲突**
+   - 位置：tasks.md T1 验收标准第 1 条
+   - 问题：`grep -rn "from src.api" src/core/` 返回空 是 T1 的核心验收标准，但 T1 步骤 2 将 `novel_context.py` 改为 re-export 后，该文件本身会包含 `from src.api.services.novel_context_service import ...`，导致 grep 仍有输出，验收标准自相矛盾。
+   - 建议：将验收标准修正为 `grep -rn "from src.api.models" src/core/` 返回空（只检查对 db_models 的直接依赖，允许 re-export 中的 services 层引用），或在 T1 步骤 2 中明确 re-export 行不计入违规。
+
+2. **T6 测试用例 7（409 冲突）与需求描述不一致**
+   - 位置：tasks.md T6 测试用例 7 vs requirements.md FR-2c 第 6 条
+   - 问题：tasks.md 描述"409 时触发 alert"，requirements.md 描述"409 时触发 confirm 弹窗"。两者语义不同（alert 是通知，confirm 是确认）。
+   - 建议：统一为 alert（通知用户冲突），因为 409 是服务端拒绝，不需要用户二次确认。在 tasks.md T6 中明确使用 `window.alert`。
+
+3. **T7 完成后 T6 测试需同步更新，但依赖关系未显式标注**
+   - 位置：tasks.md 任务总览依赖列
+   - 问题：T7 拆分 NovelDetail.vue 后，T6 的测试 mock 路径（composable 位置）可能需要更新。tasks.md 在 T7 验收中提到"T6 的测试需同步更新 mock 路径"，但任务总览的依赖列中 T7 未标注对 T6 的反向影响。
+   - 建议：在 T7 描述中明确列出需要同步修改的测试文件，避免实施时遗漏。
+
+### INFO（信息提示）
+
+1. **FR-3 目标行数与 T7~T9 验收标准不一致**
+   - requirements.md FR-3 目标：NovelDetail ≤450、ChapterEdit ≤450、RelationGraph ≤400
+   - tasks.md T8 验收：ChapterEdit ≤450（一致）；T9 验收：RelationGraph ≤400（一致）；T7 验收：NovelDetail ≤450（一致）
+   - 实际一致，无问题，仅确认。
+
+2. **T10 未检查 .gitignore 中 *.bundle 规则**
+   - tasks.md T10 步骤 1 要求检查 `.gitignore`，当前 git status 显示 `xiaoshuo-*.bundle` 为 untracked（而非 ignored），说明 `.gitignore` 中可能尚无 `*.bundle` 规则。实施时需先添加规则再 stage 其他文件，否则 bundle 文件可能被意外 stage。
+
+3. **FR-2b 中 useConfirm 辅助函数在 tasks.md 中未体现**
+   - requirements.md FR-2b 提到"危险操作的 confirm() 保留但封装为 useConfirm 辅助函数"，但 tasks.md T5 的接口设计中未包含 useConfirm。这是范围缩减，可接受，但实施时应明确不强制要求 useConfirm。
+
+---
+
+## 总结
+
+需求文档对四个遗留问题的描述准确，经代码验证全部属实。任务拆分粒度合理，P1/P2 优先级划分清晰，执行顺序设计合理（后端修正独立于前端测试体系，互不阻塞）。SHOULD FIX 项中 T1 验收标准的 grep 命令存在自相矛盾的逻辑问题，建议在实施前修正，但不阻塞整体方案。
+
+**结论: APPROVED**

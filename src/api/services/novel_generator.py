@@ -28,7 +28,7 @@ from src.api.services.progress_event_bus import (
     get_event_bus,
 )
 from src.api.services.task_manager import get_task_manager
-from src.core.context import NovelContextBuilder
+from src.api.services.novel_context_service import NovelContextBuilder
 from src.core.langgraph.graph import create_novel_graph
 
 logger = structlog.get_logger(__name__)

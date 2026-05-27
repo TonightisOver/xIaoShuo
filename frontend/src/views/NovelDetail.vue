@@ -293,170 +293,34 @@
       </div>
 
       <!-- Tab Content: Chapters -->
-      <div v-if="activeTab === 'chapters'" class="space-y-6">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <h2 class="text-neutral-800 font-semibold text-sm">小说正文章节</h2>
-          <div class="flex items-center gap-3">
-            <button @click="cleanupFailedChapters" class="btn-secondary text-xs py-2 px-4 flex items-center gap-1 text-red-500 hover:text-red-600 border-red-200">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
-                <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-              </svg>
-              <span>清理失败章节</span>
-            </button>
-            <button @click="showRangeDialog = true" class="btn-secondary text-xs py-2 px-4 flex items-center gap-1">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-accent-600">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              <span>按范围重新生成章节</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Volume List Component -->
-        <VolumeList
-          v-if="volumes.length"
-          :volumes="volumes"
-          :chapters="chapters"
-          :novel-id="novelId"
-          @generate-volume="handleGenerateVolume"
-          @delete-chapter="handleDeleteChapter"
-        />
-
-        <!-- Unassigned Chapters List -->
-        <div v-if="unassignedChapters.length" class="mt-6">
-          <h3 v-if="volumes.length" class="text-sm font-medium text-neutral-500 mb-3 pl-1">未分卷章节</h3>
-          <div class="bg-white rounded-xl border border-neutral-200 shadow-sm divide-y divide-neutral-100">
-            <div v-for="ch in unassignedChapters" :key="ch.id"
-              class="flex items-center justify-between px-6 py-3.5 hover:bg-neutral-50 transition-colors group"
-            >
-              <router-link
-                :to="`/novels/${novelId}/chapters/${ch.chapter_number}`"
-                class="flex-1 flex items-center gap-3 min-w-0"
-              >
-                <span class="text-sm text-neutral-400 font-mono w-6 shrink-0">{{ ch.chapter_number }}</span>
-                <span class="text-sm font-medium text-neutral-800 truncate">{{ ch.title }}</span>
-              </router-link>
-              <div class="flex items-center gap-3 shrink-0">
-                <span class="text-xs text-neutral-400 font-mono">{{ ch.word_count || 0 }} 字</span>
-                <button
-                  @click="confirmDeleteUnassigned(ch)"
-                  class="opacity-0 group-hover:opacity-100 text-neutral-300 hover:text-red-500 transition-all p-1 rounded"
-                  title="删除章节"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Empty Chapters -->
-        <div v-if="!volumes.length && !chapters.length" class="card p-12 text-center text-neutral-500">
-          尚未开始正文章节的生成。您可以点击右上角"一键全功能生成"或进行分步设定创建。
-        </div>
-
-        <!-- Chapter Range Selector Modal Dialog -->
-        <ChapterRangeDialog
-          :visible="showRangeDialog"
-          @close="showRangeDialog = false"
-          @generate="handleGenerateChapters"
-        />
-
-        <ExportDialog
-          :visible="showExportDialog"
-          :novel-id="novelId"
-          :novel-title="novel?.title"
-          :volumes="volumes"
-          @close="showExportDialog = false"
-        />
-
-        <!-- Delete Confirmation Modal for Unassigned Chapters -->
-        <Teleport to="body">
-          <div v-if="deleteTargetUnassigned" class="fixed inset-0 z-50 flex items-center justify-center">
-            <div class="absolute inset-0 bg-black/20" @click="deleteTargetUnassigned = null"></div>
-            <div class="relative bg-white rounded-xl shadow-xl p-6 w-80 mx-4 border border-neutral-200">
-              <h3 class="text-base font-semibold text-neutral-900 mb-2">确认删除</h3>
-              <p class="text-sm text-neutral-500 mb-5">
-                确定要删除「第{{ deleteTargetUnassigned.chapter_number }}章：{{ deleteTargetUnassigned.title }}」吗？此操作不可撤销。
-              </p>
-              <div class="flex gap-3 justify-end">
-                <button @click="deleteTargetUnassigned = null" class="px-4 py-2 text-sm font-medium text-neutral-600 hover:text-neutral-800 rounded-lg hover:bg-neutral-100 transition-colors">
-                  取消
-                </button>
-                <button @click="doDeleteUnassigned" class="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors">
-                  删除
-                </button>
-              </div>
-            </div>
-          </div>
-        </Teleport>
-      </div>
+      <NovelChaptersTab
+        v-if="activeTab === 'chapters'"
+        :volumes="volumes"
+        :chapters="chapters"
+        :novel-id="novelId"
+        :novel-title="novel?.title"
+        :unassigned-chapters="unassignedChapters"
+        :show-range-dialog="showRangeDialog"
+        :show-export-dialog="showExportDialog"
+        :delete-target="deleteTargetUnassigned"
+        @cleanup="cleanupFailedChapters"
+        @open-range-dialog="showRangeDialog = true"
+        @close-range-dialog="showRangeDialog = false"
+        @generate-volume="handleGenerateVolume"
+        @delete-chapter="handleDeleteChapter"
+        @confirm-delete="confirmDeleteUnassigned"
+        @cancel-delete="deleteTargetUnassigned = null"
+        @do-delete="doDeleteUnassigned"
+        @generate-chapters="onGenerateChapters"
+        @close-export-dialog="showExportDialog = false"
+      />
 
       <!-- Tab Content: Storylines / Relations -->
-      <div v-if="activeTab === 'storylines'" class="card p-6">
-        <div class="flex justify-between items-center mb-6">
-          <h2 class="text-neutral-800 font-semibold text-sm">核心脉络（故事线 / 弧光 / 场景）</h2>
-          <div class="flex gap-2">
-            <router-link :to="`/novels/${novelId}/graph`" class="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-accent-600">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
-              </svg>
-              <span>查看知识图谱</span>
-            </router-link>
-
-            <router-link :to="`/novels/${novelId}/storylines`" class="btn-primary text-xs py-1.5 px-3 flex items-center gap-1">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
-              </svg>
-              <span>故事线管理器</span>
-            </router-link>
-          </div>
-        </div>
-
-        <div v-if="storylinesData" class="space-y-6 text-sm">
-          <div v-if="storylinesData.storylines?.length">
-            <h3 class="text-xs text-neutral-500 font-medium uppercase tracking-wider mb-3">故事线分布</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div v-for="sl in storylinesData.storylines" :key="sl.id" class="p-4 rounded-xl bg-neutral-50 border border-neutral-200 flex flex-col justify-between hover:border-neutral-300 transition-colors">
-                <div>
-                  <div class="flex items-center justify-between gap-2 mb-2">
-                    <span class="font-bold text-neutral-900">{{ sl.name }}</span>
-                    <span :class="sl.type === 'main' ? 'bg-accent-50 text-accent-600 border border-accent-200 text-[9px] px-2 py-0.5 rounded-full font-bold' : sl.type === 'hidden' ? 'bg-amber-50 text-amber-600 border border-amber-200 text-[9px] px-2 py-0.5 rounded-full font-bold' : 'bg-neutral-100 text-neutral-600 text-[9px] px-2 py-0.5 rounded-full font-bold border border-neutral-200'">{{ sl.type === 'main' ? '主线' : sl.type === 'hidden' ? '暗线' : '支线' }}</span>
-                  </div>
-                  <p v-if="sl.description" class="text-neutral-500 text-xs mt-1.5 leading-relaxed">{{ sl.description }}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="storylinesData.character_arcs?.length">
-            <h3 class="text-xs text-neutral-500 font-medium uppercase tracking-wider mb-3">人物弧光轨迹</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div v-for="arc in storylinesData.character_arcs" :key="arc.id" class="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200 hover:border-neutral-300 transition-colors flex items-start gap-3">
-                <span :class="arc.arc_type === 'growth' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : arc.arc_type === 'fall' ? 'bg-rose-50 text-rose-600 border-rose-200' : 'bg-blue-50 text-blue-600 border-blue-200'" class="shrink-0 text-[9px] px-2 py-0.5 rounded-md border font-bold">
-                  {{ arc.arc_type === 'growth' ? '成长' : arc.arc_type === 'fall' ? '沉沦' : '蜕变' }}
-                </span>
-                <p class="text-neutral-700 text-xs leading-relaxed">{{ arc.description || '无具体弧光轨迹描述' }}</p>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="storylinesData.scenes?.length">
-            <h3 class="text-xs text-neutral-500 font-medium uppercase tracking-wider mb-2.5">生成创作场景</h3>
-            <div class="flex flex-wrap gap-2">
-              <div v-for="sc in storylinesData.scenes" :key="sc.id" class="px-3 py-1.5 bg-neutral-50 border border-neutral-200 rounded-xl text-xs font-medium text-neutral-700">
-                <span class="font-bold text-neutral-900">{{ sc.name }}</span>
-                <span v-if="sc.location" class="text-accent-600 font-semibold ml-1.5 font-mono">@{{ sc.location }}</span>
-              </div>
-            </div>
-          </div>
-
-          <p v-if="!storylinesData.storylines?.length && !storylinesData.character_arcs?.length && !storylinesData.scenes?.length" class="text-neutral-500 py-6 text-center">暂无脉络数据生成。</p>
-        </div>
-        <p v-else class="text-neutral-500 py-6 text-center">系统将在故事线管理器中创建并建立您的故事线、人物弧光和创作场景之间的关联映射。</p>
-      </div>
+      <NovelStorylinesTab
+        v-if="activeTab === 'storylines'"
+        :novel-id="novelId"
+        :storylines-data="storylinesData"
+      />
 
       <!-- Tab Content: Conversations -->
       <div v-if="activeTab === 'conversations'" class="space-y-4">
@@ -492,248 +356,61 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import VolumeList from '../components/VolumeList.vue'
-import ChapterRangeDialog from '../components/ChapterRangeDialog.vue'
-import ExportDialog from '../components/ExportDialog.vue'
+import { useRoute } from 'vue-router'
+import NovelChaptersTab from '../components/NovelChaptersTab.vue'
+import NovelStorylinesTab from '../components/NovelStorylinesTab.vue'
+import { useNovelData } from '../composables/useNovelData.js'
+import { useNovelActions } from '../composables/useNovelActions.js'
 
 const route = useRoute()
-const router = useRouter()
 const novelId = route.params.id
 
-const novel = ref(null)
-const world = ref(null)
-const characters = ref([])
-const chapters = ref([])
-const volumes = ref([])
-const conversations = ref([])
-const powerSystems = ref([])
-const storylinesData = ref(null)
-const outlineTree = ref(null)
-const loading = ref(true)
-const generating = ref(false)
-const fullGenerating = ref(false)
+const { novel, world, characters, chapters, volumes, conversations, powerSystems, storylinesData, outlineTree, loading, fetchAll } = useNovelData(novelId)
+const { generating, fullGenerating, deleteTargetUnassigned, generate, fullGenerate, startConversation, handleGenerateVolume, handleGenerateChapters, confirmDeleteUnassigned, doDeleteUnassigned, cleanupFailedChapters } = useNovelActions(novelId, chapters)
+
 const activeTab = ref('overview')
 const showRangeDialog = ref(false)
 const showExportDialog = ref(false)
-
 const editingOverview = ref(false)
 const savingOverview = ref(false)
 const overviewSaved = ref(false)
 const overviewError = ref('')
 const overviewForm = ref({ title: '', idea: '' })
 
-function statusClass(s) {
-  return { draft: 'pending', generating: 'running', completed: 'completed', failed: 'failed' }[s] || 'pending'
-}
+const tabs = [
+  { id: 'overview', label: '概览' }, { id: 'outlines', label: '大纲' },
+  { id: 'world', label: '世界观' }, { id: 'power-systems', label: '力量体系' },
+  { id: 'characters', label: '人物' }, { id: 'chapters', label: '章节' },
+  { id: 'storylines', label: '故事线' }, { id: 'conversations', label: '创作对话' },
+]
+
+const statusLabel = computed(() => ({ draft: '草稿', generating: '生成中', completed: '已完成', failed: '失败' })[novel.value?.status] || novel.value?.status)
+const unassignedChapters = computed(() => chapters.value.filter(c => !c.volume_number))
+
+function statusClass(s) { return { draft: 'pending', generating: 'running', completed: 'completed', failed: 'failed' }[s] || 'pending' }
 
 function startEditOverview() {
   overviewForm.value = { title: novel.value.title || '', idea: novel.value.idea || '' }
-  editingOverview.value = true
-  overviewSaved.value = false
-  overviewError.value = ''
+  editingOverview.value = true; overviewSaved.value = false; overviewError.value = ''
 }
-
-function cancelEditOverview() {
-  editingOverview.value = false
-}
+function cancelEditOverview() { editingOverview.value = false }
 
 async function saveOverview() {
-  savingOverview.value = true
-  overviewError.value = ''
+  savingOverview.value = true; overviewError.value = ''
   try {
     const res = await fetch(`/api/v1/projects/${novelId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: overviewForm.value.title, idea: overviewForm.value.idea }),
     })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      overviewError.value = data.detail || '保存失败'
-      return
-    }
+    if (!res.ok) { overviewError.value = (await res.json().catch(() => ({}))).detail || '保存失败'; return }
     novel.value = { ...novel.value, ...overviewForm.value }
-    editingOverview.value = false
-    overviewSaved.value = true
+    editingOverview.value = false; overviewSaved.value = true
     setTimeout(() => { overviewSaved.value = false }, 2000)
-  } finally {
-    savingOverview.value = false
-  }
+  } finally { savingOverview.value = false }
 }
 
-const unassignedChapters = computed(() =>
-  chapters.value.filter(c => !c.volume_number)
-)
-
-const tabs = [
-  { id: 'overview', label: '概览' },
-  { id: 'outlines', label: '大纲' },
-  { id: 'world', label: '世界观' },
-  { id: 'power-systems', label: '力量体系' },
-  { id: 'characters', label: '人物' },
-  { id: 'chapters', label: '章节' },
-  { id: 'storylines', label: '故事线' },
-  { id: 'conversations', label: '创作对话' },
-]
-
-const statusLabel = computed(() => {
-  const map = { draft: '草稿', generating: '生成中', completed: '已完成', failed: '失败' }
-  return map[novel.value?.status] || novel.value?.status
-})
-
-async function fetchAll() {
-  loading.value = true
-  try {
-    const [nRes, wRes, cRes, chRes, convRes, volRes, psRes, slRes, olRes] = await Promise.all([
-      fetch(`/api/v1/projects/${novelId}`),
-      fetch(`/api/v1/projects/${novelId}/world`),
-      fetch(`/api/v1/projects/${novelId}/characters`),
-      fetch(`/api/v1/projects/${novelId}/chapters`),
-      fetch(`/api/v1/projects/${novelId}/conversations`),
-      fetch(`/api/v1/projects/${novelId}/volumes`),
-      fetch(`/api/v1/projects/${novelId}/power-systems`),
-      fetch(`/api/v1/projects/${novelId}/relations`),
-      fetch(`/api/v1/projects/${novelId}/outlines`),
-    ])
-    if (nRes.ok) novel.value = await nRes.json()
-    if (wRes.ok) world.value = await wRes.json()
-    if (cRes.ok) characters.value = await cRes.json()
-    if (chRes.ok) chapters.value = await chRes.json()
-    if (convRes.ok) conversations.value = await convRes.json()
-    if (volRes.ok) volumes.value = await volRes.json()
-    if (psRes.ok) powerSystems.value = await psRes.json()
-    if (slRes.ok) storylinesData.value = await slRes.json()
-    if (olRes.ok) outlineTree.value = await olRes.json()
-  } finally {
-    loading.value = false
-  }
-}
-
-async function generate() {
-  generating.value = true
-  try {
-    const res = await fetch(`/api/v1/projects/${novelId}/generate`, { method: 'POST' })
-    if (res.ok) {
-      const data = await res.json()
-      router.push(`/task/${data.task_id}`)
-    }
-  } finally {
-    generating.value = false
-  }
-}
-
-async function fullGenerate() {
-  fullGenerating.value = true
-  try {
-    const res = await fetch(`/api/v1/projects/${novelId}/generate-full`, { method: 'POST' })
-    if (res.ok) {
-      const data = await res.json()
-      router.push(`/task/${data.task_id}`)
-    } else if (res.status === 409) {
-      const err = await res.json()
-      const msg = err.detail || '冲突'
-      if (msg.includes('已有正在运行')) {
-        alert(msg)
-      } else if (msg.includes('已有') && msg.includes('有效章节')) {
-        const confirmed = confirm(`${msg}\n\n确定要覆盖重新生成吗？此操作不可撤销！`)
-        if (confirmed) {
-          const forceRes = await fetch(`/api/v1/projects/${novelId}/generate-full?force=true`, { method: 'POST' })
-          if (forceRes.ok) {
-            const data = await forceRes.json()
-            router.push(`/task/${data.task_id}`)
-          } else {
-            const forceErr = await forceRes.json()
-            alert(forceErr.detail || '生成失败')
-          }
-        }
-      } else {
-        alert(msg)
-      }
-    }
-  } finally {
-    fullGenerating.value = false
-  }
-}
-
-async function startConversation() {
-  const topic = prompt('对话主题（如：讨论主角设定、情节走向）')
-  if (!topic) return
-  const res = await fetch(`/api/v1/projects/${novelId}/conversations`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic }),
-  })
-  if (res.ok) {
-    const data = await res.json()
-    router.push(`/novels/${novelId}/conversations/${data.id}`)
-  }
-}
-
-async function handleGenerateVolume(volumeNumber) {
-  const res = await fetch(`/api/v1/projects/${novelId}/generate-volume`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ volume_number: volumeNumber }),
-  })
-  if (res.ok) {
-    const data = await res.json()
-    router.push(`/task/${data.task_id}`)
-  }
-}
-
-async function handleGenerateChapters({ chapter_start, chapter_end }) {
-  showRangeDialog.value = false
-  const res = await fetch(`/api/v1/projects/${novelId}/generate-chapters`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chapter_start, chapter_end }),
-  })
-  if (res.ok) {
-    const data = await res.json()
-    router.push(`/task/${data.task_id}`)
-  }
-}
-
-const deleteTargetUnassigned = ref(null)
-
-function handleDeleteChapter(chapterNumber) {
-  chapters.value = chapters.value.filter(c => c.chapter_number !== chapterNumber)
-}
-
-function confirmDeleteUnassigned(ch) {
-  deleteTargetUnassigned.value = ch
-}
-
-async function doDeleteUnassigned() {
-  const ch = deleteTargetUnassigned.value
-  if (!ch) return
-  try {
-    const res = await fetch(`/api/v1/projects/${novelId}/chapters/${ch.chapter_number}`, { method: 'DELETE' })
-    if (res.ok) {
-      chapters.value = chapters.value.filter(c => c.chapter_number !== ch.chapter_number)
-    }
-  } finally {
-    deleteTargetUnassigned.value = null
-  }
-}
-
-async function cleanupFailedChapters() {
-  if (!confirm('将删除所有字数少于100字的失败章节，确定继续？')) return
-  try {
-    const res = await fetch(`/api/v1/projects/${novelId}/chapters/cleanup?min_words=100`, { method: 'DELETE' })
-    if (res.ok) {
-      const data = await res.json()
-      if (data.deleted_count > 0) {
-        chapters.value = chapters.value.filter(c => (c.word_count || 0) >= 100)
-        alert(`已清理 ${data.deleted_count} 个失败章节`)
-      } else {
-        alert('没有需要清理的失败章节')
-      }
-    }
-  } catch (e) {
-    console.error('Cleanup failed', e)
-  }
-}
+function handleDeleteChapter(chapterNumber) { chapters.value = chapters.value.filter(c => c.chapter_number !== chapterNumber) }
+function onGenerateChapters(range) { showRangeDialog.value = false; handleGenerateChapters(range) }
 
 onMounted(fetchAll)
 </script>

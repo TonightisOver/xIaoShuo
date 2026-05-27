@@ -67,3 +67,6 @@ frontend/dist/
 # Mypy / Ruff cache
 .mypy_cache/
 .ruff_cache/
+
+# Git bundles
+*.bundle

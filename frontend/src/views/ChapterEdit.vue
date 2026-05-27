@@ -25,119 +25,23 @@
 
     <template v-else>
       <!-- ==================== 1. 阅读模式 (Immersive Read Mode) ==================== -->
-      <div v-if="isReadMode" class="fixed inset-0 z-50 overflow-y-auto transition-all duration-300 custom-scrollbar-read" :class="[themeClasses[activeTheme]]">
-        <!-- 阅读器正文容器 -->
-        <div class="max-w-3xl mx-auto px-6 py-20 relative min-h-screen flex flex-col justify-between">
-          <div>
-            <!-- 返回与状态条 -->
-            <div class="flex items-center justify-between pb-6 mb-12 border-b" :class="[activeTheme === 'dark' ? 'border-white/10' : 'border-black/5']">
-              <span class="text-xs opacity-60 tracking-wider font-semibold">正在沉浸阅读《{{ chapter.novel?.title || '小说创作' }}》</span>
-              <button @click="toggleReadMode" class="text-xs font-bold px-3 py-1 rounded-full border hover:scale-105 active:scale-95 transition-all" :class="[activeTheme === 'dark' ? 'border-white/20 hover:bg-white/10' : 'border-black/20 hover:bg-black/5']">
-                切换到编辑模式
-              </button>
-            </div>
-
-            <!-- 章节标题 -->
-            <h1 class="text-3xl md:text-4xl font-extrabold mb-10 text-center tracking-tight" :class="[activeFont === 'serif' ? 'font-serif' : 'font-sans']">
-              {{ chapter.volume_number ? `第${chapter.volume_number}卷 · ` : '' }}第{{ chapter.chapter_number }}章：{{ chapter.title }}
-            </h1>
-
-            <!-- 章节正文 -->
-            <div
-              class="leading-loose tracking-wide whitespace-pre-line text-justify select-text focus:outline-none"
-              :class="[activeFont === 'serif' ? 'font-serif' : 'font-sans']"
-              :style="{ fontSize: fontSize + 'px', lineHeight: '2.0' }"
-            >
-              {{ content }}
-            </div>
-          </div>
-
-          <!-- 阅读底栏上一章下一章导航 -->
-          <div class="flex items-center justify-between gap-6 mt-20 pt-8 border-t" :class="[activeTheme === 'dark' ? 'border-white/10' : 'border-black/5']">
-            <button
-              v-if="prevChapter"
-              @click="goToChapter(prevChapter.chapter_number)"
-              class="flex-1 py-4 px-6 rounded-2xl border text-sm font-semibold flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
-              :class="[activeTheme === 'dark' ? 'border-white/10 hover:bg-white/5 text-slate-300' : 'border-black/10 hover:bg-black/5 text-slate-700']"
-            >
-              ← 上一章
-            </button>
-            <span v-else class="flex-1 text-center text-xs opacity-40 font-semibold py-4">已是第一章</span>
-
-            <button
-              v-if="nextChapter"
-              @click="goToChapter(nextChapter.chapter_number)"
-              class="flex-1 py-4 px-6 rounded-2xl border text-sm font-semibold flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
-              :class="[activeTheme === 'dark' ? 'border-white/10 hover:bg-white/5 text-slate-300' : 'border-black/10 hover:bg-black/5 text-slate-700']"
-            >
-              下一章 →
-            </button>
-            <span v-else class="flex-1 text-center text-xs opacity-40 font-semibold py-4">已是最后一章</span>
-          </div>
-        </div>
-
-        <!-- ==================== 2. 悬浮排版控制面板 (Floating Settings Panel) ==================== -->
-        <div class="fixed right-6 bottom-10 z-50 flex flex-col items-end gap-3">
-          <!-- 展开后的设置面板 -->
-          <div v-if="showSettings" class="bg-white rounded-xl border border-neutral-200 shadow-lg p-5 flex flex-col gap-4 w-72"
-               :class="[activeTheme === 'dark' ? 'bg-neutral-900 text-slate-200 border-neutral-700' : '']">
-
-            <div class="flex items-center justify-between border-b pb-2" :class="[activeTheme === 'dark' ? 'border-neutral-700' : 'border-neutral-200']">
-              <span class="text-xs font-bold tracking-wider text-neutral-700">排版个性化设置</span>
-              <button @click="showSettings = false" class="text-xs text-neutral-400 hover:text-neutral-600">✕ 关闭</button>
-            </div>
-
-            <!-- 字号调节 -->
-            <div class="flex flex-col gap-1.5">
-              <span class="text-[11px] text-neutral-500 font-semibold">字号大小</span>
-              <div class="flex items-center justify-between gap-2">
-                <button @click="adjustFontSize(-2)" class="flex-1 py-1.5 rounded-lg border text-center font-bold text-sm transition-all border-neutral-200 hover:bg-neutral-50">A -</button>
-                <span class="text-xs font-mono font-bold w-12 text-center text-neutral-700">{{ fontSize }}px</span>
-                <button @click="adjustFontSize(2)" class="flex-1 py-1.5 rounded-lg border text-center font-bold text-sm transition-all border-neutral-200 hover:bg-neutral-50">A +</button>
-              </div>
-            </div>
-
-            <!-- 字体切换 -->
-            <div class="flex flex-col gap-1.5">
-              <span class="text-[11px] text-neutral-500 font-semibold">阅读字体</span>
-              <div class="flex gap-2">
-                <button @click="activeFont = 'serif'" class="flex-1 py-1.5 rounded-lg border text-xs transition-all"
-                        :class="[activeFont === 'serif' ? 'border-accent-500 bg-accent-50 text-accent-700 font-bold' : 'border-neutral-200']">宋体 / 衬线</button>
-                <button @click="activeFont = 'sans'" class="flex-1 py-1.5 rounded-lg border text-xs transition-all"
-                        :class="[activeFont === 'sans' ? 'border-accent-500 bg-accent-50 text-accent-700 font-bold' : 'border-neutral-200']">系统 / 无衬线</button>
-              </div>
-            </div>
-
-            <!-- 四大护眼背景主题 -->
-            <div class="flex flex-col gap-1.5">
-              <span class="text-[11px] text-neutral-500 font-semibold">背景配色</span>
-              <div class="grid grid-cols-4 gap-2">
-                <button @click="activeTheme = 'parchment'" class="h-9 rounded-lg border-2 flex items-center justify-center transition-all bg-[#f4ecd8] border-amber-900/10 relative"
-                        :class="[activeTheme === 'parchment' ? 'border-amber-600 scale-105' : '']" title="仿古羊皮纸">
-                  <span v-if="activeTheme === 'parchment'" class="text-xs">🌾</span>
-                </button>
-                <button @click="activeTheme = 'green'" class="h-9 rounded-lg border-2 flex items-center justify-center transition-all bg-[#dfedd6] border-emerald-900/10 relative"
-                        :class="[activeTheme === 'green' ? 'border-emerald-600 scale-105' : '']" title="温润护眼绿">
-                  <span v-if="activeTheme === 'green'" class="text-xs">🍃</span>
-                </button>
-                <button @click="activeTheme = 'dark'" class="h-9 rounded-lg border-2 flex items-center justify-center transition-all bg-[#0b0e14] border-slate-900 relative"
-                        :class="[activeTheme === 'dark' ? 'border-blue-500 scale-105' : '']" title="黑夜寂静">
-                  <span v-if="activeTheme === 'dark'" class="text-xs">🌌</span>
-                </button>
-                <button @click="activeTheme = 'white'" class="h-9 rounded-lg border-2 flex items-center justify-center transition-all bg-[#ffffff] border-slate-200 relative"
-                        :class="[activeTheme === 'white' ? 'border-slate-800 scale-105' : '']" title="极简雪花白">
-                  <span v-if="activeTheme === 'white'" class="text-xs">❄</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- 设置开关按钮 -->
-          <button @click="showSettings = !showSettings" class="w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-xl transition-all active:scale-95 bg-accent-600 text-white hover:bg-accent-700">
-            ⚙
-          </button>
-        </div>
-      </div>
+      <ChapterReadMode
+        v-if="isReadMode"
+        :chapter="chapter"
+        :content="content"
+        :prev-chapter="prevChapter"
+        :next-chapter="nextChapter"
+        :active-theme="activeTheme"
+        :active-font="activeFont"
+        :font-size="fontSize"
+        :show-settings="showSettings"
+        @exit="toggleReadMode"
+        @go-to-chapter="goToChapter"
+        @adjust-font-size="adjustFontSize"
+        @update:active-font="activeFont = $event"
+        @update:active-theme="activeTheme = $event"
+        @update:show-settings="showSettings = $event"
+      />
 
       <!-- ==================== 3. 编辑模式 (Standard Edit Mode) ==================== -->
       <div v-else>
@@ -172,7 +76,7 @@
               <span>{{ regenerating ? '生成中...' : '重新生成' }}</span>
             </button>
             <button @click="deleteChapter" class="text-rose-500 hover:text-rose-400 text-sm px-3 py-2 transition-colors font-medium">删除</button>
-            <button @click="save" class="btn-primary text-sm flex items-center gap-1.5" :disabled="saving">
+            <button @click="saveAndRefresh" class="btn-primary text-sm flex items-center gap-1.5" :disabled="saving">
               <span>{{ saving ? '保存中...' : '保存修改' }}</span>
             </button>
           </div>
@@ -354,474 +258,110 @@
     </template>
   </div>
 
-  <!-- ==================== AI 改写 Modal ==================== -->
-  <Teleport to="body">
-    <div v-if="showRewriteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @click.self="closeRewriteModal">
-      <div class="bg-white border border-neutral-200 rounded-xl shadow-xl w-full max-w-2xl mx-4 overflow-hidden">
-        <div class="px-6 py-4 border-b border-neutral-200 flex items-center justify-between">
-          <h3 class="text-sm font-semibold text-neutral-800 flex items-center gap-2">AI 改写</h3>
-          <button @click="closeRewriteModal" class="text-neutral-400 hover:text-neutral-600 transition-colors text-lg leading-none">✕</button>
-        </div>
-
-        <!-- 未生成结果时：输入面板 -->
-        <div v-if="!rewriteResult" class="p-6 space-y-4">
-          <div>
-            <div class="text-xs font-semibold text-neutral-500 mb-2">选中文本预览</div>
-            <div class="bg-neutral-50 rounded-xl px-4 py-3 text-sm text-neutral-700 leading-relaxed border border-neutral-200 line-clamp-3">
-              {{ selectionText.length > 100 ? selectionText.slice(0, 100) + '...' : selectionText }}
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-semibold text-neutral-500 mb-2">改写指令</div>
-            <textarea
-              v-model="rewriteInstruction"
-              class="input w-full resize-none"
-              rows="3"
-              placeholder="例如：改成更有张力的描写、增加环境渲染、调整节奏使其更紧凑..."
-            ></textarea>
-          </div>
-          <div v-if="rewriteError" class="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{{ rewriteError }}</div>
-          <div class="flex justify-end gap-3">
-            <button @click="closeRewriteModal" class="btn-secondary text-sm px-4 py-2">取消</button>
-            <button @click="doRewrite" :disabled="rewriting || !rewriteInstruction.trim()" class="btn-primary text-sm px-5 py-2 flex items-center gap-2">
-              <svg v-if="rewriting" class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-              </svg>
-              <span>{{ rewriting ? '生成中...' : '生成改写' }}</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- 生成结果面板 -->
-        <div v-else class="p-6 space-y-4">
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <div class="text-xs font-semibold text-neutral-500 mb-2">原文</div>
-              <div class="bg-neutral-50 rounded-xl px-4 py-3 text-sm text-neutral-600 leading-relaxed border border-neutral-200 max-h-48 overflow-y-auto custom-scrollbar">{{ rewriteResult.original }}</div>
-            </div>
-            <div>
-              <div class="text-xs font-semibold text-accent-600 mb-2">AI 改写结果</div>
-              <div class="bg-accent-50 rounded-xl px-4 py-3 text-sm text-neutral-800 leading-relaxed border border-accent-200 max-h-48 overflow-y-auto custom-scrollbar">{{ rewriteResult.rewritten }}</div>
-            </div>
-          </div>
-          <div v-if="rewriteError" class="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{{ rewriteError }}</div>
-          <div class="flex justify-end gap-3">
-            <button @click="rewriteResult = null; rewriteError = ''" class="btn-secondary text-sm px-4 py-2">重新生成</button>
-            <button @click="closeRewriteModal" class="btn-secondary text-sm px-4 py-2">放弃</button>
-            <button @click="acceptRewrite" class="btn-primary text-sm px-5 py-2">采纳改写</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </Teleport>
-
-  <!-- ==================== 版本预览 Modal ==================== -->
-  <Teleport to="body">
-    <div v-if="previewVersionData" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @click.self="previewVersionData = null">
-      <div class="bg-white border border-neutral-200 rounded-xl shadow-xl w-full max-w-2xl mx-4 overflow-hidden">
-        <div class="px-6 py-4 border-b border-neutral-200 flex items-center justify-between">
-          <h3 class="text-sm font-semibold text-neutral-800">版本 v{{ previewVersionData.version_number }} 预览</h3>
-          <button @click="previewVersionData = null" class="text-neutral-400 hover:text-neutral-600 transition-colors text-lg leading-none">✕</button>
-        </div>
-        <div class="p-6 space-y-4">
-          <div class="flex items-center gap-3 text-xs text-neutral-500">
-            <span class="px-2 py-0.5 rounded-full font-medium"
-              :class="{
-                'bg-blue-50 text-blue-700': previewVersionData.source === 'ai_rewrite',
-                'bg-amber-50 text-amber-700': previewVersionData.source === 'rollback',
-                'bg-neutral-100 text-neutral-600': previewVersionData.source === 'manual',
-                'bg-emerald-50 text-emerald-700': previewVersionData.source === 'generation',
-              }"
-            >{{ sourceLabel(previewVersionData.source) }}</span>
-            <span>{{ previewVersionData.word_count }} 字</span>
-            <span>{{ formatDate(previewVersionData.created_at) }}</span>
-            <span v-if="previewVersionData.quality_score" class="text-amber-600">★ {{ previewVersionData.quality_score.toFixed(1) }}</span>
-            <span v-if="previewVersionData.model_name" class="text-neutral-400">{{ previewVersionData.model_name }}</span>
-          </div>
-          <div class="bg-neutral-50 rounded-xl px-4 py-3 text-sm text-neutral-700 leading-relaxed border border-neutral-200 max-h-64 overflow-y-auto custom-scrollbar whitespace-pre-wrap">
-            {{ previewVersionData.content }}
-          </div>
-          <div class="flex justify-end gap-3">
-            <button @click="previewVersionData = null" class="btn-secondary text-sm px-4 py-2">关闭</button>
-            <button @click="doActivate(previewVersionData.version_number)" class="btn-secondary text-sm px-4 py-2 border-accent-200 text-accent-600 hover:bg-accent-50">设为正式版本</button>
-            <button @click="doRollback(previewVersionData.version_number)" class="btn-primary text-sm px-5 py-2">回滚到此版本</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </Teleport>
+  <!-- ==================== AI 改写 + 版本预览 Modals ==================== -->
+  <ChapterModals
+    :show-rewrite-modal="showRewriteModal"
+    :rewrite-instruction="rewriteInstruction"
+    :rewriting="rewriting"
+    :rewrite-result="rewriteResult"
+    :rewrite-error="rewriteError"
+    :selection-text="selectionText"
+    :preview-version-data="previewVersionData"
+    @close-rewrite="closeRewriteModal"
+    @do-rewrite="doRewrite"
+    @accept-rewrite="acceptRewrite"
+    @reset-rewrite="rewriteResult = null; rewriteError = ''"
+    @update:rewrite-instruction="rewriteInstruction = $event"
+    @close-preview="previewVersionData = null"
+    @rollback="doRollback"
+    @activate="doActivate"
+  />
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ReaderSimPanel from '../components/ReaderSimPanel.vue'
+import ChapterModals from '../components/ChapterModals.vue'
+import ChapterReadMode from '../components/ChapterReadMode.vue'
+import { useChapterContent } from '../composables/useChapterContent.js'
+import { useChapterRewrite } from '../composables/useChapterRewrite.js'
+import { useChapterVersions } from '../composables/useChapterVersions.js'
+import { useChapterNavigation } from '../composables/useChapterNavigation.js'
 
 const route = useRoute()
 const router = useRouter()
 const novelId = computed(() => route.params.id)
 const chapterNum = computed(() => route.params.num)
 
-const chapter = ref(null)
-const content = ref('')
-const allChapters = ref([])
-const allVolumes = ref([])
-const saving = ref(false)
-const saved = ref(false)
-const regenerating = ref(false)
-const copied = ref(false)
-const showReaderSim = ref(false)
+const { chapter, content, saving, saved, regenerating, load, save, regenerate, deleteChapter } = useChapterContent(novelId, chapterNum)
+const { showRewriteModal, rewriteInstruction, rewriting, rewriteResult, rewriteError, selectionText, selectionStart, selectionEnd, openRewriteModal, closeRewriteModal, doRewrite } = useChapterRewrite(novelId, chapterNum, content)
+const { versions, showVersionHistory, previewVersionData, loadVersions, previewVersion } = useChapterVersions(novelId, chapterNum)
+const { sortedChapters, groupedChapters, prevChapter, nextChapter, loadAllChapters, loadVolumes, goToChapter } = useChapterNavigation(novelId, chapterNum)
 
-// Reading Mode state
+// --- UI state ---
 const isReadMode = ref(false)
 const showSettings = ref(false)
-const fontSize = ref(20) // Default 20px
-const activeFont = ref('serif') // Default 宋体 (serif)
-const activeTheme = ref('parchment') // Default parchment
-
-// AI Rewrite state
+const fontSize = ref(20)
+const activeFont = ref('serif')
+const activeTheme = ref('parchment')
+const copied = ref(false)
+const showReaderSim = ref(false)
 const textareaRef = ref(null)
-const selectionText = ref('')
-const selectionStart = ref(0)
-const selectionEnd = ref(0)
-const showRewriteModal = ref(false)
-const rewriteInstruction = ref('')
-const rewriting = ref(false)
-const rewriteResult = ref(null) // { original, rewritten }
-const rewriteError = ref('')
 
-// Version history state
-const versions = ref([])
-const showVersionHistory = ref(false)
-const previewVersionData = ref(null)
-
-const themeClasses = {
-  parchment: 'bg-[#f4ecd8] text-[#3c2f1f]',
-  green: 'bg-[#dfedd6] text-[#2c3d27]',
-  dark: 'bg-[#0d0f14] text-[#a8b0c2]',
-  white: 'bg-[#ffffff] text-[#111111]',
-}
-
+const themeClasses = { parchment: 'bg-[#f4ecd8] text-[#3c2f1f]', green: 'bg-[#dfedd6] text-[#2c3d27]', dark: 'bg-[#0d0f14] text-[#a8b0c2]', white: 'bg-[#ffffff] text-[#111111]' }
 const contentLength = computed(() => content.value.length)
 
-function toggleReadMode() {
-  isReadMode.value = !isReadMode.value
-  showSettings.value = false
-}
-
-function adjustFontSize(delta) {
-  fontSize.value = Math.max(14, Math.min(32, fontSize.value + delta))
-}
-
-// --- Selection detection ---
+function toggleReadMode() { isReadMode.value = !isReadMode.value; showSettings.value = false }
+function adjustFontSize(delta) { fontSize.value = Math.max(14, Math.min(32, fontSize.value + delta)) }
 
 function onSelectionChange() {
   const el = textareaRef.value
   if (!el) return
-  const start = el.selectionStart
-  const end = el.selectionEnd
-  if (start !== end) {
-    selectionText.value = content.value.slice(start, end)
-    selectionStart.value = start
-    selectionEnd.value = end
-  } else {
-    selectionText.value = ''
-  }
-}
-
-// --- AI Rewrite ---
-
-function openRewriteModal() {
-  rewriteInstruction.value = ''
-  rewriteResult.value = null
-  rewriteError.value = ''
-  showRewriteModal.value = true
-}
-
-function closeRewriteModal() {
-  showRewriteModal.value = false
-  rewriteResult.value = null
-  rewriteError.value = ''
-}
-
-async function doRewrite() {
-  if (!rewriteInstruction.value.trim()) return
-  rewriting.value = true
-  rewriteError.value = ''
-  try {
-    const res = await fetch(`/api/v1/projects/${novelId.value}/chapters/${chapterNum.value}/rewrite`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        full_content: content.value,
-        selected_text: selectionText.value,
-        selection_start: selectionStart.value,
-        selection_end: selectionEnd.value,
-        instruction: rewriteInstruction.value,
-      }),
-    })
-
-    if (res.status === 504) {
-      rewriteError.value = 'AI 改写超时，请稍后重试'
-    } else if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      rewriteError.value = data.detail || '改写失败，请重试'
-    } else {
-      const data = await res.json()
-      rewriteResult.value = { original: data.original_text, rewritten: data.rewritten_text }
-    }
-  } catch (e) {
-    rewriteError.value = '网络错误，请重试'
-  } finally {
-    rewriting.value = false
-  }
+  const start = el.selectionStart; const end = el.selectionEnd
+  if (start !== end) { selectionText.value = content.value.slice(start, end); selectionStart.value = start; selectionEnd.value = end }
+  else { selectionText.value = '' }
 }
 
 async function acceptRewrite() {
   if (!rewriteResult.value) return
-  // Replace selected text in content
   const newContent = content.value.slice(0, selectionStart.value) + rewriteResult.value.rewritten + content.value.slice(selectionEnd.value)
   content.value = newContent
-  closeRewriteModal.value = false
   showRewriteModal.value = false
   selectionText.value = ''
-
-  // Save version
   await fetch(`/api/v1/projects/${novelId.value}/chapters/${chapterNum.value}/versions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      content: newContent,
-      source: 'ai_rewrite',
-      rewrite_instruction: rewriteInstruction.value,
-    }),
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: newContent, source: 'ai_rewrite', rewrite_instruction: rewriteInstruction.value }),
   })
   await loadVersions()
 }
 
-// --- Version History ---
-
-async function loadVersions() {
-  const res = await fetch(`/api/v1/projects/${novelId.value}/chapters/${chapterNum.value}/versions`)
-  if (res.ok) {
-    versions.value = await res.json()
-  }
-}
-
-async function previewVersion(ver) {
-  const res = await fetch(`/api/v1/projects/${novelId.value}/chapters/${chapterNum.value}/versions/${ver.version_number}`)
-  if (res.ok) {
-    previewVersionData.value = await res.json()
-  }
-}
-
 async function doRollback(versionNumber) {
   if (!confirm(`确定回滚到版本 v${versionNumber}？当前未保存的内容将丢失。`)) return
-  const res = await fetch(`/api/v1/projects/${novelId.value}/chapters/${chapterNum.value}/versions/${versionNumber}/rollback`, {
-    method: 'POST',
-  })
-  if (res.ok) {
-    previewVersionData.value = null
-    await load()
-    await loadVersions()
-  }
+  const res = await fetch(`/api/v1/projects/${novelId.value}/chapters/${chapterNum.value}/versions/${versionNumber}/rollback`, { method: 'POST' })
+  if (res.ok) { previewVersionData.value = null; await load(); await loadVersions() }
 }
 
 async function doActivate(versionNumber) {
-  const res = await fetch(`/api/v1/projects/${novelId.value}/chapters/${chapterNum.value}/versions/${versionNumber}/activate`, {
-    method: 'POST',
-  })
-  if (res.ok) {
-    previewVersionData.value = null
-    await load()
-    await loadVersions()
-  }
+  const res = await fetch(`/api/v1/projects/${novelId.value}/chapters/${chapterNum.value}/versions/${versionNumber}/activate`, { method: 'POST' })
+  if (res.ok) { previewVersionData.value = null; await load(); await loadVersions() }
 }
 
-function sourceLabel(source) {
-  const map = { manual: '手动', ai_rewrite: 'AI改写', rollback: '回滚', generation: '生成' }
-  return map[source] || source
+async function saveAndRefresh() { await save(); loadAllChapters() }
+async function copyContent() {
+  try { await navigator.clipboard.writeText(content.value); copied.value = true; setTimeout(() => { copied.value = false }, 2000) }
+  catch { /* clipboard API not available */ }
 }
 
+function sourceLabel(source) { return { manual: '手动', ai_rewrite: 'AI改写', rollback: '回滚', generation: '生成' }[source] || source }
 function formatDate(dateStr) {
   if (!dateStr) return ''
   const d = new Date(dateStr)
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-// --- Data loading ---
-
-async function load() {
-  const res = await fetch(`/api/v1/projects/${novelId.value}/chapters/${chapterNum.value}`)
-  if (res.ok) {
-    chapter.value = await res.json()
-    content.value = chapter.value.content || ''
-  } else {
-    chapter.value = null
-    content.value = ''
-  }
-}
-
-async function loadAllChapters() {
-  const res = await fetch(`/api/v1/projects/${novelId.value}/chapters`)
-  if (res.ok) {
-    allChapters.value = await res.json()
-  }
-}
-
-async function loadVolumes() {
-  const res = await fetch(`/api/v1/projects/${novelId.value}/volumes`)
-  if (res.ok) {
-    allVolumes.value = await res.json()
-  } else {
-    allVolumes.value = []
-  }
-}
-
-const sortedChapters = computed(() => {
-  return [...allChapters.value].sort((a, b) => a.chapter_number - b.chapter_number)
-})
-
-const groupedChapters = computed(() => {
-  const groups = []
-  const sorted = sortedChapters.value
-
-  if (allVolumes.value.length === 0) {
-    groups.push({
-      title: '正文目录',
-      chapters: sorted
-    })
-    return groups
-  }
-
-  const volMap = new Map()
-  for (const vol of allVolumes.value) {
-    volMap.set(vol.volume_number, vol)
-  }
-
-  const volumeGroups = {}
-  const unassigned = []
-
-  for (const ch of sorted) {
-    const volNum = ch.volume_number
-    if (volNum && volMap.has(volNum)) {
-      if (!volumeGroups[volNum]) {
-        volumeGroups[volNum] = []
-      }
-      volumeGroups[volNum].push(ch)
-    } else {
-      unassigned.push(ch)
-    }
-  }
-
-  const sortedVolNums = Object.keys(volumeGroups).map(Number).sort((a, b) => a - b)
-  for (const volNum of sortedVolNums) {
-    const vol = volMap.get(volNum)
-    groups.push({
-      volume_number: volNum,
-      title: `第${volNum}卷 · ${vol.title || '未命名'}`,
-      chapters: volumeGroups[volNum]
-    })
-  }
-
-  if (unassigned.length > 0) {
-    groups.push({
-      title: '未分卷章节',
-      chapters: unassigned
-    })
-  }
-
-  return groups
-})
-
-const currentIdx = computed(() => {
-  if (!chapter.value) return -1
-  return sortedChapters.value.findIndex(c => c.chapter_number === chapter.value.chapter_number)
-})
-
-const prevChapter = computed(() => {
-  const idx = currentIdx.value
-  if (idx > 0) return sortedChapters.value[idx - 1]
-  return null
-})
-
-const nextChapter = computed(() => {
-  const idx = currentIdx.value
-  if (idx !== -1 && idx < sortedChapters.value.length - 1) return sortedChapters.value[idx + 1]
-  return null
-})
-
-function goToChapter(num) {
-  router.push(`/novels/${novelId.value}/chapters/${num}`)
-}
-
-async function copyContent() {
-  try {
-    await navigator.clipboard.writeText(content.value)
-    copied.value = true
-    setTimeout(() => { copied.value = false }, 2000)
-  } catch { /* clipboard API not available */ }
-}
-
-async function save() {
-  saving.value = true
-  saved.value = false
-  await fetch(`/api/v1/projects/${novelId.value}/chapters/${chapterNum.value}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content: content.value, title: chapter.value.title }),
-  })
-  saving.value = false
-  saved.value = true
-  setTimeout(() => { saved.value = false }, 2000)
-
-  // Reload all chapters to update word counts in sidebar
-  loadAllChapters()
-}
-
-async function regenerate() {
-  if (!confirm('重新生成将覆盖当前内容，确定吗？')) return
-  regenerating.value = true
-  try {
-    const res = await fetch(`/api/v1/projects/${novelId.value}/generate-chapters`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chapter_start: parseInt(chapterNum.value), chapter_end: parseInt(chapterNum.value) }),
-    })
-
-    if (res.ok) {
-      const data = await res.json()
-      router.push(`/task/${data.task_id}`)
-    } else {
-      const err = await res.json().catch(() => ({ detail: '请求失败' }))
-      alert(`重新生成失败: ${err.detail || res.statusText}`)
-    }
-  } catch (e) {
-    alert(`重新生成失败: 网络错误`)
-  }
-  regenerating.value = false
-}
-
-async function deleteChapter() {
-  if (!confirm('确定删除本章？此操作不可恢复。')) return
-  await fetch(`/api/v1/projects/${novelId.value}/chapters/${chapterNum.value}`, { method: 'DELETE' })
-  router.push(`/novels/${novelId.value}`)
-}
-
-// Watch novelId to load both chapters and volumes
-watch(novelId, (newId) => {
-  if (newId) {
-    loadAllChapters()
-    loadVolumes()
-  }
-}, { immediate: true })
-
-// Watch route params changes to load the correct chapter content
-watch([novelId, chapterNum], () => {
-  load()
-  loadVersions()
-}, { immediate: true })
+watch(novelId, (newId) => { if (newId) { loadAllChapters(); loadVolumes() } }, { immediate: true })
+watch([novelId, chapterNum], () => { load(); loadVersions() }, { immediate: true })
 </script>
 
 <style scoped>
