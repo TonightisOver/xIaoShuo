@@ -128,7 +128,7 @@ async def _continuation_generation(
     if style_instruction:
         continuation_prompt = f"{style_instruction}\n\n{continuation_prompt}"
 
-    continued = await client.generate(continuation_prompt, max_tokens=4000)
+    continued = await client.generate(continuation_prompt, max_tokens=4000, use_flash=True)
     return original_content + "\n\n" + continued
 
 
@@ -290,7 +290,7 @@ async def _generate_single_chapter_inner(
         prompt = f"{style_instruction}\n\n{prompt}"
 
     # 5. 生成章节正文
-    content = await client.generate(prompt, max_tokens=8000)
+    content = await client.generate(prompt, max_tokens=8000, use_flash=True)
 
     # 6. 章节知识抽取（可选）
     if kg_service and novel_id:

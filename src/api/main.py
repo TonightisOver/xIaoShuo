@@ -14,6 +14,7 @@ from src.api.routes import (
     export_router,
     health_router,
     knowledge_graph_router,
+    llm_config_router,
     novels_router,
     outline_sync_router,
     outlines_router,
@@ -48,6 +49,38 @@ async def lifespan(app: FastAPI):
     logger.info("xIaoShuo API starting up...")
     await init_db()
     logger.info("Database initialized")
+
+    # 初始化 LLMClient 全局单例 — 优先使用数据库激活配置
+    import src.core.llm.client as _llm_module
+    from sqlalchemy import select as _sa_select
+
+    from src.api.models.db_models import LLMConfig as _LLMConfig
+    from src.core.database import get_db_session as _get_db_session
+    from src.core.llm.client import LLMClient as _LLMClient
+
+    try:
+        async with _get_db_session() as _session:
+            _result = await _session.execute(
+                _sa_select(_LLMConfig).where(_LLMConfig.is_active.is_(True)).limit(1)
+            )
+            _active_config = _result.scalar_one_or_none()
+
+        if _active_config is not None:
+            _llm_module._client = _LLMClient(llm_config=_active_config)
+            logger.info(
+                "llm_client_initialized_from_db",
+                config_name=_active_config.name,
+            )
+        else:
+            _llm_module._client = _LLMClient()
+            logger.info("llm_client_initialized_from_settings")
+    except Exception as _exc:
+        logger.warning(
+            "llm_client_init_fallback",
+            error=str(_exc),
+            message="Falling back to Settings-based LLMClient",
+        )
+        _llm_module._client = _LLMClient()
 
     # Validate API Key at startup
     _PLACEHOLDER_KEYS = {
@@ -111,6 +144,7 @@ app.include_router(story_bible_router)
 app.include_router(export_router)
 app.include_router(outline_sync_router)
 app.include_router(reader_simulation_router)
+app.include_router(llm_config_router)
 
 # 挂载前端静态文件
 if FRONTEND_DIR.exists():

@@ -136,7 +136,114 @@
 
 ---
 
-# plan_review 评审报告 — CHANGE-050 工程质量收尾
+# plan_review 评审报告 — CHANGE-051 LLM 增强三件套
+
+**评审对象**: `.harness/requirements.md` + `.harness/tasks.md`  
+**评审轮次**: 第 1 轮  
+**评审日期**: 2026-05-27
+
+---
+
+## 评审结论
+
+**结果**: REVISION_REQUIRED
+
+---
+
+## 代码验证结果
+
+### 1. 现有 LLMClient 结构 — 已确认
+
+`src/core/llm/client.py` 当前为单模型实例（`self.llm`），`generate()` 无 `use_flash` 参数，无 token 提取逻辑。全局工厂 `get_llm_client()` 为同步函数，返回懒加载单例。
+
+### 2. chapter_generator.py 调用点 — 已确认
+
+- 步骤 3（规划）：第 246 行 `await client.generate(planning_prompt, max_tokens=3000)` — 对应 T4 保持默认 pro
+- 步骤 5（正文）：第 293 行 `await client.generate(prompt, max_tokens=8000)` — 对应 T4 传入 `use_flash=True`
+- 续写：第 131 行 `await client.generate(continuation_prompt, max_tokens=4000)` — 对应 T4 传入 `use_flash=True`
+
+三处调用点与任务描述完全一致，T4 实施路径清晰。
+
+### 3. 现有测试路径 — 已确认
+
+现有 LLM 客户端测试位于 `tests/unit/test_llm/test_client.py`，项目无 `tests/core/` 目录。tasks.md 中 T1/T3/T4 的测试路径写为 `tests/core/llm/test_*.py`，与实际目录结构不符。
+
+### 4. 数据库模型与 init_db — 已确认
+
+`src/core/database.py` 的 `init_db()` 使用 `Base.metadata.create_all`，新增模型只需继承 `Base` 即可自动建表，无需手动迁移脚本。T5 方案可行。
+
+### 5. 路由注册模式 — 已确认
+
+现有路由文件均在文件内定义完整前缀（如 `prefix="/api/v1/novels"`），`__init__.py` 统一导出，`main.py` 直接 `include_router`。T6/T7 的设计与此一致。
+
+---
+
+## 评审发现
+
+### MUST FIX（必须修复）
+
+#### M1: T8 双工厂设计导致数据库配置对核心生成逻辑实际无效
+
+需求 2.3 声明"LLMClient 初始化时，优先从数据库读取激活的 LLMConfig"，但 T8 的实现方案是引入 `async def get_llm_client_async()` 异步工厂供路由层使用，同时保留同步 `get_llm_client()` 回退到 Settings。
+
+问题：`chapter_generator.py`、`chapter_rewriter.py`、`helpers.py` 等核心生成逻辑均通过同步工厂 `get_llm_client()` 获取客户端，T8 完成后这些调用点将永远使用 Settings 配置，数据库激活配置对实际生成行为无效。这与需求描述存在语义落差——用户在前端激活了新配置，但章节生成仍使用旧的环境变量配置。
+
+**修复建议**（二选一）：
+- 方案 A：在需求/任务文档中明确界定"数据库配置仅对 API 路由层的直接 LLM 调用生效，核心生成流程（chapter_generator 等）始终使用 Settings"，并在前端 UI 上给出相应说明，避免用户误解。
+- 方案 B：改为在应用启动时（lifespan）统一查询激活配置并初始化全局单例，消除双工厂，使数据库配置对所有调用点生效。
+
+#### M2: T3 的 token 提取路径缺乏验证保障，静默失效无法感知
+
+需求和任务均指定从 `response.response_metadata.get("token_usage", {})` 提取 token 数据。约束要求"若字段不存在则静默跳过"，但若字段路径本身因 langchain-openai 版本差异而不同（如某些版本将 token 信息放在 `response.usage_metadata` 而非 `response_metadata["token_usage"]`），token 监控功能将永远静默失效，且无任何可观测信号。
+
+**修复建议**：在 T1 的 `TokenTracker` 中增加 `records_skipped` 计数器，并在 `GET /token-stats` 响应中暴露该字段。同时在 T3 验收标准中增加：使用带有 `response_metadata` 的 mock 响应验证提取路径正确性（现有 `test_client.py` 中的 mock 响应未设置 `response_metadata`，需补充）。
+
+---
+
+### SHOULD FIX（建议修复）
+
+#### S1: T5 的 `is_active` 缺少数据库级唯一性保障
+
+需求要求"同一时刻最多一条为 True"，T5 仅在 `is_active` 上加普通索引。T6 的激活接口通过事务保证互斥，但在高并发场景下（两个请求同时激活不同配置），若数据库事务隔离级别为 READ COMMITTED，仍可能出现两条 `is_active=True`。
+
+建议在 `LLMConfig` 模型的 `__table_args__` 中添加部分唯一索引（PostgreSQL 支持 `WHERE is_active = TRUE`），或在任务文档中明确说明并发场景依赖应用层事务保证，当前系统单 worker 场景下风险可接受。
+
+#### S2: tasks.md 执行顺序图与依赖列表不一致
+
+执行顺序图中 T8 的箭头来自 `T6 ──► T7 ──► T8`，但 T8 的依赖列表写的是 `T3, T5`。T8 实际上不依赖 T7（路由注册），只依赖 T3 和 T5。依赖图应修正为 T8 从 T3 和 T5 直接引出，与 T7 并行执行。
+
+#### S3: T9 前端 API 调用方式描述不准确
+
+T9 要求"使用项目现有 fetch/axios 封装"，但项目前端（`App.vue`、各 View 文件）使用原生 `fetch`，无 axios 依赖，也无统一 API 封装层。建议将描述修正为"使用原生 fetch，参考 Home.vue 或 NovelDetail.vue 的调用模式"，避免实现者引入 axios 新依赖。
+
+#### S4: T2 验收标准未覆盖 `DEEPSEEK_MODEL` 别名关系
+
+需求 2.2 要求保留 `DEEPSEEK_MODEL` 作为 `DEEPSEEK_MODEL_PRO` 的别名，但 T2 验收标准只验证了 `DEEPSEEK_MODEL_FLASH`。建议补充验证：`assert s.DEEPSEEK_MODEL_PRO == "deepseek-v4-pro"` 以及说明 `DEEPSEEK_MODEL` 字段保留不变（而非真正的别名——两者是独立字段，需求描述"别名"用词不准确）。
+
+---
+
+### INFO（信息提示）
+
+#### I1: 测试文件路径与项目目录结构不符
+
+tasks.md 中 T1、T3、T4 的测试路径写为 `tests/core/llm/test_*.py`，但项目实际测试目录为 `tests/unit/test_llm/`（已有 `test_client.py`），项目无 `tests/core/` 目录。建议统一修正为 `tests/unit/test_llm/test_*.py`，T6 的测试路径 `tests/api/routes/test_llm_config.py` 与现有 `tests/api/` 目录一致，无需修改。
+
+#### I2: `chapter_rewriter.py` 和 `helpers.py` 的 flash/pro 切换已明确排除
+
+需求第 4 节已明确排除这两个文件，评审不对此提出要求。建议在 T4 任务描述末尾补充一句"不修改 chapter_rewriter.py 和 helpers.py"，避免实现者误操作。
+
+#### I3: api_key 明文存储已在需求范围外说明
+
+需求第 4 节明确"api_key 加密存储"不在范围内，T5/T6 的明文存储+脱敏显示方案与此一致，无问题。
+
+---
+
+## 总结
+
+需求整体设计合理，三项功能边界清晰，向后兼容策略明确，任务拆分粒度适当。主要问题集中在两点：T8 的双工厂架构导致数据库配置对核心生成逻辑实际无效，与需求描述存在语义落差（M1）；T3 的 token 提取路径缺乏验证保障，静默失效无可观测信号（M2）。建议修复 M1 和 M2 后重新提交评审。
+
+**结论: REVISION_REQUIRED**
+
 
 **评审对象**: `.harness/requirements.md` + `.harness/tasks.md`
 **评审轮次**: 第 1 轮
@@ -220,5 +327,77 @@
 ## 总结
 
 需求文档对四个遗留问题的描述准确，经代码验证全部属实。任务拆分粒度合理，P1/P2 优先级划分清晰，执行顺序设计合理（后端修正独立于前端测试体系，互不阻塞）。SHOULD FIX 项中 T1 验收标准的 grep 命令存在自相矛盾的逻辑问题，建议在实施前修正，但不阻塞整体方案。
+
+**结论: APPROVED**
+
+---
+
+# plan_review 评审报告 — CHANGE-051 LLM 增强三件套
+
+**评审对象**: `.harness/requirements.md` + `.harness/tasks.md`
+**评审轮次**: 第 2 轮（针对修订后文档）
+**评审日期**: 2026-05-27
+
+---
+
+## 上轮 MUST FIX 修复验证
+
+### M1（双工厂问题）— 修复确认
+
+修订后的 requirements.md 第 2.3 节明确：`get_llm_client()` 保持同步，返回已初始化的全局单例，所有调用点（包括 `chapter_generator.py`、`chapter_rewriter.py`、`helpers.py` 等）均通过该单例获取客户端，数据库激活配置对所有生成行为生效。
+
+tasks.md T8 整体重写为 lifespan 单例方案：在 `src/api/main.py` 的 lifespan startup 阶段查询激活配置并初始化全局单例，`get_llm_client()` 保持同步返回单例，不引入异步工厂。涉及文件增加 `src/api/main.py`，消除了双工厂设计。
+
+**结论**: M1 修复完整，方案语义一致，无遗留问题。
+
+### M2（token 提取路径验证）— 修复确认
+
+T1 验收标准新增 `get_stats()` 返回值包含 `records_skipped` 字段。T3 验收标准新增两条 mock 验证：带 `response_metadata={"token_usage": {...}}` 的 mock 验证提取路径正确性；不含 `response_metadata` 的 mock 验证 `records_skipped` 增加 1 且不抛出异常。`GET /token-stats` 响应中暴露 `records_skipped` 字段。
+
+**结论**: M2 修复完整，可观测性已建立。
+
+---
+
+## 评审结论
+
+**结果**: APPROVED
+
+---
+
+## 评审发现
+
+### MUST FIX（必须修复）
+
+无。
+
+### SHOULD FIX（建议修复）
+
+#### S1（延续上轮 S2）: 执行顺序图依赖关系已修正，但图与文字说明存在细微不一致
+
+tasks.md 执行顺序图已修正为 T8 独立分支（依赖 T3、T5），与 T7 并行，符合实际依赖关系。但图下方的文字说明列表中 T6 的依赖写为 `T1, T5`，而图中 T6 箭头来自 T5（T1 未显式连线到 T6）。T6 确实需要 T1（调用 `get_token_tracker()`），文字说明是正确的，图的表达略有遗漏。不阻塞实施，实现者按文字说明执行即可。
+
+#### S2（延续上轮 S1）: T5 `is_active` 唯一性说明已补充，可接受
+
+tasks.md T5 已补充"当前系统为单 worker 场景，并发风险可接受，不添加数据库级部分唯一索引"。说明清晰，决策有据，无需进一步修改。
+
+### INFO（信息提示）
+
+#### I1: T8 测试文件 `test_client_db_config.py` 的测试范围建议
+
+T8 验收标准包含"激活数据库配置后重启应用，新的 LLM 调用使用数据库中的 base_url 和模型名"，这是集成级验证，难以在单元测试中覆盖。建议 `test_client_db_config.py` 聚焦于：(a) `LLMClient(llm_config=mock_config)` 正确从 `llm_config` 对象读取参数；(b) `LLMClient()` 无参数时回退到 Settings。lifespan 集成行为可在 T7 的路由测试中通过 `TestClient` 覆盖，或标注为手动验收项。
+
+#### I2: T9 前端 API 调用描述已修正
+
+上轮 S3 建议已采纳，T9 描述改为"使用原生 fetch，参考 Home.vue 或 NovelDetail.vue 的调用模式"，准确反映项目实际技术栈。
+
+#### I3: T2 验收标准已补充 `DEEPSEEK_MODEL_PRO` 断言
+
+上轮 S4 建议已采纳，T2 验收标准新增 `assert s.DEEPSEEK_MODEL_PRO == 'deepseek-v4-pro'` 和原字段存在性断言，三个字段独立并列关系表述清晰。
+
+---
+
+## 总结
+
+两项 MUST FIX 均已完整修复：T8 的双工厂问题通过 lifespan 单例方案彻底消除，数据库配置对所有调用点生效；T3 的 token 提取路径通过 mock 验证和 `records_skipped` 计数器建立了可观测性。上轮 SHOULD FIX 中的 S2（执行顺序图）、S3（前端 fetch 描述）、S4（T2 验收标准）均已采纳修正。当前文档无 MUST FIX 项，方案完整、一致、可实施。
 
 **结论: APPROVED**

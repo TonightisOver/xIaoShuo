@@ -10,6 +10,9 @@
           <router-link to="/tasks" class="text-sm text-neutral-500 hover:text-neutral-900 transition-colors font-medium">
             任务大厅
           </router-link>
+          <router-link to="/settings/llm" class="text-sm text-neutral-500 hover:text-neutral-900 transition-colors font-medium">
+            模型配置
+          </router-link>
           <router-link to="/create" class="btn-primary text-sm flex items-center gap-1.5">
             <span>开启创作</span>
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5">
