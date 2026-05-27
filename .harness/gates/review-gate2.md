@@ -1,210 +1,45 @@
-# Gate 2 — 交付确认 | CHANGE-049 全局架构优化
+# Gate 2 交付审批 — CHANGE-051
 
-**日期**: 2026-05-26
-**分支**: feature/change-049-refactoring-decouple
-
----
+**日期**: 2026-05-27
+**分支**: feature/change-051-llm-enhancement
 
 ## 需求摘要
 
-对 xIaoShuo 项目进行全局架构优化，兼顾模块解耦与冗余消除。
-
-## 架构改善指标
-
-| 指标 | 重构前 | 重构后 | 改善 |
-|------|--------|--------|------|
-| core 层反向依赖 | 6 处 | 0 处 | 100% 消除 |
-| novel_generator.py 行数 | 1627 | 1012 | -38% |
-| 重复上下文构建 | 5 处 | 1 处 | -80% |
-| 重复质量评估 Prompt | 2 处 | 1 处 | -50% |
-| 重复 LLM 调用模式 | 12 处 | 0 处 | 100% 消除 |
-| storyline_service 职责 | CRUD + AI | 纯 CRUD | 职责单一 |
+LLM 增强三件套：Token 监控、双模型策略、前端可配置模型
 
 ## 代码变更清单
 
-- 37 files changed, +3995 insertions, -2259 deletions
-
-### 新增文件 (8)
-| 文件 | 说明 |
-|------|------|
-| `src/core/context/__init__.py` | 上下文构建模块包 |
-| `src/core/context/novel_context.py` | NovelContextBuilder 统一上下文构建 |
-| `src/core/quality/__init__.py` | 质量评估模块包 |
-| `src/core/quality/evaluator.py` | 统一质量评估函数 |
-| `src/core/llm/helpers.py` | generate_and_parse_json 辅助函数 |
-| `src/api/services/ai_generation_service.py` | AI 生成逻辑（从 storyline_service 分离） |
-| `src/api/services/chapter_persistence_service.py` | 章节持久化（从 novel_generator 分离） |
-| `src/api/services/long_form_generation_helpers.py` | 长篇生成辅助（从 novel_generator 分离） |
-
-### 修改文件 (关键)
-| 文件 | 说明 |
-|------|------|
-| `src/core/llm/chapter_generator.py` | 去除 DB 依赖，参数化上下文 |
-| `src/core/llm/chapter_rewriter.py` | 去除 DB 依赖，接收 context 参数 |
-| `src/core/langgraph/nodes/chapter_generation.py` | config 注入依赖 |
-| `src/core/langgraph/nodes/quality_check.py` | config 注入依赖 |
-| `src/api/services/novel_generator.py` | 拆分职责，1627→1012 行 |
-| `src/api/services/storyline_service.py` | 只保留 CRUD |
-
-## 测试结果
-
-- 379 个单元测试全部通过（含新增 18 个）
-- 无循环依赖
-- ruff 无新增 error
-
-## 评审结论汇总
-
-- 需求评审 (Gate 1): APPROVED
-- 编码评审: APPROVED（4 个 SHOULD FIX，非阻塞）
-- 测试评审: APPROVED（3 个 SHOULD FIX，非阻塞）
-- CI 验证: PASSED
-
-## 约束验证
-
-- [x] API 接口合约保持不变
-- [x] 数据库 schema 未变动
-- [x] 现有测试全部通过
-- [x] core/llm 和 core/langgraph/nodes 无反向依赖 services 层
-- [ ] core/context 层级边界：novel_context.py 仍导入 src.api.models.db_models（遗留问题，由 CHANGE-050/T1 修正）
-
-## 结论
-
-**APPROVED** — 架构优化目标达成，测试通过，代码评审无阻塞项。建议交付。
-
-**补充说明（2026-05-27）**：Gate 2 审核时未覆盖 core/context 子模块，novel_context.py 存在 core→api 反向依赖，已在 CHANGE-050 中修正。
-
----
-
-# Gate 2 — 交付确认 | CHANGE-048 读者视角模拟
-
-**日期**: 2026-05-26
-**分支**: feature/change-044-long-form-generation
-
----
-
-## 需求摘要
-
-读者视角模拟：模拟4种读者人设（核心粉丝、路人读者、专业评论家、网文老白）阅读章节后的结构化反馈，帮助作者预判读者反应。
-
-## 功能实现
-
-| 需求项 | 状态 |
-|--------|------|
-| FR-1: 4种读者人设定义（含差异化评价侧重） | 完成 |
-| FR-2: 章节读者模拟执行（并行LLM + 结构化JSON输出） | 完成 |
-| FR-3: 模拟结果存储（ReaderSimulation表） | 完成 |
-| FR-4: 历史对比（同章多次模拟记录） | 完成 |
-| FR-5: 前端交互（人设选择 + 结果卡片 + 历史记录） | 完成 |
-
-## 代码变更清单
-
-### 新增文件 (4)
-| 文件 | 说明 |
-|------|------|
-| `src/api/services/reader_simulation_service.py` | 模拟服务核心 |
-| `src/api/routes/reader_simulation.py` | 4个API端点 |
-| `frontend/src/components/ReaderSimPanel.vue` | 读者模拟面板 |
-| `tests/unit/test_reader_simulation_service.py` | 8个单元测试 |
-
-### 修改文件 (4)
-| 文件 | 说明 |
-|------|------|
-| `src/api/models/db_models.py` | +ReaderSimulation模型 |
-| `src/api/routes/__init__.py` | 注册 reader_simulation_router |
-| `src/api/main.py` | 挂载 reader_simulation_router |
-| `frontend/src/views/ChapterEdit.vue` | 添加"读者模拟"按钮 + 引入组件 |
-
-## 新增 API Endpoints
-
-| 方法 | 路径 | 说明 |
+| 文件 | 类型 | 说明 |
 |------|------|------|
-| POST | `/{novel_id}/chapters/{ch}/reader-simulation` | 触发模拟(202) |
-| GET | `/{novel_id}/chapters/{ch}/reader-simulations` | 历史列表 |
-| GET | `/{novel_id}/reader-simulations/{id}` | 详细结果 |
-| GET | `/{novel_id}/reader-simulation/personas` | 人设列表 |
+| src/core/llm/token_tracker.py | 新增 | TokenTracker 内存聚合器 |
+| src/core/llm/client.py | 修改 | 双模型 + token 追踪 + llm_config 参数 |
+| src/core/llm/chapter_generator.py | 修改 | 正文/续写用 flash，规划用 pro |
+| src/core/config.py | 修改 | 新增 DEEPSEEK_MODEL_FLASH/PRO 字段 |
+| src/api/models/db_models.py | 修改 | 新增 LLMConfig 模型 |
+| src/api/routes/llm_config.py | 新增 | CRUD + token-stats 路由 |
+| src/api/routes/__init__.py | 修改 | 导出 llm_config_router |
+| src/api/main.py | 修改 | lifespan 单例初始化 + 路由注册 |
+| frontend/src/views/LLMSettings.vue | 新增 | 配置管理 + token 统计页面 |
+| frontend/src/router/index.js | 修改 | 注册 /settings/llm 路由 |
+| frontend/src/App.vue | 修改 | 导航栏添加"模型配置"入口 |
+| tests/unit/test_llm/test_token_tracker.py | 新增 | TokenTracker 单元测试 |
+| tests/unit/test_llm/test_client.py | 修改 | 补充双模型 + token 追踪测试 |
+| tests/unit/test_llm/test_client_db_config.py | 新增 | DB 配置初始化测试 |
+| tests/api/routes/test_llm_config.py | 新增 | llm_config 路由集成测试 |
+
+变更统计: 25 文件，+2337 行，-567 行
 
 ## 测试结果
 
-- 38 个单元测试全部通过 (1.44s)
-- ruff lint: CHANGE-048 文件 0 errors
-- 前端构建: 成功 (1.66s)
+- 单元测试: 414/414 通过
+- 新增测试: 47 个
+- WebSocket 测试: 修复预存竞态问题（与本次变更无关）
 
 ## 评审结论汇总
 
-- 编码评审: APPROVED（无阻塞项）
-- 测试评审: APPROVED（覆盖关键路径）
-- CI验证: PASSED
-
-## 结论
-
-**APPROVED** — 功能完整，测试通过，代码评审无阻塞项。
-
-**日期**: 2026-05-26
-**分支**: feature/change-044-long-form-generation
-
----
-
-## 需求摘要
-
-大纲↔正文双向同步：大纲修改后自动分析影响范围，标记受影响章节，提供级联更新建议（非自动覆盖），支持用户选择性接受更新；正文生成后反向更新大纲状态（已完成/偏离标记）。
-
-## 功能实现
-
-| 需求项 | 状态 |
-|--------|------|
-| FR-1: 正向影响分析（LLM分析大纲修改对已生成章节的影响） | 完成 |
-| FR-2: 建议管理（逐条/批量接受或拒绝，接受后标记章节needs_revision） | 完成 |
-| FR-3: 反向偏离检测（正文与章纲偏离度评估，自动更新大纲状态） | 完成 |
-| FR-4: 同步状态可视化（章节状态面板 + 建议管理UI） | 完成 |
-
-## 代码变更清单
-
-### 新增文件 (3)
-| 文件 | 说明 |
+| 阶段 | 结论 |
 |------|------|
-| `src/api/services/outline_sync_service.py` | 同步服务核心（329行） |
-| `src/api/routes/outline_sync.py` | 7个REST API端点（104行） |
-| `tests/unit/test_outline_sync_service.py` | 9个单元测试（229行） |
-
-### 修改文件 (4)
-| 文件 | 说明 |
-|------|------|
-| `src/api/models/db_models.py` | +OutlineSyncSuggestion模型 +Outline.deviation_summary |
-| `src/api/routes/__init__.py` | 注册 outline_sync_router |
-| `src/api/main.py` | 挂载 outline_sync_router |
-| `frontend/src/views/OutlineEditor.vue` | 同步状态面板 + 建议管理UI |
-
-## 新增 API Endpoints
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/{novel_id}/outlines/sync/analyze` | 分析大纲修改影响 |
-| GET | `/{novel_id}/outlines/sync/suggestions` | 获取建议列表 |
-| PUT | `/{novel_id}/outlines/sync/suggestions/{id}/accept` | 接受建议 |
-| PUT | `/{novel_id}/outlines/sync/suggestions/{id}/reject` | 拒绝建议 |
-| POST | `/{novel_id}/outlines/sync/suggestions/batch` | 批量操作 |
-| POST | `/{novel_id}/outlines/sync/reverse` | 反向偏离检测 |
-| GET | `/{novel_id}/outlines/sync/status` | 同步状态总览 |
-
-## 测试结果
-
-- 30 个单元测试全部通过 (1.41s)
-- ruff lint: CHANGE-047 文件 0 errors
-- 前端构建: 成功 (2.84s)
-
-## 评审结论汇总
-
-- 编码评审: APPROVED（5个Minor建议，无阻塞项）
-- 测试评审: APPROVED（覆盖关键业务路径）
-- CI验证: PASSED
-
-## 技术决策
-
-- LLM调用30s超时 + 优雅降级
-- 重新分析时自动过期旧pending建议
-- 数据库索引 ix_sync_novel_status 优化查询
-- 单例服务模式，与项目现有模式一致
-
-## 结论
-
-**APPROVED** — 功能完整，测试通过，代码评审无阻塞项。建议交付。
+| 需求评审（第1轮） | REVISION_REQUIRED |
+| 需求评审（第2轮） | APPROVED |
+| 编码评审 | APPROVED |
+| 测试评审 | APPROVED |

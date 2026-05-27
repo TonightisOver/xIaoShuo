@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     DEEPSEEK_API_KEY: str
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"
     DEEPSEEK_MODEL: str = "deepseek-v4-pro"
+    DEEPSEEK_MODEL_FLASH: str = "deepseek-v4-flash"
+    DEEPSEEK_MODEL_PRO: str = "deepseek-v4-pro"
     DEEPSEEK_TEMPERATURE: float = 0.7
     DEEPSEEK_MAX_TOKENS: int = 2000
     DEEPSEEK_TIMEOUT: int = 120

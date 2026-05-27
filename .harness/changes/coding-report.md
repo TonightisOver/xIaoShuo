@@ -1,59 +1,85 @@
-# 编码报告：CHANGE-041 故事圣经约束系统
+# CHANGE-051 编码报告
 
-> 日期：2026-05-22
+**日期**: 2026-05-27  
+**执行者**: Coder Agent
 
-## 变更摘要
+---
 
-实现了 StoryBible 精准约束注入、生成后反向更新、冲突检测三大核心功能。
+## 完成任务清单
 
-## 完成任务
+| 任务 | 文件 | 状态 |
+|------|------|------|
+| T1 | src/core/llm/token_tracker.py（新建） | 完成 |
+| T2 | src/core/config.py | 完成 |
+| T3 | src/core/llm/client.py | 完成 |
+| T4 | src/core/llm/chapter_generator.py | 完成 |
+| T5 | src/api/models/db_models.py | 完成 |
+| T6 | src/api/routes/llm_config.py（新建） | 完成 |
+| T7 | src/api/routes/__init__.py + src/api/main.py | 完成 |
+| T8 | src/api/main.py lifespan | 完成 |
+| T9 | frontend/src/views/LLMSettings.vue（新建） | 完成 |
+| T10 | frontend/src/router/index.js + frontend/src/App.vue | 完成 |
 
-### Task 1: StoryBible 数据模型扩展
-- `src/api/models/db_models.py` — 新增 4 个 JSON 字段：timeline_events, unresolved_hooks, main_goals, banned_elements
-- `alembic/versions/20260522_extend_story_bibles_fields.py` — 新增迁移文件
+---
 
-### Task 2: StoryBible API 路由更新
-- `src/api/routes/story_bible.py` — StoryBibleResponse/StoryBibleUpdate 增加 4 个字段，初始化和更新逻辑同步更新
+## 测试文件
 
-### Task 3: 精准约束抽取服务
-- `src/api/services/story_bible_service.py` (新增) — `extract_relevant_constraints()` 方法
-  - 只抽取本章出场人物的 character_cards
-  - 只抽取相关伏笔
-  - 只取最近 5 章时间线事件
-  - 过滤已解决悬念和已完成目标
-  - 全局约束始终包含
+| 任务 | 测试文件 | 结果 |
+|------|---------|------|
+| T1 | tests/unit/test_llm/test_token_tracker.py（新建） | 11/11 通过 |
+| T3 | tests/unit/test_llm/test_client.py（更新） | 14/14 通过 |
+| T8 | tests/unit/test_llm/test_client_db_config.py（新建） | 4/4 通过 |
+| T6 | tests/api/routes/test_llm_config.py（新建） | 待集成测试 |
 
-### Task 4: 章节生成器约束注入替换
-- `src/core/llm/chapter_generator.py` — 替换全量注入为 `extract_relevant_constraints()` 调用
+---
 
-### Task 5: 生成后反向更新 StoryBible 服务
-- `src/api/services/story_bible_service.py` — `update_bible_after_generation()` 方法
-  - LLM 分析章节内容提取新事件、新悬念、已回收悬念、人物更新、目标进展
-  - Merge 到 StoryBible 各字段
+## 关键实现说明
 
-### Task 6: StoryBible 冲突检测集成
-- `src/api/services/story_bible_service.py` — `detect_bible_conflicts()` 方法
-  - 规则检测：伏笔遗忘（超过 10 章未回收）
-  - LLM 检测：人物性格漂移、时间线冲突、设定矛盾
-- `src/core/langgraph/nodes/quality_check.py` — 在知识图谱检查后集成 StoryBible 冲突检测
+### 层级边界合规
+LLMClient.__init__ 接受 llm_config: Any | None = None（duck-typed），不导入 src.api.models.db_models，
+完全符合 CHANGE-050 的 core->api 反向依赖禁止规则。
 
-### Task 7: 反向更新集成到生成流程
-- `src/api/services/novel_generator.py` — 在章节持久化和版本创建后调用 `update_bible_after_generation()`
+### T1 — TokenTracker
+- deque(maxlen=1000) 自动丢弃旧记录
+- records_skipped 计数器记录无 token 信息的调用
+- get_stats() 返回完整统计，含 by_model 分组和最近 50 条记录
+- 使用 datetime.now(UTC) 替代已废弃的 utcnow()
 
-## 测试结果
+### T2 — Settings
+- 新增 DEEPSEEK_MODEL_FLASH = "deepseek-v4-flash" 和 DEEPSEEK_MODEL_PRO = "deepseek-v4-pro"
+- 保留原 DEEPSEEK_MODEL 字段不变
 
-- `tests/unit/test_change041_story_bible.py` — 23 tests PASSED
-- `tests/unit/test_change040_volume_and_graph.py` — 18 tests PASSED (回归验证)
+### T3 — LLMClient
+- 创建 self.llm_flash 和 self.llm_pro 两个 ChatOpenAI 实例
+- 保留 self.llm = self.llm_pro 向后兼容直接访问该属性的代码
+- generate() 新增 use_flash: bool = False 参数
+- token 追踪：有 token_usage 则 record()，无则 skip()
 
-## 文件变更清单
+### T4 — chapter_generator.py
+- 步骤 3（规划）：generate(planning_prompt, max_tokens=3000) — 默认 pro
+- 步骤 5（正文）：generate(prompt, max_tokens=8000, use_flash=True)
+- _continuation_generation：generate(continuation_prompt, max_tokens=4000, use_flash=True)
 
-| 文件 | 变更类型 | 行数变化 |
-|------|----------|----------|
-| src/api/models/db_models.py | 修改 | +4 |
-| alembic/versions/20260522_extend_story_bibles_fields.py | 新增 | +32 |
-| src/api/routes/story_bible.py | 修改 | +20 |
-| src/api/services/story_bible_service.py | 新增 | ~300 |
-| src/core/llm/chapter_generator.py | 修改 | -20/+10 |
-| src/core/langgraph/nodes/quality_check.py | 修改 | +15 |
-| src/api/services/novel_generator.py | 修改 | +12 |
-| tests/unit/test_change041_story_bible.py | 新增 | ~230 |
+### T5 — LLMConfig 模型
+- 表名 llm_configs，is_active 加索引
+- 通过 init_db() 的 create_all 自动建表
+
+### T6 — llm_config 路由
+- 完整 CRUD + activate + token-stats
+- api_key 脱敏："****" + api_key[-4:]
+- 激活操作在同一事务内先全部置 False 再激活目标
+- 删除激活配置返回 400
+
+### T8 — lifespan 单例初始化
+- await init_db() 后查询激活的 LLMConfig
+- 有激活配置则 LLMClient(llm_config=active_config)，否则 LLMClient()
+- 异常时回退到 Settings 配置，不阻断启动
+
+### T9 — LLMSettings.vue
+- 配置列表 + 新增/编辑弹窗 + 激活/删除操作
+- Token 统计面板（汇总卡片 + 按模型分组表格）
+- 使用原生 fetch，与 Home.vue 风格一致
+
+### T10 — 前端路由和导航
+- 路由：{ path: "/settings/llm", name: "LLMSettings", component: LLMSettings }
+- 导航：在任务大厅和开启创作之间插入模型配置链接

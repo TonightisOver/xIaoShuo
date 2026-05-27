@@ -13,9 +13,11 @@ const routes = [
   { path: '/novels/:id/outlines', name: 'outlines', component: () => import('../views/OutlineEditor.vue') },
   { path: '/novels/:id/storylines', name: 'storylines', component: () => import('../views/StorylineManager.vue') },
   { path: '/novels/:id/graph', name: 'graph', component: () => import('../views/RelationGraph.vue') },
+  { path: '/settings/llm', name: 'LLMSettings', component: () => import('../views/LLMSettings.vue') },
 ]
 
 export default createRouter({
   history: createWebHistory(),
   routes,
 })
+

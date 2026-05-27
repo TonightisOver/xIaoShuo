@@ -1,55 +1,80 @@
-# Test Report — CHANGE-041: 故事圣经约束系统
+# CHANGE-051 测试报告
 
-**Date:** 2026-05-22
+**日期**: 2026-05-27  
+**执行者**: Tester Agent  
+**结果**: 全部通过
 
-## 测试概览
+---
 
-| 指标 | 值 |
-|------|-----|
-| 测试文件 | `tests/unit/test_change041_story_bible.py` |
-| 测试用例数 | 23 |
-| 通过 | 23 |
-| 失败 | 0 |
-| 耗时 | 1.21s |
+## 执行摘要
 
-## 测试覆盖范围
+| 测试套件 | 文件 | 测试数 | 结果 |
+|---------|------|--------|------|
+| T1 TokenTracker | tests/unit/test_llm/test_token_tracker.py | 11 | 11/11 通过 |
+| T3 LLMClient | tests/unit/test_llm/test_client.py | 21 | 21/21 通过 |
+| T8 LLMClient DB 配置 | tests/unit/test_llm/test_client_db_config.py | 4 | 4/4 通过 |
+| T6 llm_config 路由 | tests/api/routes/test_llm_config.py | 11 | 11/11 通过 |
+| **合计** | | **47** | **47/47 通过** |
 
-### 1. 精准约束抽取 (8 tests)
-- 全局约束始终包含
-- 只抽取出场人物的 character_cards
-- 无出场人物时返回全部卡片
-- 时间线只取最近 5 章
-- 过滤已解决悬念
-- 只返回活跃目标
-- 禁用元素包含
-- 只抽取相关伏笔
+---
 
-### 2. 辅助函数 (10 tests)
-- 从列表/字典/scenes 提取人物
-- 提取地点
-- 人物匹配（精确/部分/不匹配）
-- 伏笔关联判断（人物/描述/不相关）
+## 覆盖情况分析
 
-### 3. 冲突检测 (1 test)
-- 伏笔遗忘检测（超过 10 章未回收）
-- 已解决伏笔不触发
-- 近期伏笔不触发
+### T1 — TokenTracker（已有 11 个测试，无需补充）
 
-### 4. API 模型字段 (3 tests)
-- Response 模型包含新字段
-- Update 模型包含新字段
-- 默认值为空列表
+所有要求的测试均已存在：
 
-### 5. DB 模型字段 (1 test)
-- StoryBible 表包含 4 个新列
+| 测试名 | 状态 |
+|--------|------|
+| test_skip_increments_counter | 已有（line 50） |
+| test_records_skipped_in_stats（即 test_get_stats_includes_records_skipped） | 已有（line 104） |
+| test_skip_increments_counter 中断言 total_calls==0（即 test_skip_does_not_affect_total_calls） | 已有（line 50） |
 
-## 回归测试
+### T3 — LLMClient（新增 7 个测试）
 
-| 测试文件 | 用例数 | 结果 |
-|----------|--------|------|
-| test_change040_volume_and_graph.py | 18 | ALL PASSED |
-| test_change041_story_bible.py | 23 | ALL PASSED |
+原有 14 个测试未覆盖双模型路由和 token 追踪逻辑，本次新增：
 
-## 结论
+**TestLLMClientDualModel（3 个）**
+- `test_use_flash_true_uses_llm_flash` — use_flash=True 时调用 llm_flash，不调用 llm_pro
+- `test_use_flash_false_uses_llm_pro` — use_flash=False 时调用 llm_pro，不调用 llm_flash
+- `test_use_flash_default_uses_llm_pro` — 默认不传 use_flash 时走 llm_pro
 
-所有 23 个测试用例通过，覆盖了精准约束抽取、辅助函数、冲突检测、API/DB 模型等核心逻辑。回归测试无破坏。
+**TestLLMClientTokenTracking（4 个）**
+- `test_token_record_called_on_success_with_metadata` — response_metadata 含 token_usage 时 tracker.record() 被调用，统计正确
+- `test_token_skip_called_when_no_response_metadata` — response_metadata 为空 dict 时 tracker.skip() 被调用
+- `test_token_skip_called_when_token_usage_missing_prompt_tokens` — token_usage 缺少 prompt_tokens 时 tracker.skip() 被调用
+- `test_token_record_uses_correct_model_name` — tracker 记录的 model 名与实际使用的模型名一致
+
+### T6 — llm_config 路由（已有 11 个测试，无需补充）
+
+所有要求的测试均已存在：
+
+| 测试名 | 状态 |
+|--------|------|
+| test_list_configs_empty | 已有 |
+| test_create_config（含 api_key 脱敏验证） | 已有 |
+| test_api_key_masked_in_list | 已有 |
+| test_activate_config | 已有 |
+| test_delete_active_config_rejected（400） | 已有 |
+| test_token_stats | 已有 |
+
+### T8 — LLMClient DB 配置（已有 4 个测试，无需补充）
+
+所有要求的测试均已存在：
+
+| 测试名 | 状态 |
+|--------|------|
+| test_init_with_llm_config_uses_db_values | 已有 |
+| test_init_without_llm_config_uses_settings | 已有 |
+| test_init_with_none_llm_config_uses_settings | 已有 |
+| test_generate_uses_db_model_name_in_tracker | 已有 |
+
+---
+
+## 运行命令
+
+```
+python -m pytest tests/unit/test_llm/ tests/api/routes/ -v --tb=short
+```
+
+**结果**: 47 passed in ~12s

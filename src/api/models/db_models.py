@@ -672,6 +672,29 @@ class ReaderSimulation(Base):
     )
 
 
+class LLMConfig(Base):
+    """LLM 配置（前端可配置的模型参数）"""
+
+    __tablename__ = "llm_configs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    base_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    api_key: Mapped[str] = mapped_column(String(500), nullable=False)
+    model_flash: Mapped[str] = mapped_column(String(100), nullable=False)
+    model_pro: Mapped[str] = mapped_column(String(100), nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now()
+    )
+
+
 class ChapterBlueprint(Base):
     """章节蓝图 — 生成前的结构化规划"""
 

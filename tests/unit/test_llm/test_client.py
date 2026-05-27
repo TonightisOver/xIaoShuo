@@ -14,6 +14,8 @@ def mock_settings():
     with patch("src.core.llm.client.get_settings") as mock:
         settings = MagicMock()
         settings.DEEPSEEK_MODEL = "deepseek-v4-pro"
+        settings.DEEPSEEK_MODEL_FLASH = "deepseek-v4-flash"
+        settings.DEEPSEEK_MODEL_PRO = "deepseek-v4-pro"
         settings.DEEPSEEK_API_KEY = "test-api-key"
         settings.DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
         settings.DEEPSEEK_TEMPERATURE = 0.7
@@ -35,19 +37,25 @@ class TestLLMClient:
     """LLM 客户端测试"""
 
     def test_init(self, mock_settings, mock_chat_openai):
-        """测试初始化"""
+        """测试初始化 — 双模型策略：ChatOpenAI 被调用两次（flash + pro）"""
+        mock_settings.return_value.DEEPSEEK_MODEL_FLASH = "deepseek-v4-flash"
+        mock_settings.return_value.DEEPSEEK_MODEL_PRO = "deepseek-v4-pro"
         client = LLMClient()
 
-        # 验证 ChatOpenAI 被正确调用
-        mock_chat_openai.assert_called_once()
-        call_kwargs = mock_chat_openai.call_args[1]
+        # 双模型：ChatOpenAI 被调用两次
+        assert mock_chat_openai.call_count == 2
 
-        assert call_kwargs["model"] == "deepseek-v4-pro"
-        assert call_kwargs["api_key"] == "test-api-key"
-        assert call_kwargs["base_url"] == "https://api.deepseek.com/v1"
-        assert call_kwargs["temperature"] == 0.7
-        assert call_kwargs["timeout"] == 30
-        assert call_kwargs["model_kwargs"] == {"max_tokens": 2000}
+        calls = mock_chat_openai.call_args_list
+        models_used = {c[1]["model"] for c in calls}
+        assert "deepseek-v4-flash" in models_used
+        assert "deepseek-v4-pro" in models_used
+
+        for call in calls:
+            assert call[1]["api_key"] == "test-api-key"
+            assert call[1]["base_url"] == "https://api.deepseek.com/v1"
+            assert call[1]["temperature"] == 0.7
+            assert call[1]["timeout"] == 30
+            assert call[1]["model_kwargs"] == {"max_tokens": 2000}
 
         assert client.max_retries == 3
 
@@ -110,7 +118,8 @@ class TestLLMClient:
         client2 = get_llm_client()
 
         assert client1 is client2
-        assert mock_chat_openai.call_count == 1
+        # 双模型：每次初始化调用 ChatOpenAI 两次，单例只初始化一次
+        assert mock_chat_openai.call_count == 2
 
 
 # ============================================================
@@ -289,3 +298,184 @@ class TestLLMClientRetry:
 
         assert _is_retryable_http_error(ValueError("not http")) is False
         assert _is_retryable_http_error(ConnectionError("conn")) is False
+
+
+# ============================================================
+#  CHANGE-051: 双模型策略 + token 追踪测试
+# ============================================================
+
+
+class TestLLMClientDualModel:
+    """测试 use_flash 参数路由到正确的模型实例"""
+
+    @pytest.mark.asyncio
+    async def test_use_flash_true_uses_llm_flash(self, mock_settings, mock_chat_openai):
+        """use_flash=True 时使用 llm_flash 实例"""
+        flash_instance = AsyncMock()
+        pro_instance = AsyncMock()
+        flash_instance.ainvoke.return_value = AIMessage(content="flash response")
+        pro_instance.ainvoke.return_value = AIMessage(content="pro response")
+
+        # ChatOpenAI 第一次调用返回 flash，第二次返回 pro（按 __init__ 中的顺序）
+        mock_chat_openai.side_effect = [flash_instance, pro_instance]
+
+        client = LLMClient()
+        result = await client.generate("test prompt", use_flash=True)
+
+        assert result == "flash response"
+        flash_instance.ainvoke.assert_called_once()
+        pro_instance.ainvoke.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_use_flash_false_uses_llm_pro(self, mock_settings, mock_chat_openai):
+        """use_flash=False（默认）时使用 llm_pro 实例"""
+        flash_instance = AsyncMock()
+        pro_instance = AsyncMock()
+        flash_instance.ainvoke.return_value = AIMessage(content="flash response")
+        pro_instance.ainvoke.return_value = AIMessage(content="pro response")
+
+        mock_chat_openai.side_effect = [flash_instance, pro_instance]
+
+        client = LLMClient()
+        result = await client.generate("test prompt", use_flash=False)
+
+        assert result == "pro response"
+        pro_instance.ainvoke.assert_called_once()
+        flash_instance.ainvoke.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_use_flash_default_uses_llm_pro(self, mock_settings, mock_chat_openai):
+        """use_flash 默认值为 False，使用 llm_pro"""
+        flash_instance = AsyncMock()
+        pro_instance = AsyncMock()
+        flash_instance.ainvoke.return_value = AIMessage(content="flash response")
+        pro_instance.ainvoke.return_value = AIMessage(content="pro response")
+
+        mock_chat_openai.side_effect = [flash_instance, pro_instance]
+
+        client = LLMClient()
+        # 不传 use_flash，验证默认走 pro
+        result = await client.generate("test prompt")
+
+        assert result == "pro response"
+        pro_instance.ainvoke.assert_called_once()
+        flash_instance.ainvoke.assert_not_called()
+
+
+class TestLLMClientTokenTracking:
+    """测试 token 追踪逻辑：record() 和 skip()"""
+
+    @pytest.mark.asyncio
+    async def test_token_record_called_on_success_with_metadata(
+        self, mock_settings, mock_chat_openai
+    ):
+        """response_metadata 含 token_usage 时调用 tracker.record()"""
+        import src.core.llm.token_tracker as tt_module
+
+        tt_module._tracker = None  # 重置单例
+
+        mock_llm_instance = AsyncMock()
+        mock_response = AIMessage(content="ok")
+        mock_response.response_metadata = {
+            "token_usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 20,
+                "total_tokens": 30,
+            }
+        }
+        mock_llm_instance.ainvoke.return_value = mock_response
+        mock_chat_openai.return_value = mock_llm_instance
+
+        client = LLMClient()
+        await client.generate("test prompt")
+
+        tracker = tt_module.get_token_tracker()
+        stats = tracker.get_stats()
+        assert stats["total_calls"] == 1
+        assert stats["records_skipped"] == 0
+        assert stats["total_prompt_tokens"] == 10
+        assert stats["total_completion_tokens"] == 20
+        assert stats["total_tokens"] == 30
+
+    @pytest.mark.asyncio
+    async def test_token_skip_called_when_no_response_metadata(
+        self, mock_settings, mock_chat_openai
+    ):
+        """response 无 response_metadata 属性时调用 tracker.skip()"""
+        import src.core.llm.token_tracker as tt_module
+
+        tt_module._tracker = None
+
+        mock_llm_instance = AsyncMock()
+        # AIMessage 默认没有 response_metadata，或者为空 dict
+        mock_response = AIMessage(content="ok")
+        # 确保 response_metadata 不含 token_usage
+        mock_response.response_metadata = {}
+        mock_llm_instance.ainvoke.return_value = mock_response
+        mock_chat_openai.return_value = mock_llm_instance
+
+        client = LLMClient()
+        await client.generate("test prompt")
+
+        tracker = tt_module.get_token_tracker()
+        stats = tracker.get_stats()
+        assert stats["total_calls"] == 0
+        assert stats["records_skipped"] == 1
+
+    @pytest.mark.asyncio
+    async def test_token_skip_called_when_token_usage_missing_prompt_tokens(
+        self, mock_settings, mock_chat_openai
+    ):
+        """token_usage 存在但缺少 prompt_tokens 时调用 tracker.skip()"""
+        import src.core.llm.token_tracker as tt_module
+
+        tt_module._tracker = None
+
+        mock_llm_instance = AsyncMock()
+        mock_response = AIMessage(content="ok")
+        # token_usage 存在但不含 prompt_tokens
+        mock_response.response_metadata = {"token_usage": {"total_tokens": 30}}
+        mock_llm_instance.ainvoke.return_value = mock_response
+        mock_chat_openai.return_value = mock_llm_instance
+
+        client = LLMClient()
+        await client.generate("test prompt")
+
+        tracker = tt_module.get_token_tracker()
+        stats = tracker.get_stats()
+        assert stats["total_calls"] == 0
+        assert stats["records_skipped"] == 1
+
+    @pytest.mark.asyncio
+    async def test_token_record_uses_correct_model_name(
+        self, mock_settings, mock_chat_openai
+    ):
+        """tracker.record() 记录的 model 名与实际使用的模型一致"""
+        import src.core.llm.token_tracker as tt_module
+
+        tt_module._tracker = None
+
+        flash_instance = AsyncMock()
+        pro_instance = AsyncMock()
+
+        flash_response = AIMessage(content="flash ok")
+        flash_response.response_metadata = {
+            "token_usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 10,
+                "total_tokens": 15,
+            }
+        }
+        flash_instance.ainvoke.return_value = flash_response
+        pro_instance.ainvoke.return_value = AIMessage(content="pro ok")
+
+        mock_chat_openai.side_effect = [flash_instance, pro_instance]
+
+        client = LLMClient()
+        await client.generate("test prompt", use_flash=True)
+
+        tracker = tt_module.get_token_tracker()
+        stats = tracker.get_stats()
+        assert stats["total_calls"] == 1
+        # flash 模型名应出现在 by_model 中
+        assert "deepseek-v4-flash" in stats["by_model"]
