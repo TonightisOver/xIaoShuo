@@ -1,8 +1,8 @@
 {
     "mode":  10,
-    "awaiting_gate":  true,
+    "awaiting_gate":  false,
     "change_id":  "CHANGE-052",
-    "gate_number":  2,
+    "gate_number":  0,
     "current_stage":  10,
     "stages_completed":  [
                              "1-需求分析",
@@ -13,10 +13,12 @@
                              "6-单元测试评审",
                              "7-代码推送",
                              "8-CI验证",
-                             "9-部署验证"
+                             "9-部署验证",
+                             "10-用户确认"
                          ],
     "change_slug":  "长篇章节数量与字数约束修复",
-    "stage_name":  "用户确认",
-    "status":  "awaiting_gate2",
-    "started_at":  "2026-05-27T00:00:00+08:00"
+    "stage_name":  "完成",
+    "status":  "completed",
+    "started_at":  "2026-05-27T00:00:00+08:00",
+    "completed_at":  "2026-05-28T00:00:00+08:00"
 }
