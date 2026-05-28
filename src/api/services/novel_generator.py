@@ -857,46 +857,10 @@ async def generate_long_form_background(
 
         logger.info("long_form_generation_starting", task_id=task_id, novel_id=novel_id)
 
-        # Initialize progress tracking
-        await progress_service.initialize_progress(
-            novel_id=novel_id,
-            total_volumes=request.volumes,
-            chapters_per_volume=request.chapters_per_volume,
-        )
-
-        # Stage 1: Generate master outline
-        await _emit_progress(
-            task_id, EventType.STAGE_START,
-            {"stage": "master_outline", "percentage": 0},
-        )
-
-        master_outline = await generate_master_outline(
-            novel_id=novel_id,
-            request=request,
-        )
-
-        # Update novel with master outline
-        from src.api.services.novel_manager import get_novel_manager
-        novel_manager = get_novel_manager()
-        await novel_manager.update_novel(
-            novel_id,
-            master_outline=master_outline,
-            total_volumes=request.volumes,
-            chapters_per_volume=request.chapters_per_volume,
-            words_per_chapter=request.words_per_chapter,
-            is_long_form=True,
-        )
-
-        await _emit_progress(
-            task_id, EventType.STAGE_COMPLETE,
-            {"stage": "master_outline", "percentage": 5},
-        )
-
-        # Stage 2: Generate volume by volume
+        # T1: 自动计算每卷章节数（必须在 initialize_progress / update_novel 之前）
         total_volumes = request.volumes
         words_per_chapter = request.words_per_chapter
 
-        # 自动计算每卷章节数
         if request.auto_calc_chapters:
             total_chapters = math.ceil(request.target_words / request.words_per_chapter)
             computed_chapters_per_vol = math.ceil(total_chapters / request.volumes)
@@ -920,6 +884,44 @@ async def generate_long_form_background(
         else:
             chapters_per_vol = request.chapters_per_volume
 
+        # Initialize progress tracking (uses correct chapters_per_vol)
+        await progress_service.initialize_progress(
+            novel_id=novel_id,
+            total_volumes=request.volumes,
+            chapters_per_volume=chapters_per_vol,
+        )
+
+        # Stage 1: Generate master outline
+        await _emit_progress(
+            task_id, EventType.STAGE_START,
+            {"stage": "master_outline", "percentage": 0},
+        )
+
+        # T2: pass chapters_per_vol so the prompt uses the correct value
+        master_outline = await generate_master_outline(
+            novel_id=novel_id,
+            request=request,
+            chapters_per_vol=chapters_per_vol,
+        )
+
+        # Update novel with master outline (uses correct chapters_per_vol)
+        from src.api.services.novel_manager import get_novel_manager
+        novel_manager = get_novel_manager()
+        await novel_manager.update_novel(
+            novel_id,
+            master_outline=master_outline,
+            total_volumes=request.volumes,
+            chapters_per_volume=chapters_per_vol,
+            words_per_chapter=request.words_per_chapter,
+            is_long_form=True,
+        )
+
+        await _emit_progress(
+            task_id, EventType.STAGE_COMPLETE,
+            {"stage": "master_outline", "percentage": 5},
+        )
+
+        # Stage 2: Generate volume by volume
         global_chapter_start = 1
         all_chapters_generated = []
 
@@ -948,6 +950,29 @@ async def generate_long_form_background(
                     words_per_chapter=words_per_chapter,
                     request=request,
                 )
+
+                # T3: Persist volume outline and chapter outlines to Outline table
+                try:
+                    from src.api.services.outline_service import get_outline_service
+                    outline_service = get_outline_service()
+                    await outline_service.upsert_volume_outline(novel_id, vol_num, vol_outline)
+                    chapters_data = vol_outline.get("chapters", [])
+                    for idx, ch in enumerate(chapters_data):
+                        ch_num = ch.get("chapter", idx + 1)
+                        await outline_service.upsert_chapter_outline(novel_id, vol_num, ch_num, ch)
+                    logger.info(
+                        "volume_outline_persisted",
+                        novel_id=novel_id,
+                        volume_number=vol_num,
+                        chapter_count=len(chapters_data),
+                    )
+                except Exception as persist_error:
+                    logger.warning(
+                        "volume_outline_persist_failed",
+                        novel_id=novel_id,
+                        volume_number=vol_num,
+                        error=str(persist_error),
+                    )
 
                 # Generate chapters for this volume
                 chapter_end = global_chapter_start + chapters_per_vol - 1

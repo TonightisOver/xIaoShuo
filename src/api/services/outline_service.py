@@ -231,7 +231,7 @@ class OutlineService:
             world_setting=str(world) if world else "暂无",
             characters=str([c["name"] + "(" + (c.get("role") or "") + ")" for c in characters[:10]]),
         )
-        chapters = await generate_and_parse_json(client, prompt, max_tokens=4000, fallback=[])
+        chapters = await generate_and_parse_json(client, prompt, max_tokens=12000, fallback=[])
 
         if not isinstance(chapters, list):
             chapters = []
