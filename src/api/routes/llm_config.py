@@ -86,6 +86,15 @@ def _to_response(config: LLMConfig) -> LLMConfigResponse:
     )
 
 
+def _reload_active_llm_client(config: LLMConfig) -> None:
+    """Refresh the process-wide LLM client after the active config changes."""
+    import src.core.llm.client as llm_module
+    from src.core.llm.client import LLMClient
+
+    llm_module._client = LLMClient(llm_config=config)
+    logger.info("llm_client_reloaded_from_config", config_id=config.id, name=config.name)
+
+
 # ---------------------------------------------------------------------------
 # 路由
 # ---------------------------------------------------------------------------
@@ -142,6 +151,8 @@ async def update_config(config_id: int, body: LLMConfigUpdate) -> LLMConfigRespo
 
         await session.flush()
         await session.refresh(config)
+        if config.is_active:
+            _reload_active_llm_client(config)
         return _to_response(config)
 
 
@@ -182,6 +193,7 @@ async def activate_config(config_id: int) -> LLMConfigResponse:
 
         await session.flush()
         await session.refresh(config)
+        _reload_active_llm_client(config)
         return _to_response(config)
 
 

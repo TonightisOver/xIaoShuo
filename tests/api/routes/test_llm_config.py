@@ -155,10 +155,73 @@ async def test_activate_config(client):
     assert active_configs[0]["id"] == cfg2["id"]
 
 
+async def test_activate_config_reloads_runtime_llm_client(client):
+    """激活配置后立即刷新进程内 LLMClient 单例。"""
+    import src.core.llm.client as llm_module
+
+    llm_module._client = None
+    cfg = (
+        await client.post(
+            "/api/v1/llm/configs",
+            json={
+                "name": "运行时刷新",
+                "base_url": "https://runtime.com",
+                "api_key": "key-runtime",
+                "model_flash": "flash-runtime",
+                "model_pro": "pro-runtime",
+            },
+        )
+    ).json()
+
+    with patch("src.core.llm.client.LLMClient") as mock_client_cls:
+        resp = await client.post(f"/api/v1/llm/configs/{cfg['id']}/activate")
+
+    assert resp.status_code == 200
+    mock_client_cls.assert_called_once()
+    assert llm_module._client is mock_client_cls.return_value
+    active_config = mock_client_cls.call_args.kwargs["llm_config"]
+    assert active_config.id == cfg["id"]
+    assert active_config.model_flash == "flash-runtime"
+
+
 async def test_activate_config_not_found(client):
     """激活不存在的配置返回 404"""
     response = await client.post("/api/v1/llm/configs/99999/activate")
     assert response.status_code == 404
+
+
+async def test_update_active_config_reloads_runtime_llm_client(client):
+    """更新已激活配置后立即刷新进程内 LLMClient 单例。"""
+    import src.core.llm.client as llm_module
+
+    llm_module._client = None
+    cfg = (
+        await client.post(
+            "/api/v1/llm/configs",
+            json={
+                "name": "更新刷新",
+                "base_url": "https://update.com",
+                "api_key": "key-update",
+                "model_flash": "flash-before",
+                "model_pro": "pro-before",
+            },
+        )
+    ).json()
+
+    await client.post(f"/api/v1/llm/configs/{cfg['id']}/activate")
+
+    with patch("src.core.llm.client.LLMClient") as mock_client_cls:
+        resp = await client.put(
+            f"/api/v1/llm/configs/{cfg['id']}",
+            json={"model_flash": "flash-after", "model_pro": "pro-after"},
+        )
+
+    assert resp.status_code == 200
+    mock_client_cls.assert_called_once()
+    assert llm_module._client is mock_client_cls.return_value
+    active_config = mock_client_cls.call_args.kwargs["llm_config"]
+    assert active_config.model_flash == "flash-after"
+    assert active_config.model_pro == "pro-after"
 
 
 # ---------------------------------------------------------------------------
