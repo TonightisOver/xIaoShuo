@@ -1,6 +1,6 @@
-# CHANGE-051 需求文档
+# CHANGE-053 需求文档
 
-**日期**: 2026-05-27
+**日期**: 2026-05-28
 **状态**: 待实现
 **优先级**: P0（核心功能缺陷）
 
@@ -8,132 +8,130 @@
 
 ## 一、问题背景
 
-用户设计了一部 121 万字长篇小说，系统实际只生成了 60 章（10卷×6章），平均每章约 5000 字，远未达到目标。具体表现：
-
-- 卷7 只有 1 章，卷8 没有章节——后面几卷被严重截断
-- 总章节数 60 章 vs 应有约 242 章（121万÷5000字/章）
-- 每章字数难以保证在目标范围内
+用户生成 150 万字长篇小说后，前端"章节规划"页面显示的章节数量与实际要求严重不符：
+- 显示 5-6 章或 0 章，而非预期的 40 章
+- 章节数/字数与用户设定不一致
 
 ---
 
 ## 二、根本原因分析（基于代码审查）
 
-### 2.1 章节数量不足的根本原因
+### 根因 1 — 章节大纲未保存到 Outline 表（前端显示 0 章的直接原因）
 
-**原因 A：`generate_volume_outline` 的 `max_tokens=6000` 硬限制导致 JSON 截断**
+`generate_long_form_background`（`novel_generator.py` 第 941-963 行）在生成每卷的 `vol_outline` 后，从不调用 `upsert_chapter_outline` 或 `upsert_volume_outline`，导致 `Outline` 表里没有任何章节大纲记录。
 
-`long_form_generation_helpers.py` 第 200 行：
-```python
-result = await generate_and_parse_json(client, prompt, max_tokens=6000, fallback=fallback_data)
-```
+前端"章节规划"数量来自 `get_outline_tree` → `get_chapter_outlines`（查询 `Outline` 表 `level="chapter"` 的记录），因此显示为 0。
 
-当 `chapters_per_volume=40` 时，每章的 JSON 对象约 200-300 token，40 章需要约 8000-12000 token。6000 token 的限制导致 JSON 在中间被截断，`safe_json_parse` 的 `_extract_json_block` 正则只能匹配完整的 `{...}` 块，截断的 JSON 无法被修复，最终触发 fallback。
+`OutlineService.upsert_chapter_outline` 和 `upsert_volume_outline` 方法已存在且功能正确，只是从未被长篇生成流程调用。
 
-**fallback 的问题**：`fallback_data` 中的 `chapters` 列表是正确填充的（`chapters_per_volume` 个章节），但 `safe_json_parse` 在 JSON 截断时会尝试提取部分 JSON——如果提取到的是一个只有少数章节的不完整对象，就会返回那个不完整对象而非 fallback。这解释了为什么卷7只有1章而不是0章。
+### 根因 2 — `auto_calc_chapters` 计算顺序错误（章节数与要求不一致的原因）
 
-**原因 B：`generate_master_outline` 同样使用 `max_tokens=6000`**
+在 `novel_generator.py` 中：
+- `initialize_progress`（第 861-865 行）使用 `request.chapters_per_volume`（默认 40）
+- `update_novel`（第 881-888 行）使用 `request.chapters_per_volume`（默认 40）
+- `auto_calc_chapters` 计算（第 899-921 行）在上述两个调用**之后**才执行
 
-`long_form_generation_helpers.py` 第 108 行：
-```python
-return await generate_and_parse_json(client, prompt, max_tokens=6000, fallback=fallback_data)
-```
+当 `auto_calc_chapters=True` 时，进度追踪和小说元数据存储的是原始 `request.chapters_per_volume`（40），而非自动计算值，导致数据不一致。
 
-总纲 prompt 要求 LLM 为每卷输出 `chapter_types` 分布（含6个字段），10卷的总纲 JSON 也可能在 6000 token 内被截断，导致后面几卷的 `chapter_types` 丢失，进而影响卷纲生成时的章节类型分布计算。
+### 根因 3 — `generate_master_outline` 传入错误的章节数
 
-**原因 C：前端 `chapters_per_volume` 默认值与实际行为不匹配**
+`long_form_generation_helpers.py` 的 `generate_master_outline` 函数（第 62-68 行）在 prompt 中使用 `request.chapters_per_volume`，但当 `auto_calc_chapters=True` 时，实际每卷章节数已被重新计算为 `chapters_per_vol`。
 
-`Create.vue` 第 190 行：前端默认 `chapters_per_volume: 40`，但用户截图显示每卷约 6 章。这说明用户可能手动改小了该值，或者 LLM 在 token 截断后只输出了少量章节。
+函数签名目前没有 `chapters_per_vol` 参数，导致主大纲的章节分布规划与实际生成不一致。
 
-### 2.2 字数约束弱的根本原因
+### 根因 4 — `generate_chapter_outlines` token 不足（显示 5-6 章的直接原因）
 
-**原因 D：续写只触发一次，且阈值过低**
-
-`chapter_generator.py` 第 320-350 行：续写仅在 `word_count < target_words * 0.6`（60%阈值）时触发，且只触发一次。如果第一次续写后仍不足 80%，不会再次续写。
-
-**原因 E：`CHAPTER_GENERATION_PROMPT_WITH_WORD_COUNT` 字数约束表述不够强**
-
-当前 prompt 第 8 条规则：`【字数约束】本章目标字数为 {target_words} 字，允许浮动范围为 ±20%`。这是软性要求，LLM 经常不遵守。
-
-**原因 F：`_continuation_generation` 的 `max_tokens=4000` 限制**
-
-续写时 `max_tokens=4000`，如果需要补充 2000+ 字，可能仍然不足。
+`outline_service.py` 的 `generate_chapter_outlines` 函数（第 234 行）使用 `max_tokens=4000`。对 40 章来说，每章 JSON 约 150-200 token，40 章需要约 6000-8000 token，4000 token 的限制导致 JSON 截断，只能生成 5-6 章大纲。
 
 ---
 
 ## 三、需求规格
 
-### 需求 R1：修复卷纲生成 token 截断问题（P0）
+### 需求 R1：长篇生成流程中保存章节大纲到 Outline 表（P0）
 
-**背景**：这是导致章节数量不足的直接原因。
-
-**要求**：
-- `generate_volume_outline` 的 `max_tokens` 从 6000 提升至 12000
-- `generate_master_outline` 的 `max_tokens` 从 6000 提升至 8000
-- 在 `generate_volume_outline` 中增加章节数量验证：若返回的 `chapters` 数量 < `chapters_per_volume * 0.8`，则触发重试（最多2次），重试时在 prompt 中明确要求"必须输出完整的 {chapters_per_volume} 章"
-- 重试失败后使用 fallback（当前 fallback 逻辑正确，保留）
-
-**验收标准**：
-- 对于 `chapters_per_volume=40`，每卷生成的章节数 ≥ 32（80%）
-- 对于 `chapters_per_volume=6`，每卷生成的章节数 = 6（100%）
-- 10卷全部生成，无卷被跳过
-
-### 需求 R2：章节数量自动计算与弹性分配（P1）
-
-**背景**：用户希望根据目标字数自动推算章节数，而非手动计算。
+**背景**：这是前端"章节规划"显示 0 章的直接原因，也是最高优先级修复。
 
 **要求**：
-- 在 `LongFormNovelRequest` 中新增字段 `auto_calc_chapters: bool = False`
-- 当 `auto_calc_chapters=True` 时，后端自动计算 `total_chapters = target_words / words_per_chapter`，并将其均匀分配到各卷（`chapters_per_volume = total_chapters / volumes`，向上取整）
-- `chapters_per_volume` 字段改为"建议值"语义：在 `VOLUME_OUTLINE_PROMPT` 中将"本卷章节数：约 {chapters_count} 章"的措辞改为"本卷章节数：建议 {chapters_count} 章（可在 ±30% 范围内根据情节节奏调整，但不得少于 {chapters_count_min} 章）"
-- 前端在长篇模式下新增"自动计算章节数"复选框，勾选后隐藏"每卷章数"输入框并显示计算结果预览
+- 在 `generate_long_form_background` 的每卷循环中，`generate_volume_outline` 调用成功后，立即将 `vol_outline` 保存到 `Outline` 表（调用 `OutlineService.upsert_volume_outline`）
+- 同时将 `vol_outline["chapters"]` 中的每个章节大纲保存到 `Outline` 表（调用 `OutlineService.upsert_chapter_outline`）
+- 保存操作失败不应中断章节生成流程（try/except 包裹，记录 warning 后继续）
 
 **验收标准**：
-- `target_words=1210000, words_per_chapter=5000, volumes=10` 时，`auto_calc_chapters=True` 自动计算出 `chapters_per_volume=25`（1210000/5000/10=24.2，向上取整）
-- 前端显示"预计约 242 章，每卷约 25 章"
-- 后端 API 接受 `auto_calc_chapters=true` 并正确覆盖 `chapters_per_volume`
+- 长篇生成完成后，`Outline` 表中存在 `level="volume"` 的卷纲记录（每卷一条）
+- `Outline` 表中存在 `level="chapter"` 的章纲记录（每章一条）
+- 前端"章节规划"显示的章节数量与 `chapters_per_vol` 一致
+- 保存失败时生成流程不中断，日志记录 warning
 
-### 需求 R3：字数约束强化（P1）
+### 需求 R2：修复 `auto_calc_chapters` 计算顺序（P0）
 
-**背景**：每章实际生成字数难以保证在目标范围内。
+**背景**：`chapters_per_vol` 的计算必须在 `initialize_progress` 和 `update_novel` 之前完成，否则存储的元数据与实际生成不一致。
 
 **要求**：
-- 将续写触发阈值从 60% 提升至 75%（即 `WORD_COUNT续写阈值 = 0.75`）
-- 将续写最大次数从 1 次提升至 3 次，每次续写后重新检查字数
-- 在 `CHAPTER_GENERATION_PROMPT_WITH_WORD_COUNT` 中强化字数约束措辞，在规则列表最前面（第1条）加入字数要求，并在 prompt 末尾重复强调
-- 续写的 `max_tokens` 从 4000 提升至 6000
+- 将 `auto_calc_chapters` 的计算逻辑（当前第 899-921 行）移至 `initialize_progress` 调用（第 861 行）**之前**
+- `initialize_progress` 和 `update_novel` 均改用计算后的 `chapters_per_vol`
 
 **验收标准**：
-- 对于 `target_words=5000`，生成章节字数 ≥ 4000（80%）的比例 ≥ 90%
-- 续写逻辑在字数不足时最多触发 3 次
-- 单元测试覆盖：`_check_word_count` 和续写循环逻辑
+- `auto_calc_chapters=True, target_words=1500000, words_per_chapter=3000, volumes=10` 时，`initialize_progress` 和 `update_novel` 均使用 `chapters_per_vol=50`（1500000/3000/10=50）
+- `auto_calc_chapters=False` 时行为与修改前完全一致
+
+### 需求 R3：`generate_master_outline` 接受并使用正确的章节数（P1）
+
+**背景**：主大纲的章节分布规划应与实际生成的每卷章节数一致。
+
+**要求**：
+- 为 `generate_master_outline` 函数添加 `chapters_per_vol: int` 参数
+- 函数内部 prompt 格式化和 fallback 数据均使用 `chapters_per_vol` 而非 `request.chapters_per_volume`
+- 调用方（`novel_generator.py`）在计算出 `chapters_per_vol` 后再调用 `generate_master_outline`，并传入该值
+
+**验收标准**：
+- `auto_calc_chapters=True` 时，`generate_master_outline` 的 prompt 中 `chapters_per_volume` 字段值等于自动计算的 `chapters_per_vol`
+- `auto_calc_chapters=False` 时，行为与修改前一致（`chapters_per_vol = request.chapters_per_volume`）
+
+### 需求 R4：提升 `generate_chapter_outlines` 的 max_tokens（P1）
+
+**背景**：`outline_service.py` 的 `generate_chapter_outlines` 使用 `max_tokens=4000`，对 40 章来说远远不够，导致只能生成 5-6 章大纲。
+
+**要求**：
+- 将 `generate_chapter_outlines` 中的 `max_tokens=4000` 提升至 `max_tokens=12000`
+
+**验收标准**：
+- `max_tokens` 参数值为 12000
+- 对 40 章的卷纲，`generate_chapter_outlines` 能返回完整的 40 章大纲列表
 
 ---
 
 ## 四、方案评估
 
-### 方案 A — 章节数量自动计算（对应 R2）
+### 方案 A — 保存大纲到 Outline 表（对应 R1）
 
-**可行性**：高。纯后端逻辑，不涉及 LLM 调用变更，只需在请求处理入口计算并覆盖 `chapters_per_volume`。
+**可行性**：高。`OutlineService` 的 `upsert_volume_outline` 和 `upsert_chapter_outline` 方法已存在且功能正确，只需在长篇生成流程中调用。需要在 `long_form_generation_helpers.py` 中引入 `OutlineService`，或在 `novel_generator.py` 的循环中调用。
 
-**推荐**：实现，但优先级低于 R1（R1 是根本原因修复）。
+**推荐**：在 `novel_generator.py` 的卷循环中，`generate_volume_outline` 调用后立即持久化，保持关注点分离。
 
-### 方案 B — 卷大纲生成 token 限制修复（对应 R1）
+### 方案 B — 修复计算顺序（对应 R2）
 
-**可行性**：高。直接修改 `max_tokens` 参数，风险极低。增加重试逻辑也是标准模式。
+**可行性**：高。纯代码重排，将 `auto_calc_chapters` 计算块移至函数顶部，风险极低。
 
-**推荐**：优先实现，这是最直接的根本原因修复。
+**推荐**：优先实现，是最简单的修复。
 
-### 方案 C — 字数约束强化（对应 R3）
+### 方案 C — `generate_master_outline` 参数修复（对应 R3）
 
-**可行性**：高。修改常量和 prompt 文本，增加循环逻辑。
+**可行性**：高。添加一个参数，修改调用方传参，风险低。需要确保调用顺序：先计算 `chapters_per_vol`，再调用 `generate_master_outline`。
 
-**推荐**：实现，但注意续写次数增加会线性增加 API 调用成本，3次上限是合理的平衡点。
+**推荐**：与 R2 一起实现，因为两者都涉及 `chapters_per_vol` 的计算顺序。
+
+### 方案 D — 提升 token 上限（对应 R4）
+
+**可行性**：高。单行修改，风险极低。
+
+**推荐**：立即实现。
 
 ### 推荐实现顺序
 
-1. **R1**（token 修复）— 最高优先级，直接解决用户反馈的核心问题
-2. **R3**（字数强化）— 中优先级，改善生成质量
-3. **R2**（自动计算）— 低优先级，改善用户体验
+1. **R2**（计算顺序）— 最先修复，为 R3 提供正确的 `chapters_per_vol`
+2. **R3**（master outline 参数）— 依赖 R2 的计算顺序修复
+3. **R1**（保存大纲）— 核心功能修复，解决前端显示 0 章问题
+4. **R4**（token 上限）— 解决前端显示 5-6 章问题
 
 ---
 
@@ -143,3 +141,4 @@ return await generate_and_parse_json(client, prompt, max_tokens=6000, fallback=f
 - 不修改数据库 schema
 - 不修改质量评估逻辑
 - 不修改 KG/StoryBible 相关逻辑
+- 不修改 CHANGE-051 已完成的 token 修复（`generate_volume_outline` max_tokens=12000 已正确）

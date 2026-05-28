@@ -1,3 +1,132 @@
+# Gate 1 评审报告 — CHANGE-053 长篇小说章节规划显示修复
+
+**评审类型**: plan_review（第 1 轮）
+**评审时间**: 2026-05-28
+**评审对象**: requirements.md + tasks.md（6 个任务）
+
+---
+
+## 一、代码验证结果
+
+评审前对需求文档中的所有根因描述进行了代码核实。
+
+### 根因 1 — 章节大纲未保存到 Outline 表（已确认）
+
+`novel_generator.py` 第 941-963 行的卷循环中，`generate_volume_outline` 调用后直接进入 `generate_volume_chapters`，全程无任何 `upsert_volume_outline` 或 `upsert_chapter_outline` 调用。`OutlineService.upsert_volume_outline`（第 125 行）和 `upsert_chapter_outline`（第 146 行）方法均已存在且实现完整。`get_chapter_outlines` 查询 `level="chapter"` 的 Outline 记录，长篇流程不写入则前端显示 0 章。**根因描述准确。**
+
+### 根因 2 — `auto_calc_chapters` 计算顺序错误（已确认）
+
+`novel_generator.py` 第 861-865 行 `initialize_progress` 使用 `request.chapters_per_volume`，第 881-888 行 `update_novel` 使用 `request.chapters_per_volume`，第 899-921 行才执行 `auto_calc_chapters` 计算。当 `auto_calc_chapters=True` 时，进度追踪和小说元数据存储的是原始请求值而非计算值。**根因描述准确。**
+
+### 根因 3 — `generate_master_outline` 传入错误章节数（已确认）
+
+`long_form_generation_helpers.py` 第 62-68 行 prompt 格式化使用 `request.chapters_per_volume`，第 86-96 行 fallback 数据的 `chapter_types` 计算也使用 `request.chapters_per_volume`。函数签名无 `chapters_per_vol` 参数。**根因描述准确。**
+
+### 根因 4 — `generate_chapter_outlines` max_tokens 不足（已确认）
+
+`outline_service.py` 第 234 行 `generate_and_parse_json(client, prompt, max_tokens=4000, fallback=[])`，40 章 JSON 约需 6000-8000 token，4000 token 导致截断。**根因描述准确。**
+
+---
+
+## 二、完整性评审
+
+### 需求覆盖情况
+
+| 根本原因 | 对应需求 | 对应任务 | 覆盖状态 |
+|---------|---------|---------|---------|
+| 根因 1：大纲未持久化 | R1 | T3、T6 | 完整覆盖 |
+| 根因 2：计算顺序错误 | R2 | T1、T5 | 完整覆盖 |
+| 根因 3：master outline 章节数错误 | R3 | T2、T5 | 完整覆盖 |
+| 根因 4：max_tokens 不足 | R4 | T4 | 完整覆盖 |
+
+### 遗漏场景
+
+**SHOULD FIX — S1**：T3 要求在 `vol_outline = await generate_volume_outline(...)` 之后、`generate_volume_chapters(...)` 之前插入持久化逻辑，但 `vol_outline` 的结构（`chapters` 字段的格式）在 tasks.md 中未说明。`generate_volume_outline` 的 fallback 数据（`long_form_generation_helpers.py` 第 181-193 行）中每章对象包含 `chapter` 字段作为章节编号，但 LLM 实际返回的章节对象是否保证包含 `chapter` 字段未在需求中明确。`upsert_chapter_outline` 的 `chapter_number` 参数需要从 `vol_outline["chapters"]` 中提取，若字段缺失会导致 `chapter_number=0` 或 KeyError。建议在 T3 中明确：从 `ch.get("chapter", idx)` 提取章节编号（idx 为枚举索引），与 `outline_service.py` 第 240 行现有模式保持一致。
+
+**SHOULD FIX — S2**：T3 的持久化逻辑需要 `OutlineService` 实例，但 `generate_long_form_background` 函数当前未导入或实例化 `OutlineService`（`get_outline_service` 仅在第 515 行和第 702 行的其他函数中以局部 import 方式使用）。tasks.md 未说明如何获取 `OutlineService` 实例（局部 import + `get_outline_service()` 还是通过参数传入）。建议在 T3 中明确使用 `from src.api.services.outline_service import get_outline_service` 局部 import，与现有代码风格一致。
+
+---
+
+## 三、可行性评审
+
+### T1 — 将 `auto_calc_chapters` 计算块移至函数顶部
+
+**可行**。代码确认：计算块（第 899-921 行）与 `initialize_progress`（第 861 行）之间无数据依赖，`math` 模块已在文件顶层导入（第 6 行）。移动后 `initialize_progress` 和 `update_novel` 改用 `chapters_per_vol` 是直接替换，无架构冲突。
+
+### T2 — 为 `generate_master_outline` 添加 `chapters_per_vol` 参数
+
+**可行**。函数签名添加参数、内部替换引用、调用方传参均为直接修改，无依赖风险。需注意 fallback 数据中 `chapter_types` 的所有 `request.chapters_per_volume` 引用（第 86-96 行共 5 处）均需替换，tasks.md 描述"所有使用 `request.chapters_per_volume` 的地方"已覆盖，但实现者需注意 fallback 块中的 5 处引用不要遗漏。
+
+**SHOULD FIX — S3**：T2 依赖 T1（tasks.md 已标注），但 T2 的验收标准未明确测试 fallback 路径中的 `chapter_types` 是否也使用了 `chapters_per_vol`。建议在 T5 的测试用例 `test_auto_calc_chapters_master_outline_uses_correct_value` 中增加对 fallback 数据 `chapter_types` 的断言，确保 5 处替换均被覆盖。
+
+### T3 — 在卷循环中持久化卷纲和章纲到 Outline 表
+
+**可行，有实现细节需明确（见 S1、S2）**。`upsert_volume_outline` 和 `upsert_chapter_outline` 均已实现且功能正确，try/except 包裹方案与现有卷级异常处理模式（第 991-1005 行）一致。
+
+### T4 — 将 `generate_chapter_outlines` 的 max_tokens 从 4000 提升至 12000
+
+**可行**。单行修改，无依赖风险。注意：`outline_service.py` 第 204 行的 `generate_volume_outlines` 函数也使用 `max_tokens=4000`，该函数用于短篇/标准流程的卷纲生成，需求文档未要求修改此处，评审不对此提出要求，但实现者应注意不要误改。
+
+### T5 — 为 T1/T2 新增单元测试
+
+**可行**。测试文件路径 `tests/test_novel_generator_auto_calc.py` 位于 `tests/` 根目录，与现有测试文件组织方式不一致（现有单元测试均在 `tests/unit/` 下，如 `tests/unit/test_change052_chapter_constraints.py`）。
+
+**SHOULD FIX — S4**：建议将测试文件路径改为 `tests/unit/test_change053_auto_calc.py`，与项目现有测试目录结构保持一致。
+
+### T6 — 为 T3 新增单元测试
+
+**可行**。同 T5，测试文件路径 `tests/test_novel_generator_outline_persist.py` 位于 `tests/` 根目录，建议改为 `tests/unit/test_change053_outline_persist.py`（见 S4）。
+
+---
+
+## 四、粒度合理性评审
+
+6 个任务的拆分合理。批次一（T1+T2+T3+T4）为实现任务，批次二（T5+T6）为测试任务，依赖关系标注清晰（T5 依赖 T1/T2，T6 依赖 T3）。T4 独立无依赖，可与 T1/T2/T3 并行执行，粒度适当。
+
+---
+
+## 五、验收标准评审
+
+- **R1/T3**：验收标准"前端章节规划显示的章节数量与 `chapters_per_vol` 一致"是端到端验证，需要数据库和前端联调，单元测试无法覆盖。T6 的单元测试覆盖了持久化逻辑本身，端到端验证可作为手动验收项，当前描述可接受。
+- **R2/T1**：验收标准明确了 `auto_calc_chapters=True` 和 `False` 两种路径，可验证。
+- **R3/T2**：验收标准未明确 fallback 路径的覆盖（见 S3）。
+- **R4/T4**：验收标准为"max_tokens 修改后单测通过"，可验证。
+
+---
+
+## 六、风险识别
+
+| 风险 | 级别 | 说明 |
+|-----|-----|-----|
+| T3 章节编号提取字段不确定 | 中 | LLM 返回的章节对象若缺少 `chapter` 字段，持久化会写入错误的 chapter_number（见 S1） |
+| T4 max_tokens 提升至 12000，API 调用成本增加 | 低 | `generate_chapter_outlines` 仅在用户手动触发时调用，非长篇自动流程，影响有限 |
+| T1 移动计算块后 `words_per_chapter` 变量赋值顺序 | 低 | 第 897 行 `words_per_chapter = request.words_per_chapter` 在计算块之前，移动后需确认 `words_per_chapter` 不被 `auto_calc_chapters` 块引用（经确认：计算块只引用 `request.words_per_chapter`，无问题） |
+
+---
+
+## 七、评审结论
+
+### MUST FIX 项（阻塞流程）
+
+无。
+
+### SHOULD FIX 项（不阻塞，建议修复）
+
+- **S1**（T3）：明确从 `ch.get("chapter", idx)` 提取章节编号，与 `outline_service.py` 第 240 行现有模式保持一致，避免 KeyError 或写入 `chapter_number=0`
+- **S2**（T3）：明确使用 `from src.api.services.outline_service import get_outline_service` 局部 import 获取服务实例，与现有代码风格一致
+- **S3**（T5）：`test_auto_calc_chapters_master_outline_uses_correct_value` 测试用例增加对 fallback 数据 `chapter_types` 的断言，确保 `generate_master_outline` 中 5 处 `request.chapters_per_volume` 引用均被替换
+- **S4**（T5/T6）：测试文件路径改为 `tests/unit/test_change053_*.py`，与项目现有测试目录结构一致
+
+---
+
+## 结论
+
+**APPROVED**
+
+需求文档对 4 个根因的分析经代码验证全部准确，任务拆分合理，依赖关系清晰，无 MUST FIX 项。4 个 SHOULD FIX 项均为实现细节建议，不阻塞进入实现阶段。建议实现者在 T3 中参考 `outline_service.py` 第 239-242 行的现有章节编号提取模式，确保持久化逻辑的健壮性。
+
+---
+
 # Gate 1 评审报告 — CHANGE-052 长篇小说章节数量与字数约束修复
 
 **评审类型**: plan_review（第 1 轮）

@@ -1,6 +1,6 @@
-# CHANGE-051 编码报告
+# CHANGE-053 编码报告
 
-**日期**: 2026-05-27  
+**日期**: 2026-05-28  
 **执行者**: Coder Agent
 
 ---
@@ -9,16 +9,35 @@
 
 | 任务 | 文件 | 状态 |
 |------|------|------|
-| T1 | src/core/llm/token_tracker.py（新建） | 完成 |
-| T2 | src/core/config.py | 完成 |
-| T3 | src/core/llm/client.py | 完成 |
-| T4 | src/core/llm/chapter_generator.py | 完成 |
-| T5 | src/api/models/db_models.py | 完成 |
-| T6 | src/api/routes/llm_config.py（新建） | 完成 |
-| T7 | src/api/routes/__init__.py + src/api/main.py | 完成 |
-| T8 | src/api/main.py lifespan | 完成 |
-| T9 | frontend/src/views/LLMSettings.vue（新建） | 完成 |
-| T10 | frontend/src/router/index.js + frontend/src/App.vue | 完成 |
+| T1 | src/api/services/novel_generator.py | 完成 |
+| T2 | src/api/services/long_form_generation_helpers.py + novel_generator.py | 完成 |
+| T3 | src/api/services/novel_generator.py | 完成 |
+| T4 | src/api/services/outline_service.py | 完成 |
+
+---
+
+## 关键实现说明
+
+### T1 — auto_calc_chapters 计算前移（novel_generator.py）
+
+`chapters_per_vol` 计算块（含 `total_volumes`、`words_per_chapter` 赋值）整体移至函数入口处，在 `initialize_progress` 和 `update_novel` 之前执行。两处调用的 `chapters_per_volume` 参数均改为 `chapters_per_vol`，确保元数据存储的是实际使用值。
+
+### T2 — generate_master_outline 新增 chapters_per_vol 参数
+
+`long_form_generation_helpers.py` 中函数签名新增 `chapters_per_vol: int`，内部所有 `request.chapters_per_volume` 引用（prompt format + fallback 数据 5 处）替换为 `chapters_per_vol`。`novel_generator.py` 调用方传入 `chapters_per_vol=chapters_per_vol`。
+
+### T3 — 卷大纲持久化（novel_generator.py）
+
+在 `generate_volume_outline` 调用后、`generate_volume_chapters` 调用前插入持久化逻辑：
+- `outline_service.upsert_volume_outline(novel_id, vol_num, vol_outline)` 保存卷大纲
+- 遍历 `vol_outline.get("chapters", [])` 逐章调用 `upsert_chapter_outline`，章节编号使用 `ch.get("chapter", idx + 1)` fallback
+- 整体用 try/except 包裹，失败记录 warning 不中断主流程
+- 通过延迟导入 `get_outline_service()` 获取实例，与项目其他地方模式一致
+
+### T4 — outline_service.py max_tokens 提升
+
+`generate_chapter_outlines` 第 234 行：`max_tokens=4000` → `max_tokens=12000`，满足 40 章大纲 JSON 的生成需求。
+
 
 ---
 

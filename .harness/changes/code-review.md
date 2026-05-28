@@ -235,3 +235,81 @@
 prompt 中"建议"与"强制要求"并存的语义设计经评估为合理的双层约束，不构成缺陷。
 
 剩余轻微问题（前端预览一致性）为已知 UX 优化项，可在后续迭代中处理，不阻塞本次合并。
+
+---
+
+# CHANGE-053 编码评审报告
+
+**日期**: 2026-05-28
+**评审者**: Reviewer Agent
+**评审轮次**: 第 1 轮
+**评审类型**: code_review
+
+---
+
+## 1. 需求符合性
+
+| 需求 | 实现状态 | 说明 |
+|---|---|---|
+| R1 — 保存章节大纲到 Outline 表 | 已实现 | `novel_generator.py` 卷循环中，`generate_volume_outline` 后立即调用 `upsert_volume_outline` + `upsert_chapter_outline`，try/except 包裹，失败记录 warning 后继续 |
+| R2 — 修复 `auto_calc_chapters` 计算顺序 | 已实现 | 计算块移至函数顶部，`initialize_progress` 和 `update_novel` 均改用 `chapters_per_vol` |
+| R3 — `generate_master_outline` 接受正确章节数 | 已实现 | 新增 `chapters_per_vol: int` 参数，prompt 格式化和 fallback 数据均使用该值 |
+| R4 — 提升 `generate_chapter_outlines` max_tokens | 已实现 | `outline_service.py` 第 234 行从 4000 改为 12000 |
+
+所有 4 个需求均已覆盖，无遗漏。
+
+---
+
+## 2. 代码质量
+
+**命名与结构**：变量命名清晰（`chapters_per_vol`、`computed_chapters_per_vol`），注释标注了 T1/T2/T3 与需求对应关系，可读性良好。
+
+**日志**：结构化日志字段完整，`auto_calc_chapters_clamped` 和 `volume_outline_persisted` / `volume_outline_persist_failed` 均有足够上下文。
+
+**fallback 逻辑**：T3 的 `ch_num = ch.get("chapter", idx + 1)` 使用卷内相对章号（从 1 开始），与 `upsert_chapter_outline(novel_id, volume_number, chapter_number, content)` 的语义一致，正确。
+
+---
+
+## 3. 安全性
+
+无安全隐患。T3 的 `except Exception as persist_error` 仅记录 `str(persist_error)`，不向外暴露内部信息。
+
+---
+
+## 4. 性能
+
+**SHOULD FIX（不阻塞）**：T3 的章节大纲持久化在卷循环内逐章串行 `await upsert_chapter_outline`。对 40-60 章/卷、10 卷的场景，每卷最多 60 次数据库写入，总计最多 600 次。每次写入是独立的 upsert，无批量接口可用（现有 `OutlineService` 未提供批量方法）。在当前架构下可接受，但若后续出现性能瓶颈，可考虑为 `OutlineService` 添加批量 upsert 方法。
+
+---
+
+## 5. 兼容性
+
+- `auto_calc_chapters=False` 时，`chapters_per_vol = request.chapters_per_volume`，行为与修改前完全一致，向后兼容。
+- `generate_master_outline` 新增必填参数 `chapters_per_vol`，唯一调用方 `novel_generator.py` 已同步更新，无其他调用方。
+- `max_tokens=12000` 提升不影响现有接口契约，仅影响 LLM 调用成本，可接受。
+
+---
+
+## 6. 规范遵循
+
+- 代码风格与项目一致（async/await、structlog、from-import 延迟导入）。
+- 延迟导入 `from src.api.services.outline_service import get_outline_service` 在循环内每次执行，但 Python 模块缓存保证无性能损耗。
+- 无新增外部依赖。
+
+---
+
+## 7. 问题汇总
+
+| # | 严重程度 | 类型 | 描述 |
+|---|---|---|---|
+| 1 | 轻微 | 性能 | T3 逐章串行写入，最坏情况 600 次 DB upsert；当前可接受，建议后续批量化 |
+
+无 MUST FIX 项。
+
+---
+
+## 结论
+
+**APPROVED**
+
+4 个需求均已正确实现，无 MUST FIX 项。代码质量、安全性、兼容性均达标，可进入下一阶段。

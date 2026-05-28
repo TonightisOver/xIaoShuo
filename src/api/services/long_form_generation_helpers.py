@@ -42,12 +42,15 @@ async def _emit_progress(
 async def generate_master_outline(
     novel_id: str,
     request: Any,
+    chapters_per_vol: int,
 ) -> dict[str, Any]:
     """Generate master outline for long-form novel.
 
     Args:
         novel_id: Novel ID
         request: LongFormNovelRequest
+        chapters_per_vol: Actual chapters per volume (may differ from request.chapters_per_volume
+            when auto_calc_chapters is enabled)
 
     Returns:
         Master outline dict
@@ -64,7 +67,7 @@ async def generate_master_outline(
         novel_type=request.novel_type,
         target_words=request.target_words,
         volumes=request.volumes,
-        chapters_per_volume=request.chapters_per_volume,
+        chapters_per_volume=chapters_per_vol,
         words_per_chapter=request.words_per_chapter,
     )
 
@@ -83,11 +86,11 @@ async def generate_master_outline(
             "title": f"第{i}卷",
             "summary": "本卷主要情节",
             "chapter_types": {
-                "main_advance": int(request.chapters_per_volume * 0.45),
-                "climax": int(request.chapters_per_volume * 0.12),
-                "aftermath": int(request.chapters_per_volume * 0.08),
-                "daily": int(request.chapters_per_volume * 0.15),
-                "setup": int(request.chapters_per_volume * 0.15),
+                "main_advance": int(chapters_per_vol * 0.45),
+                "climax": int(chapters_per_vol * 0.12),
+                "aftermath": int(chapters_per_vol * 0.08),
+                "daily": int(chapters_per_vol * 0.15),
+                "setup": int(chapters_per_vol * 0.15),
                 "filler": 0,
             },
             "key_events": [],
