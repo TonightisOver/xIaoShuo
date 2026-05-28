@@ -51,7 +51,8 @@ CHAPTER_TIMEOUT_SECONDS = 600
 # Word count thresholds for long-form mode
 WORD_COUNT_MIN_RATIO = 0.8  # 80% of target = minimum acceptable
 WORD_COUNT_MAX_RATIO = 1.2  # 120% of target = maximum acceptable
-WORD_COUNT续写阈值 = 0.6  # Below 60% triggers continuation
+WORD_COUNT续写阈值 = 0.75  # Below 75% triggers continuation
+MAX_CONTINUATION_ATTEMPTS = 3  # 最多续写次数
 
 
 def _check_word_count(
@@ -128,7 +129,7 @@ async def _continuation_generation(
     if style_instruction:
         continuation_prompt = f"{style_instruction}\n\n{continuation_prompt}"
 
-    continued = await client.generate(continuation_prompt, max_tokens=4000, use_flash=True)
+    continued = await client.generate(continuation_prompt, max_tokens=6000, use_flash=True)
     return original_content + "\n\n" + continued
 
 
@@ -316,12 +317,15 @@ async def _generate_single_chapter_inner(
                 warning=warning,
             )
 
-        # Continuation for very short chapters
+        # Continuation loop for short chapters — up to MAX_CONTINUATION_ATTEMPTS times
         min_threshold = int(target_words * WORD_COUNT续写阈值)
-        if word_count < min_threshold:
+        for attempt in range(MAX_CONTINUATION_ATTEMPTS):
+            if word_count >= min_threshold:
+                break
             logger.info(
-                "chapter_too_short_initiating_continuation",
+                "chapter_continuation_attempt",
                 chapter=chapter_outline.get("chapter", 0),
+                attempt=attempt + 1,
                 word_count=word_count,
                 target=target_words,
             )
@@ -336,18 +340,21 @@ async def _generate_single_chapter_inner(
                     current_words=word_count,
                     style_instruction=style_instruction,
                 )
-                word_count = len(content)
+                word_count = len(content)  # 每次续写后重新计算实际字数
                 logger.info(
                     "continuation_completed",
                     chapter=chapter_outline.get("chapter", 0),
+                    attempt=attempt + 1,
                     new_word_count=word_count,
                 )
             except Exception as e:
                 logger.warning(
                     "continuation_failed",
                     chapter=chapter_outline.get("chapter", 0),
+                    attempt=attempt + 1,
                     error=str(e),
                 )
+                break
 
     # 8. 提取 chapter_type 到返回值（由调用方负责 DB 更新）
     chapter_type = blueprint.get("chapter_type") if blueprint else None

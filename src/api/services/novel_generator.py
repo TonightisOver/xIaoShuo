@@ -3,6 +3,7 @@
 负责执行小说生成任务，通过事件总线推送实时进度。
 """
 
+import math
 from typing import Any
 
 import structlog
@@ -21,6 +22,7 @@ from src.api.services.long_form_generation_helpers import (
     generate_volume_quality_report,
 )
 from src.api.services.long_form_progress_service import get_long_form_progress_service
+from src.api.services.novel_context_service import NovelContextBuilder
 from src.api.services.novel_manager import get_novel_manager
 from src.api.services.progress_event_bus import (
     EventType,
@@ -28,7 +30,6 @@ from src.api.services.progress_event_bus import (
     get_event_bus,
 )
 from src.api.services.task_manager import get_task_manager
-from src.api.services.novel_context_service import NovelContextBuilder
 from src.core.langgraph.graph import create_novel_graph
 
 logger = structlog.get_logger(__name__)
@@ -893,8 +894,31 @@ async def generate_long_form_background(
 
         # Stage 2: Generate volume by volume
         total_volumes = request.volumes
-        chapters_per_vol = request.chapters_per_volume
         words_per_chapter = request.words_per_chapter
+
+        # 自动计算每卷章节数
+        if request.auto_calc_chapters:
+            total_chapters = math.ceil(request.target_words / request.words_per_chapter)
+            computed_chapters_per_vol = math.ceil(total_chapters / request.volumes)
+            chapters_per_vol = max(20, min(60, computed_chapters_per_vol))
+            if chapters_per_vol != computed_chapters_per_vol:
+                logger.warning(
+                    "auto_calc_chapters_clamped",
+                    computed=computed_chapters_per_vol,
+                    clamped=chapters_per_vol,
+                    target_words=request.target_words,
+                    words_per_chapter=request.words_per_chapter,
+                    volumes=request.volumes,
+                )
+            logger.info(
+                "auto_calc_chapters",
+                target_words=request.target_words,
+                words_per_chapter=request.words_per_chapter,
+                total_chapters=total_chapters,
+                chapters_per_vol=chapters_per_vol,
+            )
+        else:
+            chapters_per_vol = request.chapters_per_volume
 
         global_chapter_start = 1
         all_chapters_generated = []

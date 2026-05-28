@@ -1,108 +1,145 @@
 # CHANGE-051 需求文档
 
-**日期**: 2026-05-27  
-**优先级**: P1 × 2，P2 × 1
+**日期**: 2026-05-27
+**状态**: 待实现
+**优先级**: P0（核心功能缺陷）
 
 ---
 
-## 1. 背景与目标
+## 一、问题背景
 
-当前 LLM 客户端（`src/core/llm/client.py`）使用单一全局模型配置，无 token 用量追踪，也不支持按场景切换模型或在前端动态配置 API 参数。本次需求在不破坏现有接口的前提下，为系统增加三项能力：
+用户设计了一部 121 万字长篇小说，系统实际只生成了 60 章（10卷×6章），平均每章约 5000 字，远未达到目标。具体表现：
 
-1. **Token 监控** — 记录每次 LLM 调用的 prompt/completion/total tokens，并提供查询接口
-2. **双模型策略** — 章节生成使用 `v4-flash`（快速/低成本），重要决策（规划、蓝图、质量评估等）使用 `v4-pro`（高质量）
-3. **前端可配置模型** — 用户可在前端界面自定义 base_url、api_key、模型名称，并持久化到数据库
-
----
-
-## 2. 功能需求
-
-### 2.1 Token 监控机制（P1）
-
-**涉及文件**: `src/core/llm/client.py`、新增 `src/core/llm/token_tracker.py`、新增路由合并至 `src/api/routes/llm_config.py`
-
-**行为描述**:
-- `LLMClient.generate()` 调用成功后，从 `AIMessage.response_metadata` 中提取 `token_usage`（langchain-openai 标准字段：`prompt_tokens`、`completion_tokens`、`total_tokens`）
-- 将每次调用记录写入内存聚合器（`TokenTracker` 单例），包含：时间戳、模型名、prompt_tokens、completion_tokens、total_tokens
-- 提供 REST 查询接口 `GET /api/v1/llm/token-stats`，返回：总调用次数、累计各类 token 数、按模型分组统计、最近 50 条调用记录
-
-**约束**:
-- token 记录仅保存在内存中（进程重启后清零），不写数据库，避免引入额外 schema 变更
-- 若 API 响应中不含 token 信息（如某些兼容接口），静默跳过，不报错；`TokenTracker` 内部维护 `records_skipped` 计数器记录跳过次数，`GET /token-stats` 响应中暴露该字段
-- `TokenTracker` 最多保留最近 1000 条记录（循环覆盖），防止内存无限增长
-
-### 2.2 双模型策略（P1）
-
-**涉及文件**: `src/core/config.py`、`src/core/llm/client.py`、`src/core/llm/chapter_generator.py`
-
-**行为描述**:
-- 在 `Settings` 中新增两个模型配置字段：
-  - `DEEPSEEK_MODEL_FLASH: str = "deepseek-v4-flash"` — 用于章节正文生成
-  - `DEEPSEEK_MODEL_PRO: str = "deepseek-v4-pro"` — 用于规划/蓝图/质量评估等决策场景
-- `LLMClient` 初始化时创建两个 `ChatOpenAI` 实例：`self.llm_flash` 和 `self.llm_pro`
-- `generate()` 方法新增 `use_flash: bool = False` 参数，`True` 时使用 flash 模型，默认使用 pro 模型
-- `chapter_generator.py` 中章节正文生成调用（步骤 5 的 `client.generate(prompt, max_tokens=8000)` 和续写调用 `_continuation_generation`）传入 `use_flash=True`；规划/蓝图调用（步骤 3 的 `client.generate(planning_prompt, max_tokens=3000)`）保持默认（pro）
-
-**约束**:
-- 两个模型实例共享同一 `base_url` 和 `api_key`（来自 Settings 或激活的数据库配置）
-- `use_flash` 为可选参数，默认 `False`，向后兼容所有现有调用方
-- 现有 `DEEPSEEK_MODEL` 字段保留，不变（向后兼容 .env 配置）；`DEEPSEEK_MODEL_FLASH` 和 `DEEPSEEK_MODEL_PRO` 是独立的新增字段，与 `DEEPSEEK_MODEL` 并列存在，不存在别名或继承关系
-
-### 2.3 前端可配置模型（P2）
-
-**涉及文件**: `src/api/models/db_models.py`、新增 `src/api/routes/llm_config.py`、新增 `frontend/src/views/LLMSettings.vue`、`frontend/src/router/index.js`（或 `.ts`）、主导航组件
-
-**后端行为**:
-- 新增 `LLMConfig` 数据库模型，字段：
-  - `id` (PK, Integer, autoincrement)
-  - `name: str(100)` — 配置名称（如"我的 DeepSeek"）
-  - `base_url: str(500)` — API base URL
-  - `api_key: str(500)` — API Key（存储明文，响应时脱敏显示 `****` + 末4位）
-  - `model_flash: str(100)` — 快速模型名
-  - `model_pro: str(100)` — 高质量模型名
-  - `is_active: bool` — 是否为当前激活配置（同一时刻最多一条为 True）
-  - `created_at`, `updated_at`
-- 新增路由文件 `src/api/routes/llm_config.py`，前缀 `/api/v1/llm`：
-  - `GET /configs` — 列出所有配置（api_key 脱敏）
-  - `POST /configs` — 创建新配置
-  - `PUT /configs/{config_id}` — 更新配置
-  - `DELETE /configs/{config_id}` — 删除配置
-  - `POST /configs/{config_id}/activate` — 激活指定配置（同时将其他配置设为非激活）
-  - `GET /token-stats` — token 统计查询（与 2.1 合并到同一路由文件）
-- `LLMClient` 初始化时，优先使用传入的 `LLMConfig` 对象参数；若无则回退到 `Settings` 中的环境变量。应用启动时（`src/api/main.py` 的 lifespan），查询数据库中激活的 `LLMConfig`，调用 `LLMClient(llm_config=active_config)` 初始化全局单例；无激活配置时以 Settings 初始化。`get_llm_client()` 保持同步，返回已初始化的全局单例，所有调用点（包括 `chapter_generator.py`、`chapter_rewriter.py`、`helpers.py` 等）均通过该单例获取客户端，数据库激活配置对所有生成行为生效
-
-**前端行为**:
-- 新增 `frontend/src/views/LLMSettings.vue` — LLM 配置管理页面
-  - 展示配置列表（名称、base_url、模型名、激活状态）
-  - 支持新增、编辑、删除、激活操作
-  - 展示 token 统计面板（总调用次数、累计 tokens、按模型分组）
-- 在路由文件中注册 `/settings/llm`
-- 在主导航中添加入口（位置：现有导航栏末尾）
+- 卷7 只有 1 章，卷8 没有章节——后面几卷被严重截断
+- 总章节数 60 章 vs 应有约 242 章（121万÷5000字/章）
+- 每章字数难以保证在目标范围内
 
 ---
 
-## 3. 非功能需求
+## 二、根本原因分析（基于代码审查）
 
-- **向后兼容**: 所有现有 API 接口和调用方不受影响
-- **无破坏性迁移**: 新增数据库表通过 `init_db()` 的 `create_all` 自动创建，无需手动迁移脚本
-- **安全**: api_key 在所有 GET 响应中脱敏（仅显示 `****xxxx` 末4位）
-- **测试**: 每个新模块需有对应单元测试
+### 2.1 章节数量不足的根本原因
+
+**原因 A：`generate_volume_outline` 的 `max_tokens=6000` 硬限制导致 JSON 截断**
+
+`long_form_generation_helpers.py` 第 200 行：
+```python
+result = await generate_and_parse_json(client, prompt, max_tokens=6000, fallback=fallback_data)
+```
+
+当 `chapters_per_volume=40` 时，每章的 JSON 对象约 200-300 token，40 章需要约 8000-12000 token。6000 token 的限制导致 JSON 在中间被截断，`safe_json_parse` 的 `_extract_json_block` 正则只能匹配完整的 `{...}` 块，截断的 JSON 无法被修复，最终触发 fallback。
+
+**fallback 的问题**：`fallback_data` 中的 `chapters` 列表是正确填充的（`chapters_per_volume` 个章节），但 `safe_json_parse` 在 JSON 截断时会尝试提取部分 JSON——如果提取到的是一个只有少数章节的不完整对象，就会返回那个不完整对象而非 fallback。这解释了为什么卷7只有1章而不是0章。
+
+**原因 B：`generate_master_outline` 同样使用 `max_tokens=6000`**
+
+`long_form_generation_helpers.py` 第 108 行：
+```python
+return await generate_and_parse_json(client, prompt, max_tokens=6000, fallback=fallback_data)
+```
+
+总纲 prompt 要求 LLM 为每卷输出 `chapter_types` 分布（含6个字段），10卷的总纲 JSON 也可能在 6000 token 内被截断，导致后面几卷的 `chapter_types` 丢失，进而影响卷纲生成时的章节类型分布计算。
+
+**原因 C：前端 `chapters_per_volume` 默认值与实际行为不匹配**
+
+`Create.vue` 第 190 行：前端默认 `chapters_per_volume: 40`，但用户截图显示每卷约 6 章。这说明用户可能手动改小了该值，或者 LLM 在 token 截断后只输出了少量章节。
+
+### 2.2 字数约束弱的根本原因
+
+**原因 D：续写只触发一次，且阈值过低**
+
+`chapter_generator.py` 第 320-350 行：续写仅在 `word_count < target_words * 0.6`（60%阈值）时触发，且只触发一次。如果第一次续写后仍不足 80%，不会再次续写。
+
+**原因 E：`CHAPTER_GENERATION_PROMPT_WITH_WORD_COUNT` 字数约束表述不够强**
+
+当前 prompt 第 8 条规则：`【字数约束】本章目标字数为 {target_words} 字，允许浮动范围为 ±20%`。这是软性要求，LLM 经常不遵守。
+
+**原因 F：`_continuation_generation` 的 `max_tokens=4000` 限制**
+
+续写时 `max_tokens=4000`，如果需要补充 2000+ 字，可能仍然不足。
 
 ---
 
-## 4. 不在范围内
+## 三、需求规格
 
-- Redis/Celery 层面的 token 持久化
-- 多用户权限隔离（当前系统无用户体系）
-- LLM 调用的流式（streaming）支持
-- 对 `chapter_rewriter.py`、`helpers.py` 等其他 LLM 调用点的 flash/pro 切换（仅处理 `chapter_generator.py`）
-- api_key 加密存储
+### 需求 R1：修复卷纲生成 token 截断问题（P0）
+
+**背景**：这是导致章节数量不足的直接原因。
+
+**要求**：
+- `generate_volume_outline` 的 `max_tokens` 从 6000 提升至 12000
+- `generate_master_outline` 的 `max_tokens` 从 6000 提升至 8000
+- 在 `generate_volume_outline` 中增加章节数量验证：若返回的 `chapters` 数量 < `chapters_per_volume * 0.8`，则触发重试（最多2次），重试时在 prompt 中明确要求"必须输出完整的 {chapters_per_volume} 章"
+- 重试失败后使用 fallback（当前 fallback 逻辑正确，保留）
+
+**验收标准**：
+- 对于 `chapters_per_volume=40`，每卷生成的章节数 ≥ 32（80%）
+- 对于 `chapters_per_volume=6`，每卷生成的章节数 = 6（100%）
+- 10卷全部生成，无卷被跳过
+
+### 需求 R2：章节数量自动计算与弹性分配（P1）
+
+**背景**：用户希望根据目标字数自动推算章节数，而非手动计算。
+
+**要求**：
+- 在 `LongFormNovelRequest` 中新增字段 `auto_calc_chapters: bool = False`
+- 当 `auto_calc_chapters=True` 时，后端自动计算 `total_chapters = target_words / words_per_chapter`，并将其均匀分配到各卷（`chapters_per_volume = total_chapters / volumes`，向上取整）
+- `chapters_per_volume` 字段改为"建议值"语义：在 `VOLUME_OUTLINE_PROMPT` 中将"本卷章节数：约 {chapters_count} 章"的措辞改为"本卷章节数：建议 {chapters_count} 章（可在 ±30% 范围内根据情节节奏调整，但不得少于 {chapters_count_min} 章）"
+- 前端在长篇模式下新增"自动计算章节数"复选框，勾选后隐藏"每卷章数"输入框并显示计算结果预览
+
+**验收标准**：
+- `target_words=1210000, words_per_chapter=5000, volumes=10` 时，`auto_calc_chapters=True` 自动计算出 `chapters_per_volume=25`（1210000/5000/10=24.2，向上取整）
+- 前端显示"预计约 242 章，每卷约 25 章"
+- 后端 API 接受 `auto_calc_chapters=true` 并正确覆盖 `chapters_per_volume`
+
+### 需求 R3：字数约束强化（P1）
+
+**背景**：每章实际生成字数难以保证在目标范围内。
+
+**要求**：
+- 将续写触发阈值从 60% 提升至 75%（即 `WORD_COUNT续写阈值 = 0.75`）
+- 将续写最大次数从 1 次提升至 3 次，每次续写后重新检查字数
+- 在 `CHAPTER_GENERATION_PROMPT_WITH_WORD_COUNT` 中强化字数约束措辞，在规则列表最前面（第1条）加入字数要求，并在 prompt 末尾重复强调
+- 续写的 `max_tokens` 从 4000 提升至 6000
+
+**验收标准**：
+- 对于 `target_words=5000`，生成章节字数 ≥ 4000（80%）的比例 ≥ 90%
+- 续写逻辑在字数不足时最多触发 3 次
+- 单元测试覆盖：`_check_word_count` 和续写循环逻辑
 
 ---
 
-## 5. 依赖关系
+## 四、方案评估
 
-- 需求 2.3（前端配置）依赖需求 2.2（双模型字段）中的 `model_flash`/`model_pro` 概念
-- 需求 2.1（token 统计路由）与需求 2.3（llm_config 路由）合并到同一路由文件
-- 数据库模型变更（2.3）需在路由实现（2.3）之前完成
-- `LLMClient` 的数据库读取（2.3）需在 token 监控（2.1）和双模型（2.2）之后实现
+### 方案 A — 章节数量自动计算（对应 R2）
+
+**可行性**：高。纯后端逻辑，不涉及 LLM 调用变更，只需在请求处理入口计算并覆盖 `chapters_per_volume`。
+
+**推荐**：实现，但优先级低于 R1（R1 是根本原因修复）。
+
+### 方案 B — 卷大纲生成 token 限制修复（对应 R1）
+
+**可行性**：高。直接修改 `max_tokens` 参数，风险极低。增加重试逻辑也是标准模式。
+
+**推荐**：优先实现，这是最直接的根本原因修复。
+
+### 方案 C — 字数约束强化（对应 R3）
+
+**可行性**：高。修改常量和 prompt 文本，增加循环逻辑。
+
+**推荐**：实现，但注意续写次数增加会线性增加 API 调用成本，3次上限是合理的平衡点。
+
+### 推荐实现顺序
+
+1. **R1**（token 修复）— 最高优先级，直接解决用户反馈的核心问题
+2. **R3**（字数强化）— 中优先级，改善生成质量
+3. **R2**（自动计算）— 低优先级，改善用户体验
+
+---
+
+## 五、不在范围内
+
+- 不修改 LangGraph 节点（标准小说生成流程）
+- 不修改数据库 schema
+- 不修改质量评估逻辑
+- 不修改 KG/StoryBible 相关逻辑

@@ -120,14 +120,23 @@
             <span class="text-[10px] text-neutral-400">3 ~ 20 卷</span>
           </div>
           <div class="space-y-1">
-            <label class="block text-xs text-neutral-500">每卷章数</label>
-            <input type="number" v-model.number="form.chapters_per_volume" min="20" max="60" class="input text-sm text-center" />
-            <span class="text-[10px] text-neutral-400">20 ~ 60 章</span>
+            <label class="flex items-center gap-2 cursor-pointer mb-1">
+              <input type="checkbox" v-model="form.auto_calc_chapters" class="accent-accent-600 w-3.5 h-3.5 rounded" />
+              <span class="text-xs text-neutral-600">自动计算章节数（根据目标字数÷每章字数）</span>
+            </label>
+            <div v-if="form.auto_calc_chapters" class="text-xs text-accent-700 bg-accent-50 px-3 py-2 rounded">
+              预计约 {{ autoCalcTotalChapters }} 章，每卷约 {{ autoCalcChaptersPerVolume }} 章
+            </div>
+            <template v-else>
+              <label class="block text-xs text-neutral-500">每卷章数</label>
+              <input type="number" v-model.number="form.chapters_per_volume" min="20" max="60" class="input text-sm text-center" />
+              <span class="text-[10px] text-neutral-400">20 ~ 60 章</span>
+            </template>
           </div>
           <div class="space-y-1">
             <label class="block text-xs text-neutral-500">每章字数</label>
-            <input type="number" v-model.number="form.words_per_chapter" min="2000" max="4000" step="100" class="input text-sm text-center" />
-            <span class="text-[10px] text-neutral-400">2000 ~ 4000 字</span>
+            <input type="number" v-model.number="form.words_per_chapter" min="2000" max="8000" step="100" class="input text-sm text-center" />
+            <span class="text-[10px] text-neutral-400">2000 ~ 8000 字</span>
           </div>
         </div>
         <div class="flex flex-wrap gap-4 pt-1">
@@ -191,6 +200,7 @@ const form = ref({
   words_per_chapter: 3000,
   auto_quality_check: true,
   auto_filler_detection: true,
+  auto_calc_chapters: false,
 })
 
 const submitting = ref(false)
@@ -200,6 +210,14 @@ const generatingStyle = ref(false)
 
 const canSubmit = computed(() => form.value.idea.length >= 10 && form.value.novel_type)
 const isLongForm = computed(() => form.value.target_words > 200000)
+
+const autoCalcTotalChapters = computed(() =>
+  Math.ceil(form.value.target_words / form.value.words_per_chapter)
+)
+const autoCalcChaptersPerVolume = computed(() => {
+  const raw = Math.ceil(autoCalcTotalChapters.value / form.value.volumes)
+  return Math.max(20, Math.min(60, raw))
+})
 
 async function generateStyle() {
   if (!form.value.custom_style_description) return
@@ -237,6 +255,7 @@ async function submit() {
           writing_style_prompt: form.value.writing_style_prompt,
           auto_quality_check: form.value.auto_quality_check,
           auto_filler_detection: form.value.auto_filler_detection,
+          auto_calc_chapters: form.value.auto_calc_chapters,
         }
       : form.value
     const res = await fetch(endpoint, {
@@ -275,6 +294,7 @@ async function fullGenerate() {
           writing_style_prompt: form.value.writing_style_prompt,
           auto_quality_check: form.value.auto_quality_check,
           auto_filler_detection: form.value.auto_filler_detection,
+          auto_calc_chapters: form.value.auto_calc_chapters,
         }
       : form.value
     const res = await fetch(endpoint, {

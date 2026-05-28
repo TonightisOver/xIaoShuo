@@ -1,21 +1,15 @@
 ﻿{
     "mode":  10,
-    "awaiting_gate":  true,
-    "change_id":  "CHANGE-051",
-    "gate_number":  2,
-    "current_stage":  10,
+    "awaiting_gate":  false,
+    "change_id":  "CHANGE-052",
+    "gate_number":  0,
+    "current_stage":  3,
     "stages_completed":  [
                              "1-需求分析",
-                             "2-需求评审",
-                             "3-编码实现",
-                             "4-编码评审",
-                             "5-单元测试编写",
-                             "6-单元测试评审",
-                             "7-代码推送",
-                             "8-CI验证"
+                             "2-需求评审"
                          ],
-    "change_slug":  "LLM增强-token监控与双模型与前端配置",
-    "stage_name":  "用户确认",
+    "change_slug":  "长篇章节数量与字数约束修复",
+    "stage_name":  "编码实现",
     "status":  "in_progress",
     "started_at":  "2026-05-27T00:00:00+08:00"
 }

@@ -190,14 +190,16 @@ CHAPTER_GENERATION_PROMPT_WITH_WORD_COUNT = PromptTemplate(
 世界观设定：{world_setting}
 
 【重要规则】
-1. 必须使用上面人物设定中列出的角色名，不得自行创造新主角
-2. 人物性格、能力、背景必须与人物设定完全一致
-3. 世界观规则（力量体系、地理、文化）必须严格遵守
-4. 情节发展必须符合章节大纲
-5. 与上一章衔接自然（如果上一章有内容）
-6. 对话生动，描写细腻
-7. 符合中文网络小说风格
-8. 【字数约束】本章目标字数为 {target_words} 字，允许浮动范围为 ±20%（即 {target_words_min} ~ {target_words_max} 字）。请务必控制在此范围内，避免过短或过长。
+1. 【字数硬性要求】本章必须写满 {target_words_min} ~ {target_words_max} 字（目标 {target_words} 字，±20% 浮动）。字数不足视为生成失败，请在结束前检查字数并补充内容直到达标。
+2. 必须使用上面人物设定中列出的角色名，不得自行创造新主角
+3. 人物性格、能力、背景必须与人物设定完全一致
+4. 世界观规则（力量体系、地理、文化）必须严格遵守
+5. 情节发展必须符合章节大纲
+6. 与上一章衔接自然（如果上一章有内容）
+7. 对话生动，描写细腻
+8. 符合中文网络小说风格
+
+【最终检查】在输出前，请确认本章字数已达到 {target_words_min} 字以上。如果不足，请继续补充情节、对话或描写，直到达标。
 
 请直接输出章节内容（含章节标题如"第X章 标题"），不要输出 JSON 或其他格式包装。
 """,
@@ -304,6 +306,7 @@ VOLUME_OUTLINE_PROMPT = PromptTemplate(
         "volume_summary",
         "previous_volumes_summary",
         "chapters_count",
+        "chapters_count_min",
         "words_per_chapter",
         "chapter_types",
     ],
@@ -315,7 +318,7 @@ VOLUME_OUTLINE_PROMPT = PromptTemplate(
 ## 当前卷信息
 - 卷号：第 {volume_number} 卷
 - 本卷概要：{volume_summary}
-- 本卷章节数：约 {chapters_count} 章
+- 本卷章节数：建议 {chapters_count} 章（可在 ±30% 范围内根据情节节奏调整，但不得少于 {chapters_count_min} 章）
 - 每章字数：约 {words_per_chapter} 字
 
 ## 前序卷摘要
@@ -326,7 +329,9 @@ VOLUME_OUTLINE_PROMPT = PromptTemplate(
 
 ## 卷纲要求
 
-请为本卷生成 {chapters_count} 章的详细章纲，每章包含：
+【强制要求】本卷必须输出 {chapters_count} 章，每章都需要完整的 JSON 对象。不得因为情节原因减少章节数。
+
+请为本卷生成 {chapters_count} 章的详细章纲（必须严格输出 {chapters_count} 章，不得少于此数量），每章包含：
 
 1. **chapter**：章节序号（从 1 开始）
 2. **title**：章节标题

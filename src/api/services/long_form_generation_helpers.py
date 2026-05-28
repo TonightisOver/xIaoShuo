@@ -105,7 +105,7 @@ async def generate_master_outline(
         "character_plan": [],
     }
 
-    return await generate_and_parse_json(client, prompt, max_tokens=6000, fallback=fallback_data)
+    return await generate_and_parse_json(client, prompt, max_tokens=8000, fallback=fallback_data)
 
 
 async def generate_volume_outline(
@@ -165,6 +165,7 @@ async def generate_volume_outline(
         volume_summary=vol_info.get("summary", ""),
         previous_volumes_summary=prev_summary,
         chapters_count=chapters_per_volume,
+        chapters_count_min=int(chapters_per_volume * 0.7),
         words_per_chapter=words_per_chapter,
         chapter_types=chapter_types_str,
     )
@@ -197,7 +198,38 @@ async def generate_volume_outline(
         "chapters": fallback_chapters,
     }
 
-    result = await generate_and_parse_json(client, prompt, max_tokens=6000, fallback=fallback_data)
+    result = await generate_and_parse_json(client, prompt, max_tokens=12000, fallback=fallback_data)
+
+    # T3: Validate chapter count and retry up to 2 times if insufficient
+    min_chapters = int(chapters_per_volume * 0.8)
+    retry_prompt = prompt
+    for retry in range(2):
+        chapters = result.get("chapters", [])
+        if len(chapters) >= min_chapters:
+            break
+        logger.warning(
+            "volume_outline_insufficient_chapters",
+            volume_number=volume_number,
+            got=len(chapters),
+            expected=chapters_per_volume,
+            min_required=min_chapters,
+            retry=retry + 1,
+        )
+        retry_prompt = retry_prompt + (
+            f"\n\n【重要】上次输出的章节数不足（{len(chapters)}章），"
+            f"请务必输出完整的 {chapters_per_volume} 章，不得少于 {min_chapters} 章。"
+        )
+        result = await generate_and_parse_json(client, retry_prompt, max_tokens=12000, fallback=fallback_data)
+
+    # After retries exhausted, fall back to fallback_data if still insufficient
+    if len(result.get("chapters", [])) < min_chapters:
+        logger.warning(
+            "volume_outline_using_fallback",
+            volume_number=volume_number,
+            got=len(result.get("chapters", [])),
+            min_required=min_chapters,
+        )
+        result = fallback_data
 
     # Add volume_number to each chapter
     for ch in result.get("chapters", []):
