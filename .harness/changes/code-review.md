@@ -1,145 +1,228 @@
-# CHANGE-051 编码评审报告
+# CHANGE-052 编码评审报告
 
-**日期**: 2026-05-27  
-**评审者**: Reviewer Agent  
-**评审轮次**: 第 1 轮  
+**日期**: 2026-05-28
+**评审者**: Reviewer Agent
+**评审轮次**: 第 1 轮
 **评审类型**: code_review
 
 ---
 
 ## 1. 需求符合性
 
-| 需求点 | 状态 | 说明 |
-|--------|------|------|
-| 2.1 TokenTracker 内存聚合 | 通过 | deque(maxlen=1000)、records_skipped、get_stats() 均实现 |
-| 2.1 GET /api/v1/llm/token-stats | 通过 | 路由已实现，返回结构与需求一致 |
-| 2.2 Settings 新增 DEEPSEEK_MODEL_FLASH / PRO | 通过 | config.py 已添加，原 DEEPSEEK_MODEL 保留 |
-| 2.2 LLMClient 双实例 llm_flash / llm_pro | 通过 | 两个 ChatOpenAI 实例，self.llm 向后兼容 |
-| 2.2 generate() use_flash 参数 | 通过 | 默认 False，向后兼容 |
-| 2.2 chapter_generator 步骤5/续写用 flash | 通过 | 两处均已传 use_flash=True |
-| 2.2 chapter_generator 步骤3（规划）用 pro | 通过 | 未传 use_flash，默认 pro |
-| 2.3 LLMConfig 数据库模型 | 通过 | 字段完整，is_active 加索引 |
-| 2.3 CRUD + activate + token-stats 路由 | 通过 | 全部实现，api_key 脱敏 |
-| 2.3 lifespan 初始化单例 | 通过 | 有激活配置用 DB，否则用 Settings，异常回退 |
-| 2.3 前端 LLMSettings.vue | 通过 | 配置列表、弹窗、token 统计面板均实现 |
-| 2.3 路由注册 /settings/llm | 通过 | router/index.js 已添加 |
-| 2.3 主导航入口 | 通过 | App.vue 已添加"模型配置"链接 |
+### R1 — 修复卷纲生成 token 截断（P0）
 
-**需求符合性：全部满足。**
+| 验收标准 | 实现状态 |
+|---|---|
+| `generate_volume_outline` max_tokens 6000 → 12000 | 已实现（`long_form_generation_helpers.py` 第 200 行） |
+| `generate_master_outline` max_tokens 6000 → 8000 | 已实现（第 108 行） |
+| 章节数 < 80% 时重试最多 2 次 | 已实现（第 202-221 行，`for retry in range(2)`） |
+| 重试后仍不足使用 fallback | 已实现（第 223-231 行） |
+
+**问题 1（轻微）**：重试逻辑结构存在一个语义上的微妙问题。当前代码在 `for retry in range(2)` 循环内，先检查 `result` 是否满足，满足则 `break`，否则追加 prompt 并重新调用。这意味着：
+
+- 初始调用（循环外）返回不足 → 进入循环 retry=0：追加 prompt，调用第 2 次
+- retry=0 结果仍不足 → retry=1：追加 prompt（再次追加，prompt 变成两段警告），调用第 3 次
+- retry=1 结果满足 → break
+
+这是正确的行为（最多 3 次 LLM 调用 = 1 初始 + 2 重试），但 prompt 在第 2 次重试时会累积两段相同的警告文本，可能造成 prompt 冗余。这不影响正确性，但可以优化。
+
+**问题 2（轻微）**：重试时 `retry_prompt` 是在原始 prompt 基础上追加，而非替换。第 2 次重试时 prompt 包含两段 `【重要】` 警告，虽然不影响功能，但略显冗余。
+
+### R2 — 章节数量自动计算（P1）
+
+| 验收标准 | 实现状态 |
+|---|---|
+| `LongFormNovelRequest` 新增 `auto_calc_chapters: bool = False` | 已实现 |
+| `auto_calc_chapters=True` 时后端自动计算并夹紧 [20, 60] | 已实现（`novel_generator.py` 第 900-921 行） |
+| 前端新增复选框，勾选后隐藏手动输入，显示预览 | 已实现 |
+| 示例：1210000/5000/10 → 25 | 测试 `test_normal_range` 验证通过 |
+
+**问题 3（需求偏差）**：需求 R2 明确要求将 `VOLUME_OUTLINE_PROMPT` 中的措辞从"本卷章节数：约 {chapters_count} 章"改为"建议 {chapters_count} 章（可在 ±30% 范围内根据情节节奏调整，但不得少于 {chapters_count_min} 章）"。
+
+当前实现中 `prompts.py` 第 320 行仍为：
+```
+- 本卷章节数：约 {chapters_count} 章
+```
+
+该措辞变更未实现。需求文档将此作为 R2 的明确要求之一，且 `chapters_count_min` 变量也未引入。这是一个需求遗漏。
+
+**问题 4（前端一致性）**：前端 `autoCalcChaptersPerVolume` 计算逻辑与后端一致（均使用 `Math.ceil` + clamp [20, 60]），但前端预览显示的是夹紧后的每卷章数，而总章数 `autoCalcTotalChapters` 未经夹紧。当 `autoCalcChaptersPerVolume` 被夹紧时（例如计算结果为 67 但显示 60），总章数预览（如 "预计约 334 章"）与实际生成章数（60 章/卷 × 卷数）不一致，可能误导用户。这是一个 UX 问题，不影响后端正确性。
+
+### R3 — 字数约束强化（P1）
+
+| 验收标准 | 实现状态 |
+|---|---|
+| 续写阈值 0.6 → 0.75 | 已实现（`chapter_generator.py` 第 54 行） |
+| 续写最多 3 次（循环替代单次） | 已实现（第 322 行 `for attempt in range(MAX_CONTINUATION_ATTEMPTS)`） |
+| 每次续写后重新计算字数 | 已实现（第 343 行） |
+| `_continuation_generation` max_tokens 4000 → 6000 | 已实现（第 132 行） |
+| 字数约束移至第 1 条，末尾加最终检查 | 已实现（`prompts.py` 第 193、202 行） |
+| `VOLUME_OUTLINE_PROMPT` 增加强制要求措辞 | 已实现（第 331-333 行） |
 
 ---
 
 ## 2. 代码质量
 
-### 2.1 token_tracker.py
+**正面**：
+- 重试逻辑清晰，日志记录完整（`volume_outline_insufficient_chapters`、`volume_outline_using_fallback`、`auto_calc_chapters_clamped` 等结构化日志）
+- `MAX_CONTINUATION_ATTEMPTS` 提取为命名常量，可维护性好
+- 前端 computed 属性逻辑简洁，与后端计算镜像一致
+- `auto_calc_chapters` 字段有清晰的 Pydantic `description`
 
-整体质量良好。
-
-- `TokenRecord` 使用 `@dataclass`，字段清晰。
-- `deque(maxlen=1000)` 自动淘汰旧记录，设计合理。
-- `datetime.now(UTC)` 替代废弃的 `utcnow()`，符合最佳实践。
-- `get_stats()` 每次调用都对 `_records` 做全量遍历（O(n)），在 1000 条上限下可接受，无需优化。
-
-**SHOULD FIX（不阻塞）**: `get_stats()` 中 `recent_records` 的切片逻辑可简化：
-
-```python
-# 当前
-recent = records[-50:] if len(records) > 50 else records
-# 更简洁
-recent = records[-50:]
-```
-两者行为等价，后者更简洁。属于可读性微优化，不阻塞。
-
-### 2.2 client.py
-
-- `llm_config: Any | None = None` duck-typed 设计正确，避免了 core→api 反向依赖。
-- `common_kwargs` 中 `temperature`、`timeout`、`model_kwargs` 始终从 Settings 读取，即使传入 DB 配置也如此——这是有意设计（DB 配置只覆盖 base_url/api_key/model），符合需求描述，无问题。
-- token 追踪逻辑：`hasattr(response, "response_metadata")` 防御性检查合理。
-
-### 2.3 llm_config.py（路由）
-
-- `_mask_api_key` 实现正确，`len < 4` 时返回 `"****"` 而非崩溃。
-- `activate_config` 在同一事务内先全量置 False 再激活目标，原子性保证正确。
-- `delete_config` 拒绝删除激活配置，返回 400，符合需求。
-
-**SHOULD FIX（不阻塞）**: `activate_config` 中先执行 `update(LLMConfig).values(is_active=False)` 全表更新，再对已加载的 `config` 对象设置 `config.is_active = True`。由于 SQLAlchemy 的 ORM 对象缓存，全表 UPDATE 语句不会自动刷新已加载对象的属性，但后续 `config.is_active = True` 的赋值会覆盖，最终 `flush()` + `refresh()` 后结果正确。逻辑无 bug，但顺序略显脆弱。可考虑先赋值再全表更新，或在全表更新后重新查询，以提高可读性。不阻塞。
-
-**SHOULD FIX（不阻塞）**: `activate_config` 激活后，内存中的 `_client` 单例不会自动更新为新激活的配置。用户在前端切换激活配置后，需重启服务才能生效。这是一个已知的设计局限（需求文档未要求热切换），但建议在 API 响应或前端 UI 中给出提示，避免用户困惑。
-
-### 2.4 LLMSettings.vue
-
-- 使用原生 `fetch`，与项目现有风格一致。
-- 编辑时 `api_key` 留空则不传（保留原值），逻辑正确。
-- 表单校验覆盖了必填字段和新增时 api_key 非空。
-
-**SHOULD FIX（不阻塞）**: `activateConfig` 和 `deleteConfig` 使用了 `alert()` / `confirm()` 原生对话框，与项目其他页面的错误处理风格可能不一致（如果其他页面使用了自定义 Toast/Modal）。建议统一，但不阻塞当前需求。
-
-**SHOULD FIX（不阻塞）**: `fetchStats` 在 `loadingStats` 初始为 `true` 时，若请求失败，`stats` 保持 `null`，页面不会显示错误提示，用户无法感知失败。建议添加错误状态处理。不阻塞。
-
-### 2.5 main.py（lifespan）
-
-- 在 lifespan 函数内部使用局部 `import` 并加 `_` 前缀，避免污染模块命名空间，做法合理。
-- 异常捕获后回退到 Settings 配置，不阻断启动，符合需求。
+**问题 5（代码质量）**：`novel_generator.py` 中 `auto_calc_chapters` 的计算逻辑与前端 `autoCalcChaptersPerVolume` 的计算逻辑是重复的（两处都实现了 `ceil(target/wpc/vol)` + clamp）。测试文件 `test_change052_chapter_constraints.py` 中的 `_calc` 辅助方法也是第三份镜像。这三处逻辑目前一致，但未来若修改夹紧范围，需要同步三处。建议后端将此逻辑提取为独立函数，但这属于优化建议，不阻塞合并。
 
 ---
 
 ## 3. 安全性
 
-| 检查项 | 结论 |
-|--------|------|
-| api_key 在 GET 响应中脱敏 | 通过，`_mask_api_key` 正确实现 |
-| api_key 明文存储数据库 | 符合需求（需求 4 明确"不在范围内：api_key 加密存储"） |
-| SQL 注入 | 通过，全程使用 SQLAlchemy ORM 参数化查询 |
-| 越权访问 | 当前系统无用户体系，符合需求（需求 4 明确"不在范围内：多用户权限隔离"） |
-| 前端 API Key 输入 | 通过，`type="password"` 防止明文显示 |
-
-**无安全 MUST FIX 项。**
+无安全问题。新增字段均有类型约束（`bool`），`words_per_chapter` 上限放宽至 8000 有合理的业务依据（支持 5000 字/章场景），不引入安全风险。
 
 ---
 
 ## 4. 性能
 
-- `TokenTracker.get_stats()` 每次全量遍历 deque，最多 1000 条，O(n) 可接受。
-- `activate_config` 执行全表 `UPDATE llm_configs SET is_active=False`，在配置数量极少（通常个位数）的场景下无性能问题。
-- 无明显性能隐患。
+**问题 6（性能影响，已知权衡）**：
+- `max_tokens` 从 6000 提升至 12000（卷纲）和 8000（总纲），加上最多 2 次重试，最坏情况下单卷纲生成需要 3 次 LLM 调用，token 消耗约为原来的 6 倍。这是需求明确要求的权衡，需求文档已评估为合理。
+- 续写最多 3 次，每次 max_tokens=6000，最坏情况下单章生成需要 4 次 LLM 调用（1 初始 + 3 续写）。需求文档已评估为合理的平衡点。
+
+以上均为已知且被需求接受的性能权衡，不构成阻塞问题。
 
 ---
 
 ## 5. 兼容性
 
-- `self.llm = self.llm_pro` 保留向后兼容，现有直接访问 `.llm` 属性的代码不受影响。
-- `generate()` 的 `use_flash` 参数默认 `False`，所有现有调用方无需修改。
-- `DEEPSEEK_MODEL` 字段保留，不影响现有 `.env` 配置。
-- `LLMConfig` 表通过 `create_all` 自动建表，无破坏性迁移。
-
-**兼容性：全部满足。**
+- `auto_calc_chapters` 字段默认值为 `False`，现有调用方不传该字段时行为不变，向后兼容。
+- `words_per_chapter` 上限从 4000 放宽至 8000，现有数据（≤4000）仍在合法范围内，向后兼容。
+- 前端两处 payload 构建（`submit` 和 `fullGenerate`）均已加入 `auto_calc_chapters`，一致性良好。
 
 ---
 
 ## 6. 规范遵循
 
-- 层级边界：`LLMClient` 使用 `Any` duck-typing，未引入 `src.api.models.db_models`，符合 CHANGE-050 的 core→api 禁止规则。
-- 日志：使用 `structlog`，与项目规范一致。
-- 类型注解：新增代码均有类型注解。
-- 测试覆盖：TokenTracker 11 个测试，LLMClient DB 配置 4 个测试，覆盖核心路径。
+- ruff check 通过，无新增 lint 问题。
+- 结构化日志使用 `structlog` 风格，与项目规范一致。
+- Pydantic 字段使用 `Field(default=..., description=...)` 风格，与现有字段一致。
 
 ---
 
-## 7. 问题汇总
+## 7. 测试覆盖
 
-### MUST FIX（阻塞）
+16 个新增单元测试覆盖了三个核心逻辑路径：
 
-无。
+- **T3（重试逻辑）**：4 个测试，覆盖无重试、1 次重试成功、2 次重试后 fallback、重试 prompt 内容验证。覆盖充分。
+- **T5（续写循环）**：5 个测试，覆盖无续写、最大次数、提前停止、字数更新、异常中断。覆盖充分。
+- **T8（自动计算）**：7 个测试，覆盖正常范围、上限夹紧、下限夹紧、边界值、字段接受。覆盖充分。
 
-### SHOULD FIX（不阻塞，建议后续处理）
+**问题 7（测试覆盖缺口）**：`CHAPTER_GENERATION_PROMPT_WITH_WORD_COUNT` 中新增的 `target_words_min` 和 `target_words_max` 变量没有对应的单元测试验证 prompt 格式化是否正确（即这两个变量是否被正确传入并渲染）。虽然代码逻辑（`chapter_generator.py` 第 258-267 行）看起来正确，但缺少测试保护。这是一个轻微的覆盖缺口，不阻塞合并。
 
-| 编号 | 位置 | 描述 |
-|------|------|------|
-| S1 | token_tracker.py:92 | `recent_records` 切片可简化为 `records[-50:]` |
-| S2 | llm_config.py:activate_config | 激活后内存单例不自动更新，建议在前端或 API 文档中说明需重启生效 |
-| S3 | llm_config.py:activate_config | 全表 UPDATE 后再赋值的顺序略显脆弱，建议调整顺序或重新查询 |
-| S4 | LLMSettings.vue:activateConfig/deleteConfig | 使用原生 alert/confirm，建议与项目 UI 风格统一 |
-| S5 | LLMSettings.vue:fetchStats | 请求失败时无错误提示，建议添加错误状态 |
+---
+
+## 8. 问题汇总
+
+| # | 严重程度 | 类型 | 描述 |
+|---|---|---|---|
+| 1 | 轻微 | 代码质量 | 重试时 prompt 累积两段警告文本（第 2 次重试） |
+| 2 | 轻微 | 代码质量 | 同上，与问题 1 相关 |
+| 3 | **中等** | **需求偏差** | **R2 要求的 `VOLUME_OUTLINE_PROMPT` 措辞变更（"建议"+"不得少于"）未实现** |
+| 4 | 轻微 | UX | 前端预览总章数在夹紧场景下与实际生成章数不一致 |
+| 5 | 轻微 | 代码质量 | 自动计算逻辑在后端、前端、测试中三处重复 |
+| 6 | 信息 | 性能 | token 消耗增加为已知权衡，需求已接受 |
+| 7 | 轻微 | 测试覆盖 | prompt 变量渲染缺少单元测试 |
+
+---
+
+## 结论
+
+**REVISION_REQUIRED**
+
+核心阻塞问题：**问题 3**。需求 R2 明确要求将 `VOLUME_OUTLINE_PROMPT` 中的章节数措辞改为"建议"语义并引入 `chapters_count_min` 变量，该变更未实现。这是需求文档中明确列出的功能点，不是可选优化。
+
+其余问题（1、2、4、5、7）均为轻微问题，不单独阻塞合并，但建议在修复问题 3 时一并处理问题 4（前端预览一致性）。
+
+**修复要求**：
+1. 在 `VOLUME_OUTLINE_PROMPT` 中将"本卷章节数：约 {chapters_count} 章"改为"本卷章节数：建议 {chapters_count} 章（可在 ±30% 范围内根据情节节奏调整，但不得少于 {chapters_count_min} 章）"，并在 `long_form_generation_helpers.py` 的 prompt 格式化调用中传入 `chapters_count_min = int(chapters_per_volume * 0.7)`（即 ±30% 下限）。
+2. （建议）修复前端预览：当 `autoCalcChaptersPerVolume` 被夹紧时，`autoCalcTotalChapters` 应显示为 `autoCalcChaptersPerVolume * form.value.volumes` 而非原始计算值，以保持预览与实际生成一致。
+
+---
+
+# CHANGE-052 编码评审报告（第 2 轮）
+
+**日期**: 2026-05-28
+**评审者**: Reviewer Agent
+**评审轮次**: 第 2 轮（针对修复后代码）
+**评审类型**: code_review
+
+---
+
+## 上轮 REVISION_REQUIRED 修复验证
+
+### 问题 3（需求偏差）— 修复验证结果：通过
+
+**验证内容**：
+
+| 修复项 | 预期 | 实际（代码确认） |
+|---|---|---|
+| `VOLUME_OUTLINE_PROMPT.input_variables` 新增 `"chapters_count_min"` | 已新增 | 已确认（`prompts.py` 第 309 行） |
+| 第 321 行措辞改为"建议 {chapters_count} 章（可在 ±30% 范围内…但不得少于 {chapters_count_min} 章）" | 已改为建议语义 | 已确认（`prompts.py` 第 321 行） |
+| `long_form_generation_helpers.py` 格式化调用新增 `chapters_count_min=int(chapters_per_volume * 0.7)` | 已新增 | 已确认（第 168 行） |
+| `Create.vue` 语法错误（`const router = useRouter() = [...]`）已修复 | 两行独立声明 | 已确认（第 185-187 行） |
+
+所有上轮 MUST FIX 项均已正确实现。
+
+---
+
+## 修复引入的新问题分析
+
+### 语义矛盾评估（"建议" vs "强制要求"）
+
+当前 prompt 中存在两段措辞：
+
+- **"当前卷信息"段**（第 321 行）：`建议 {chapters_count} 章（可在 ±30% 范围内根据情节节奏调整，但不得少于 {chapters_count_min} 章）`
+- **"卷纲要求"段**（第 332-334 行）：`【强制要求】本卷必须输出 {chapters_count} 章…不得因为情节原因减少章节数`
+
+**评估结论：可接受的设计，不构成 MUST FIX。**
+
+理由：
+1. 两段服务不同目的。"当前卷信息"段是给 LLM 的上下文描述，提供弹性空间以允许情节驱动的章节数微调；"卷纲要求"段是输出格式约束，防止 LLM 因 token 截断或懒惰而少输出 JSON 对象。这是 prompt 工程中常见的"软约束 + 硬约束"双层设计。
+2. 从实际效果看，`chapters_count_min`（= `chapters_per_volume * 0.7`）与后端重试逻辑的 `min_chapters`（= `chapters_per_volume * 0.8`）形成梯度：prompt 层允许最低 70%，代码层要求最低 80%，代码层更严格，不会因 prompt 弹性而导致实际章节数不足。
+3. 若将两段统一为同一措辞，反而会削弱 prompt 的表达层次，降低 LLM 对"情节弹性"与"输出完整性"的区分理解。
+
+**建议（非阻塞）**：可在"卷纲要求"段补充一句说明，例如"（情节弹性在章节内容中体现，JSON 对象数量必须完整）"，以消除人类读者的困惑，但这不影响 LLM 行为，不要求修复。
+
+### 新增代码质量检查
+
+**`chapters_count_min` 计算值一致性**：
+
+- `prompts.py` 中 `chapters_count_min` 的语义是"不得少于此数量"（±30% 下限 = 70%）
+- `long_form_generation_helpers.py` 第 168 行：`int(chapters_per_volume * 0.7)` — 与语义一致
+- 后端重试逻辑 `min_chapters = int(chapters_per_volume * 0.8)`（第 204 行）— 代码层阈值更严格，两者不冲突
+
+无新引入的逻辑错误。
+
+**`Create.vue` 语法修复验证**：
+
+- 第 182 行：`import { ref, computed } from 'vue'`
+- 第 183 行：`import { useRouter } from 'vue-router'`
+- 第 185 行：`const router = useRouter()`
+- 第 187 行：`const novelTypes = ['玄幻', ...]`
+
+修复正确，`router` 与 `novelTypes` 为独立声明，无语法问题。
+
+**上轮问题 4（前端预览一致性）— 未修复，状态确认**：
+
+`autoCalcTotalChapters`（第 214-216 行）仍为 `Math.ceil(target_words / words_per_chapter)`，未改为 `autoCalcChaptersPerVolume * volumes`。上轮将此标记为"建议"而非 MUST FIX，本轮维持该评估：此为 UX 轻微问题，不阻塞合并。
+
+---
+
+## 本轮问题汇总
+
+| # | 严重程度 | 类型 | 描述 | 状态 |
+|---|---|---|---|---|
+| 上轮问题 3 | — | 需求偏差 | `VOLUME_OUTLINE_PROMPT` 措辞变更 + `chapters_count_min` | **已修复** |
+| 上轮问题 4 | 轻微 | UX | 前端预览总章数在夹紧场景下不一致 | 未修复（建议项，不阻塞） |
+| 新问题 A | 信息 | Prompt 设计 | "建议"与"强制要求"语义并存 | 可接受设计，不需修复 |
+
+无新引入的 MUST FIX 问题。
 
 ---
 
@@ -147,4 +230,8 @@ recent = records[-50:]
 
 **APPROVED**
 
-所有需求功能点均已正确实现，无安全漏洞，无破坏性变更，测试覆盖核心路径。SHOULD FIX 项均为可读性或 UX 改进，不影响功能正确性，不阻塞交付。
+上轮唯一阻塞问题（问题 3）已正确修复：`VOLUME_OUTLINE_PROMPT` 措辞已改为建议语义，`chapters_count_min` 变量已正确引入并传值，`Create.vue` 语法错误已修复。修复本身未引入新的正确性或需求偏差问题。
+
+prompt 中"建议"与"强制要求"并存的语义设计经评估为合理的双层约束，不构成缺陷。
+
+剩余轻微问题（前端预览一致性）为已知 UX 优化项，可在后续迭代中处理，不阻塞本次合并。

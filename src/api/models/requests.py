@@ -80,7 +80,7 @@ class LongFormNovelRequest(BaseModel):
     words_per_chapter: int = Field(
         default=3000,
         ge=2000,
-        le=4000,
+        le=8000,
         description="每章目标字数",
     )
     writing_style: str = Field(
@@ -98,6 +98,10 @@ class LongFormNovelRequest(BaseModel):
     auto_filler_detection: bool = Field(
         default=True,
         description="是否自动注水检测",
+    )
+    auto_calc_chapters: bool = Field(
+        default=False,
+        description="是否根据 target_words/words_per_chapter 自动计算每卷章节数",
     )
 
     model_config = {

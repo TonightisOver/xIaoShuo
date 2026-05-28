@@ -1,115 +1,115 @@
-# CHANGE-051 测试评审报告
+# 单元测试评审报告 — CHANGE-052
 
-**日期**: 2026-05-27  
-**评审者**: Reviewer Agent  
-**评审类型**: test_review  
-**轮次**: 第 1 轮
-
----
-
-## 评审范围
-
-| 文件 | 测试数 |
-|------|--------|
-| tests/unit/test_llm/test_token_tracker.py | 11 |
-| tests/unit/test_llm/test_client.py（重点：TestLLMClientDualModel + TestLLMClientTokenTracking） | 21 |
-| tests/unit/test_llm/test_client_db_config.py | 4 |
-| tests/api/routes/test_llm_config.py | 11 |
-| **合计** | **47** |
+**评审类型**: test_review（第 1 轮）  
+**评审日期**: 2026-05-28  
+**测试文件**: tests/unit/test_change052_chapter_constraints.py  
+**评审人**: Reviewer Agent
 
 ---
 
-## 维度评审
+## 一、CI 状态确认
 
-### 1. 覆盖率
-
-**test_token_tracker.py**
-
-覆盖了 TokenTracker 的全部公开接口：`record()`、`skip()`、`get_stats()`、`get_token_tracker()` 单例工厂。
-初始状态、单次记录、多次累加、按模型分组、recent_records 截断（50 条）、deque maxlen（1000 条）、records_skipped 字段均有对应测试。覆盖完整。
-
-**test_client.py — TestLLMClientDualModel**
-
-三个测试分别覆盖 `use_flash=True`、`use_flash=False`、默认不传三种路径，并通过 `assert_called_once()` / `assert_not_called()` 验证了互斥性。覆盖完整。
-
-**test_client.py — TestLLMClientTokenTracking**
-
-覆盖了四条分支：
-- `response_metadata` 含完整 `token_usage` → `tracker.record()` 被调用
-- `response_metadata` 为空 dict → `tracker.skip()` 被调用
-- `token_usage` 存在但缺少 `prompt_tokens` → `tracker.skip()` 被调用
-- `use_flash=True` 时 tracker 记录的 model 名为 flash 模型名
-
-对照实现代码（client.py 第 148-161 行），这四条分支与实际条件判断完全对应。覆盖完整。
-
-**test_client_db_config.py**
-
-覆盖了 `llm_config` 参数的三种传入方式（有效对象、不传、显式 None）以及 DB 配置下 tracker 记录正确模型名。覆盖完整。
-
-**test_llm_config.py**
-
-覆盖了 CRUD 全路径（list、create、update、activate、delete）及其错误分支（404、400），以及 api_key 脱敏验证和 token-stats 结构验证。覆盖完整。
-
-### 2. 边界场景
-
-- `test_maxlen_1000_drops_old_records`：写入 1100 条，验证 deque 截断行为。
-- `test_recent_records_limit_50`：写入 60 条，验证 recent_records 截断。
-- `test_token_skip_called_when_token_usage_missing_prompt_tokens`：token_usage 部分缺字段的降级路径。
-- `test_delete_active_config_rejected`：业务约束边界（不能删除激活配置）。
-- `test_activate_config`：激活互斥性（激活 B 后 A 自动变为非激活）。
-- `test_update_config_not_found` / `test_activate_config_not_found` / `test_delete_config_not_found`：404 路径均有覆盖。
-
-边界场景覆盖充分。
-
-### 3. 测试质量
-
-**断言有效性**
-
-- TokenTracker 测试：断言具体数值（total_calls、records_skipped、token 累加值），不是仅检查类型或非空。
-- DualModel 测试：同时断言返回值内容和 mock 调用次数，避免了"调用了但结果错误"的漏洞。
-- TokenTracking 测试：通过重置全局单例（`tt_module._tracker = None`）后再读取，确保断言的是本次调用产生的状态，而非残留状态。
-- DB 配置测试：验证 `call_args_list` 中的具体参数值（api_key、base_url、model 名），断言精确。
-
-**一个 SHOULD FIX 项**
-
-`test_create_config`（test_llm_config.py 第 46-66 行）末尾有 `return data["id"]`，但该函数是一个 pytest 测试函数，返回值不会被任何地方使用。这是无效代码，可能是从辅助函数重构时遗留的。不影响测试结果，但会造成阅读困惑。
-
-建议删除该 `return` 语句。
-
-### 4. 独立性
-
-- 每个 unit test 类通过 `setup_method` 或直接实例化创建独立对象，不共享状态。
-- TokenTracking 测试在每个测试开始时重置全局单例（`tt_module._tracker = None`），避免跨测试污染。
-- API 路由测试使用 `scope="module"` 的 `_db_setup` fixture，在模块级别创建/销毁数据库表，各测试共享同一数据库实例。
-
-**潜在隐患（SHOULD FIX）**
-
-`test_llm_config.py` 中多个测试向同一数据库写入数据，且没有在每个测试后清理。例如 `test_list_configs_empty` 假设数据库为空，但如果测试执行顺序改变（pytest 不保证顺序），其他测试先写入数据后，该测试可能失败。
-
-当前测试通过，说明 pytest 默认按文件顺序执行且 `test_list_configs_empty` 排在最前。但这是一个脆弱性，建议为每个测试添加独立的数据清理，或使用 `scope="function"` 的 fixture 重建数据库。
-
-### 5. 可维护性
-
-- 测试数据使用有意义的字符串（`"deepseek-v4-flash"`、`"custom-flash"`），而非无意义占位符。
-- `_make_mock_llm_config()` 工厂函数集中管理测试数据，便于维护。
-- 测试类按功能分组（TestLLMClientDualModel、TestLLMClientTokenTracking、TestLLMClientDbConfig），结构清晰。
-- 每个测试有中文 docstring 说明意图，可读性好。
+- 16 个新增测试全部通过（本地复现验证）
+- 历史测试无回归（414 个历史单元测试全部通过，本地验证）
 
 ---
 
-## 问题汇总
+## 二、逐维度评审
 
-| 级别 | 位置 | 描述 |
-|------|------|------|
-| SHOULD FIX | test_llm_config.py:66 | `test_create_config` 末尾的 `return data["id"]` 是无效代码，建议删除 |
-| SHOULD FIX | test_llm_config.py | 路由测试共享数据库状态，`test_list_configs_empty` 依赖执行顺序，存在脆弱性 |
+### 2.1 覆盖率
 
-无 MUST FIX 项。
+**T3（generate_volume_outline 重试）**：覆盖完整。
+
+需求 R1 要求最多 2 次重试，测试验证了 call_count == 3（初始 + 2 次），与实现一致。
+
+| 场景 | 测试方法 | 状态 |
+|------|----------|------|
+| 章节数满足 80%，不触发重试 | test_no_retry_when_chapters_sufficient | 通过 |
+| 章节数不足，重试 1 次后满足 | test_retry_triggered_when_chapters_insufficient | 通过 |
+| 重试 2 次后仍不足，使用 fallback | test_fallback_used_after_retries_exhausted | 通过 |
+| 重试 prompt 包含警告文本 | test_retry_prompt_contains_warning_text | 通过 |
+
+**T5（续写循环）**：覆盖完整。
+
+| 场景 | 测试方法 | 状态 |
+|------|----------|------|
+| 字数 >= 75%，不触发续写 | test_no_continuation_when_word_count_sufficient | 通过 |
+| 字数不足，续写达到 MAX_CONTINUATION_ATTEMPTS 上限 | test_continuation_called_up_to_max_attempts | 通过 |
+| 续写后字数达标，提前停止 | test_continuation_stops_when_word_count_sufficient | 通过 |
+| 每次续写后重新计算字数 | test_word_count_updated_after_each_continuation | 通过 |
+| 续写抛出异常，中断循环 | test_continuation_exception_breaks_loop | 通过 |
+
+**T8（auto_calc_chapters）**：覆盖基本完整，但存在一个结构性缺陷（见 2.5 节）。
+
+| 场景 | 测试方法 | 状态 |
+|------|----------|------|
+| 正常范围计算 | test_normal_range | 通过 |
+| 超上限夹紧到 60 | test_clamp_to_upper_limit | 通过 |
+| 低于下限夹紧到 20 | test_clamp_to_lower_limit | 通过 |
+| 边界值 20 和 60 不夹紧 | test_no_clamp_when_in_range | 通过 |
+| auto_calc=False 保留请求值 | test_auto_calc_false_uses_request_value | 通过 |
+| auto_calc=True 字段被接受 | test_auto_calc_true_field_accepted | 通过 |
+| words_per_chapter=5000 合法 | test_words_per_chapter_accepts_5000 | 通过 |
+
+### 2.2 边界场景
+
+**T3**：使用 5 章（< 80% of 10 = 8）作为不足场景，3 章作为极端不足场景，10 章作为充足场景。边界值清晰合理。轻微遗漏：恰好等于 80% 边界（8 章）的测试缺失。
+
+**T5**：使用 2300 字（> 2250 阈值）、1800 字（< 2250 阈值）、2500 字（> 2250 阈值）覆盖了关键边界。轻微遗漏：恰好等于 75% 阈值（2250 字）的边界测试缺失。异常场景覆盖良好。
+
+**T8**：覆盖了上下边界值（20 和 60）的精确命中，以及超出边界的夹紧场景。边界覆盖充分。
+
+### 2.3 测试质量
+
+**断言有效性**：
+
+- T3 的 call_count 断言直接验证重试次数，有意义。
+- T3 的 prompt 内容断言使用  逻辑：。实现中两个关键词均存在（），断言实际上总会通过。建议改为  或断言更具体的子串，以防止实现退化时测试仍通过。
+- T5 的 word_count 断言验证了续写后的实际字数，有意义。
+- T8 的数值断言精确，无歧义。
+
+**测试数据合理性**：
+
+- T3 的  辅助方法生成结构完整的章节对象，与生产代码期望的 schema 一致。
+- T5 使用  作为内容，简洁且字数可精确控制。
+- T8 使用真实业务场景数值（121 万字、5000 字/章、10 卷），与需求文档验收标准直接对应。
+
+### 2.4 独立性
+
+所有测试使用  隔离外部依赖（LLM 客户端、、、），测试之间无共享状态，独立性良好。
+
+### 2.5 可维护性
+
+**结构清晰**：三个测试类对应三个功能点，命名规范，docstring 说明充分。
+
+**关键缺陷：T8 测试镜像了生产逻辑而非调用生产函数**
+
+ 是对  中计算逻辑的本地复制。当前两者完全一致，测试有效。但这种镜像模式存在维护风险：若生产代码修改了计算公式（例如改用  代替 ，或调整夹紧范围），测试不会失败，因为镜像函数不会自动同步。
+
+建议：、、、 这四个测试应直接调用  中的计算逻辑（提取为独立纯函数后导入），而非依赖本地镜像。
+
+**T8 的 Pydantic 模型测试（3 个）**：、、 仅验证 Pydantic 字段接受/拒绝，未验证服务层行为（即  时服务确实使用  字段值）。这是覆盖层次的局限，不是错误，但需知晓。
 
 ---
 
-## 结论
+## 三、发现汇总
 
-**APPROVED**
+| 编号 | 严重程度 | 类型 | 描述 |
+|------|----------|------|------|
+| F1 | 低 | 断言宽松 | T3  使用  逻辑，建议改为  或更具体的子串断言 |
+| F2 | 低 | 边界遗漏 | T3 缺少恰好等于 80% 边界（8/10 章）的测试 |
+| F3 | 低 | 边界遗漏 | T5 缺少恰好等于 75% 阈值（2250 字）的边界测试 |
+| F4 | 中 | 可维护性 | T8 计算逻辑测试使用本地镜像函数而非调用生产代码，存在同步漂移风险 |
+| F5 | 低 | 覆盖层次 | T8 Pydantic 模型测试未覆盖服务层  的行为路径 |
 
-47 个测试全部通过，覆盖了 CHANGE-051 引入的双模型路由、token 追踪、DB 配置初始化和 LLM 配置 CRUD 的核心业务路径及主要边界场景。断言有效，测试结构清晰，与实现代码逻辑对应准确。两个 SHOULD FIX 项不阻塞流程，可在后续迭代中改善。
+---
+
+## 四、结论
+
+16 个测试全部通过，核心业务路径（重试触发条件、重试次数上限、fallback 激活、续写循环控制、字数更新、异常中断、章节数自动计算与夹紧）均有有效断言覆盖。测试结构清晰，mock 隔离正确，无测试间依赖。
+
+主要问题是 T8 使用镜像函数而非直接调用生产代码（F4，中等严重），以及少量边界值和断言精度的轻微遗漏（F1-F3，低严重）。这些问题不影响当前测试的有效性，但会降低未来重构时的安全网强度。
+
+**结论：APPROVED**
+
+> 建议在后续迭代中将 F4 作为技术债处理：将  中的  计算逻辑提取为独立的纯函数，使 T8 可以直接导入并测试该函数，消除镜像同步风险。
