@@ -31,6 +31,8 @@
         :content="content"
         :prev-chapter="prevChapter"
         :next-chapter="nextChapter"
+        :chapters="sortedChapters"
+        :novel-id="novelId"
         :active-theme="activeTheme"
         :active-font="activeFont"
         :font-size="fontSize"

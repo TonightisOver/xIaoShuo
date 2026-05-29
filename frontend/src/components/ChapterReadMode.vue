@@ -1,5 +1,5 @@
 <template>
-  <div class="fixed inset-0 z-50 overflow-y-auto transition-all duration-300 custom-scrollbar-read" :class="[themeClasses[activeTheme]]">
+  <div ref="readContainer" class="fixed inset-0 z-50 overflow-y-auto transition-all duration-300 custom-scrollbar-read" :class="[themeClasses[activeTheme]]">
     <div class="max-w-3xl mx-auto px-6 py-20 relative min-h-screen flex flex-col justify-between">
       <div>
         <div class="flex items-center justify-between pb-6 mb-12 border-b" :class="[activeTheme === 'dark' ? 'border-white/10' : 'border-black/5']">
@@ -24,6 +24,14 @@
     </div>
 
     <!-- 悬浮排版控制面板 -->
+    <ReadingTOC
+      :visible="showTOC"
+      :chapters="chapters"
+      :current-chapter="chapter.chapter_number"
+      @close="showTOC = false"
+      @go-to-chapter="handleTOCChapter"
+    />
+
     <div class="fixed right-6 bottom-10 z-50 flex flex-col items-end gap-3">
       <div v-if="showSettings" class="bg-white rounded-xl border border-neutral-200 shadow-lg p-5 flex flex-col gap-4 w-72" :class="[activeTheme === 'dark' ? 'bg-neutral-900 text-slate-200 border-neutral-700' : '']">
         <div class="flex items-center justify-between border-b pb-2" :class="[activeTheme === 'dark' ? 'border-neutral-700' : 'border-neutral-200']">
@@ -55,22 +63,38 @@
           </div>
         </div>
       </div>
+      <button @click="showTOC = true" class="w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-xl transition-all active:scale-95 bg-white text-neutral-700 border border-neutral-200 hover:bg-neutral-50" :class="[activeTheme === 'dark' ? 'bg-neutral-900 text-slate-200 border-neutral-700 hover:bg-neutral-800' : '']">☰</button>
       <button @click="$emit('update:show-settings', !showSettings)" class="w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-xl transition-all active:scale-95 bg-accent-600 text-white hover:bg-accent-700">⚙</button>
     </div>
   </div>
 </template>
 
 <script setup>
-defineProps({
+import { nextTick, onMounted, onUnmounted, ref } from 'vue'
+import ReadingTOC from './ReadingTOC.vue'
+import { useReadingProgress } from '../composables/useReadingProgress.js'
+
+const props = defineProps({
   chapter: Object,
   content: String,
   prevChapter: Object,
   nextChapter: Object,
+  chapters: {
+    type: Array,
+    default: () => [],
+  },
+  novelId: String,
   activeTheme: String,
   activeFont: String,
   fontSize: Number,
   showSettings: Boolean,
 })
+
+const emit = defineEmits(['exit', 'go-to-chapter', 'adjust-font-size', 'update:active-font', 'update:active-theme', 'update:show-settings'])
+
+const readContainer = ref(null)
+const showTOC = ref(false)
+const { saveProgress, loadProgress } = useReadingProgress(() => props.novelId || props.chapter?.novel_id || props.chapter?.novel?.id)
 
 const themeClasses = {
   parchment: 'bg-[#f4ecd8] text-[#3c2f1f]',
@@ -79,7 +103,55 @@ const themeClasses = {
   white: 'bg-[#ffffff] text-[#111111]',
 }
 
-defineEmits(['exit', 'go-to-chapter', 'adjust-font-size', 'update:active-font', 'update:active-theme', 'update:show-settings'])
+function getScrollPercent() {
+  const el = readContainer.value
+  if (!el) return 0
+
+  const maxScroll = el.scrollHeight - el.clientHeight
+  if (maxScroll <= 0) return 0
+
+  return Math.min(100, Math.max(0, Math.round((el.scrollTop / maxScroll) * 100)))
+}
+
+function handleScroll() {
+  saveProgress(props.chapter.chapter_number, getScrollPercent())
+}
+
+function handleKeydown(event) {
+  if (event.key === 'ArrowLeft' && props.prevChapter) {
+    emit('go-to-chapter', props.prevChapter.chapter_number)
+  } else if (event.key === 'ArrowRight' && props.nextChapter) {
+    emit('go-to-chapter', props.nextChapter.chapter_number)
+  } else if (event.key === 'Escape') {
+    emit('exit')
+  }
+}
+
+function handleTOCChapter(chapterNumber) {
+  showTOC.value = false
+  emit('go-to-chapter', chapterNumber)
+}
+
+onMounted(async () => {
+  window.addEventListener('keydown', handleKeydown)
+  readContainer.value?.addEventListener('scroll', handleScroll, { passive: true })
+
+  const progress = loadProgress()
+  if (progress?.chapter === Number(props.chapter.chapter_number)) {
+    await nextTick()
+    const el = readContainer.value
+    if (el) {
+      const maxScroll = el.scrollHeight - el.clientHeight
+      el.scrollTop = Math.max(0, maxScroll * (Number(progress.scrollPercent) / 100))
+    }
+  }
+})
+
+onUnmounted(() => {
+  handleScroll()
+  window.removeEventListener('keydown', handleKeydown)
+  readContainer.value?.removeEventListener('scroll', handleScroll)
+})
 </script>
 
 <style scoped>
