@@ -290,8 +290,13 @@ async def _generate_single_chapter_inner(
     if style_instruction:
         prompt = f"{style_instruction}\n\n{prompt}"
 
-    # 5. 生成章节正文
-    content = await client.generate(prompt, max_tokens=8000, use_flash=True)
+    # 5. 生成章节正文（动态 max_tokens 控制字数上限）
+    if target_words and target_words > 0:
+        # 中文约 1.5 字/token，给 1.8x 缓冲允许偶尔大章但不无限放开
+        gen_max_tokens = max(4000, int(target_words / 1.5 * 1.8))
+    else:
+        gen_max_tokens = 8000
+    content = await client.generate(prompt, max_tokens=gen_max_tokens, use_flash=True)
 
     # 6. 章节知识抽取（可选）
     if kg_service and novel_id:

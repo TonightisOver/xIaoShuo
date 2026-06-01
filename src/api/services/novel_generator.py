@@ -641,12 +641,20 @@ async def _generate_chapters_batch(
     generated_chapters: list[dict] = []
 
     for i, ch_outline in enumerate(chapter_outlines):
-        # Determine previous chapter text
+        # Determine previous chapter text with richer context for continuity
         if i == 0:
             previous_chapter = prev_context
         else:
-            last_content = generated_chapters[-1].get("content") or ""
-            previous_chapter = last_content[:500]
+            last_result = generated_chapters[-1]
+            last_content = last_result.get("content") or ""
+            parts = []
+            if last_result.get("title"):
+                parts.append(f"上一章：《{last_result['title']}》")
+            if last_content:
+                parts.append(f"结尾段落：\n{last_content[-400:]}")
+            if ch_outline.get("plot"):
+                parts.append(f"本章需要推进：{ch_outline['plot']}")
+            previous_chapter = "\n".join(parts) if parts else last_content[:500]
 
         # Prepare story bible context and blueprint
         story_bible_ctx = await _get_story_bible_context(novel_id, ch_outline)
