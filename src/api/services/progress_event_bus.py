@@ -21,6 +21,11 @@ class EventType(str, Enum):
     SUB_FEATURE_COMPLETE = "sub_feature_complete"
     ERROR = "error"
     COMPLETED = "completed"
+    CHAPTER_TOKEN = "chapter_token"
+    CHAPTER_STREAM_START = "chapter_stream_start"
+    CHAPTER_STREAM_END = "chapter_stream_end"
+    GENERATION_PAUSED = "generation_paused"
+    GENERATION_RESUMED = "generation_resumed"
 
 
 @dataclass

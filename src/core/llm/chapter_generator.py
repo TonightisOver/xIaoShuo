@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 import structlog
 
@@ -90,6 +90,7 @@ async def _continuation_generation(
     target_words: int,
     current_words: int,
     style_instruction: str = "",
+    on_token: Callable[[str, str], Awaitable[None]] | None = None,
 ) -> str:
     """Generate continuation for short chapters.
 
@@ -128,6 +129,13 @@ async def _continuation_generation(
 """
     if style_instruction:
         continuation_prompt = f"{style_instruction}\n\n{continuation_prompt}"
+
+    if on_token:
+        content = original_content + "\n\n"
+        async for token in client.stream_generate(continuation_prompt, use_flash=True):
+            content += token
+            await on_token(token, content)
+        return content
 
     continued = await client.generate(continuation_prompt, max_tokens=6000, use_flash=True)
     return original_content + "\n\n" + continued
@@ -188,6 +196,59 @@ async def generate_single_chapter(
         }
 
 
+async def generate_chapter_stream(
+    client: Any,
+    chapter_outline: dict[str, Any],
+    previous_chapter: str,
+    characters_json: str,
+    world_setting_json: str,
+    on_token: Callable[[str, str], Awaitable[None]],
+    on_complete: Callable[[str], Awaitable[None]],
+    storylines_json: str = "",
+    style_instruction: str = "",
+    kg_service: Any | None = None,
+    novel_id: str | None = None,
+    target_words: int | None = None,
+    blueprint: dict | None = None,
+    story_bible_context: str | None = None,
+) -> dict[str, Any]:
+    """Generate a single chapter using streaming for body text."""
+    try:
+        return await asyncio.wait_for(
+            _generate_single_chapter_inner(
+                client=client,
+                chapter_outline=chapter_outline,
+                previous_chapter=previous_chapter,
+                characters_json=characters_json,
+                world_setting_json=world_setting_json,
+                storylines_json=storylines_json,
+                style_instruction=style_instruction,
+                kg_service=kg_service,
+                novel_id=novel_id,
+                target_words=target_words,
+                blueprint=blueprint,
+                story_bible_context=story_bible_context,
+                on_token=on_token,
+                on_complete=on_complete,
+            ),
+            timeout=CHAPTER_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        chapter_num = chapter_outline.get("chapter", 0)
+        logger.error(
+            "chapter_generation_timeout",
+            chapter=chapter_num,
+            timeout=CHAPTER_TIMEOUT_SECONDS,
+        )
+        return {
+            "chapter": chapter_num,
+            "title": chapter_outline.get("title", f"Chapter {chapter_num}"),
+            "content": f"[Chapter generation failed: timeout ({CHAPTER_TIMEOUT_SECONDS}s)]",
+            "word_count": 0,
+            "generation_failed": True,
+        }
+
+
 async def _generate_single_chapter_inner(
     client: Any,
     chapter_outline: dict[str, Any],
@@ -201,6 +262,8 @@ async def _generate_single_chapter_inner(
     target_words: int | None = None,
     blueprint: dict | None = None,
     story_bible_context: str | None = None,
+    on_token: Callable[[str, str], Awaitable[None]] | None = None,
+    on_complete: Callable[[str], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
     """生成单章内容。
 
@@ -296,7 +359,13 @@ async def _generate_single_chapter_inner(
         gen_max_tokens = max(4000, int(target_words / 1.5 * 1.8))
     else:
         gen_max_tokens = 8000
-    content = await client.generate(prompt, max_tokens=gen_max_tokens, use_flash=True)
+    if on_token:
+        content = ""
+        async for token in client.stream_generate(prompt, use_flash=True):
+            content += token
+            await on_token(token, content)
+    else:
+        content = await client.generate(prompt, max_tokens=gen_max_tokens, use_flash=True)
 
     # 6. 章节知识抽取（可选）
     if kg_service and novel_id:
@@ -344,6 +413,7 @@ async def _generate_single_chapter_inner(
                     target_words=target_words,
                     current_words=word_count,
                     style_instruction=style_instruction,
+                    on_token=on_token,
                 )
                 word_count = len(content)  # 每次续写后重新计算实际字数
                 logger.info(
@@ -363,6 +433,9 @@ async def _generate_single_chapter_inner(
 
     # 8. 提取 chapter_type 到返回值（由调用方负责 DB 更新）
     chapter_type = blueprint.get("chapter_type") if blueprint else None
+
+    if on_complete:
+        await on_complete(content)
 
     return {
         "chapter": chapter_outline.get("chapter", 0),

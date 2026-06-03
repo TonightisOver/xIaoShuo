@@ -3,6 +3,7 @@
 负责执行小说生成任务，通过事件总线推送实时进度。
 """
 
+import asyncio
 import math
 from typing import Any
 
@@ -39,6 +40,34 @@ from src.api.services.task_manager import get_task_manager
 from src.core.langgraph.graph import create_novel_graph
 
 logger = structlog.get_logger(__name__)
+
+_paused_tasks: dict[str, bool] = {}
+
+
+async def pause_task(task_id: str) -> None:
+    _paused_tasks[task_id] = True
+    task_manager = get_task_manager()
+    await task_manager.update_status(task_id, "paused")
+    await _emit_progress(
+        task_id,
+        EventType.GENERATION_PAUSED,
+        {"task_id": task_id, "status": "paused"},
+    )
+
+
+async def resume_task(task_id: str) -> None:
+    _paused_tasks.pop(task_id, None)
+    task_manager = get_task_manager()
+    await task_manager.update_status(task_id, "running")
+    await _emit_progress(
+        task_id,
+        EventType.GENERATION_RESUMED,
+        {"task_id": task_id, "status": "running"},
+    )
+
+
+def is_task_paused(task_id: str) -> bool:
+    return _paused_tasks.get(task_id, False)
 
 
 async def _prepare_chapter_context(
@@ -581,6 +610,9 @@ async def _generate_chapters_batch(
     generated_chapters: list[dict] = []
 
     for i, ch_outline in enumerate(chapter_outlines):
+        while is_task_paused(task_id):
+            await asyncio.sleep(1)
+
         # Determine previous chapter text with richer context for continuity
         if i == 0:
             previous_chapter = prev_context

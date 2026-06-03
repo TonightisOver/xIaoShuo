@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-4xl mx-auto px-6 py-10 font-sans">
+  <div class="max-w-4xl mx-auto px-6 py-10 font-sans" :class="{ 'pb-20': isStreaming || isPaused }">
     <div v-if="loading" class="text-center py-20 text-[#86868b] text-sm">正在努力加载创作详情...</div>
 
     <div v-else-if="!task" class="text-center py-20">
@@ -32,6 +32,43 @@
           <router-link to="/" class="btn-secondary text-sm">返回大厅</router-link>
         </div>
       </div>
+
+      <!-- Plot Streaming Panel (outline/planning streaming) -->
+      <PlotStreamingPanel
+        v-if="outlineText || isOutlineStreaming"
+        :outline-text="outlineText"
+        :is-outline-streaming="isOutlineStreaming"
+      />
+
+      <!-- Streaming Content Area -->
+      <div v-if="streamingText || isStreaming" class="card p-6 mb-6">
+        <h2 class="text-sm font-bold text-[#1d1d1f] dark:text-gray-100 mb-1 flex items-center gap-2">
+          <svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+          </svg>
+          <span>
+            正在生成：第{{ currentChapter }}章
+            <span v-if="currentChapterTitle" class="text-gray-400 dark:text-gray-500 font-normal ml-1">「{{ currentChapterTitle }}」</span>
+          </span>
+          <span v-if="isStreaming" class="inline-block w-2 h-2 rounded-full bg-purple-500 animate-pulse"></span>
+        </h2>
+        <StreamingText :text="streamingText" :is-streaming="isStreaming" />
+      </div>
+
+      <!-- Generation Control Bar -->
+      <GenerationControlBar
+        v-if="isStreaming || isPaused"
+        :task-id="taskId"
+        :is-paused="isPaused"
+        :is-streaming="isStreaming"
+        :current-chapter="currentChapter"
+        :total-chapters="totalChapters"
+        :word-count="chapterWordCount"
+        @pause="handlePause"
+        @resume="handleResume"
+        @stop="handleStop"
+        @edit="() => {}"
+      />
 
       <!-- Progress Section -->
       <div v-if="task.status" class="card p-6 mb-6">
@@ -149,6 +186,9 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import ProgressBar from '../components/ProgressBar.vue'
 import StageIndicator from '../components/StageIndicator.vue'
+import StreamingText from '../components/StreamingText.vue'
+import GenerationControlBar from '../components/GenerationControlBar.vue'
+import PlotStreamingPanel from '../components/PlotStreamingPanel.vue'
 import { useWebSocket } from '../composables/useWebSocket.js'
 
 const route = useRoute()
@@ -158,6 +198,19 @@ const task = ref(null)
 const loading = ref(true)
 const events = ref([])
 const logContainer = ref(null)
+
+// Streaming state
+const streamingText = ref('')
+const isStreaming = ref(false)
+const isPaused = ref(false)
+const currentChapter = ref(0)
+const currentChapterTitle = ref('')
+const totalChapters = ref(0)
+const chapterWordCount = ref(0)
+
+// Outline streaming state
+const outlineText = ref('')
+const isOutlineStreaming = ref(false)
 
 const progress = computed(() => task.value?.progress || {
   current_stage: '',
@@ -218,6 +271,28 @@ watch(events, () => {
   })
 }, { deep: true })
 
+// Control panel actions
+async function handlePause() {
+  try {
+    await fetch(`/api/v1/tasks/${taskId}/pause`, { method: 'POST' })
+  } catch (e) {
+    // ignore
+  }
+}
+
+async function handleResume() {
+  try {
+    await fetch(`/api/v1/tasks/${taskId}/resume`, { method: 'POST' })
+  } catch (e) {
+    // ignore
+  }
+}
+
+async function handleStop() {
+  // Reuse pause as a hard stop for now
+  await handlePause()
+}
+
 async function fetchTask() {
   try {
     const res = await fetch(`/api/v1/novels/${taskId}`)
@@ -233,17 +308,45 @@ const { connect, disconnect } = useWebSocket(taskId, {
   onMessage(msg) {
     if (msg.type === 'connected') {
       task.value = { ...task.value, status: msg.current_status, progress: msg.progress }
+      totalChapters.value = msg.progress?.total_chapters || 0
     } else if (msg.type === 'stage_complete' || msg.type === 'chapter_progress' || msg.type === 'stage_start' || msg.type === 'sub_feature_start' || msg.type === 'sub_feature_complete') {
       if (task.value) {
         task.value = { ...task.value, progress: msg.data, status: 'running' }
       }
+      if (msg.data?.total_chapters) totalChapters.value = msg.data.total_chapters
       addEvent(msg.type, msg.data)
     } else if (msg.type === 'completed') {
+      isStreaming.value = false
       fetchTask()
       addEvent('completed', msg.data)
     } else if (msg.type === 'error') {
+      isStreaming.value = false
       fetchTask()
       addEvent('error', msg.data)
+    } else if (msg.type === 'chapter_token') {
+      streamingText.value += msg.data.token
+      chapterWordCount.value = msg.data.accumulated_length || chapterWordCount.value
+    } else if (msg.type === 'chapter_stream_start') {
+      streamingText.value = ''
+      isStreaming.value = true
+      currentChapter.value = msg.data.chapter
+      currentChapterTitle.value = msg.data.title || ''
+      addEvent('chapter_stream_start', { stage: `第${msg.data.chapter}章「${msg.data.title || ''}」开始生成` })
+    } else if (msg.type === 'chapter_stream_end') {
+      isStreaming.value = false
+      chapterWordCount.value = msg.data.word_count || chapterWordCount.value
+      addEvent('chapter_stream_end', { stage: `第${msg.data.chapter}章完成，${msg.data.word_count || 0}字` })
+    } else if (msg.type === 'generation_paused') {
+      isPaused.value = true
+      addEvent('generation_paused', { stage: '生成已暂停' })
+    } else if (msg.type === 'generation_resumed') {
+      isPaused.value = false
+      addEvent('generation_resumed', { stage: '生成已恢复' })
+    } else if (msg.type === 'outline_token') {
+      outlineText.value += msg.data.token
+      isOutlineStreaming.value = true
+    } else if (msg.type === 'outline_stream_end') {
+      isOutlineStreaming.value = false
     } else if (msg.type !== 'heartbeat') {
       addEvent(msg.type, msg.data || {})
     }

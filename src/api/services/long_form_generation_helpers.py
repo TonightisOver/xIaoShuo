@@ -7,6 +7,7 @@
 - generate_volume_quality_report
 """
 
+import asyncio
 import json
 from typing import Any
 
@@ -23,6 +24,15 @@ from src.api.services.chapter_persistence_service import persist_generated_chapt
 from src.api.services.progress_event_bus import EventType
 
 logger = structlog.get_logger(__name__)
+
+
+async def persist_single_chapter(
+    novel_id: str,
+    chapter_data: dict[str, Any],
+) -> None:
+    """Persist one generated chapter immediately."""
+    await persist_generated_chapters(novel_id, [chapter_data], chapter_data.get("volume_number"))
+
 
 def _normalize_outline_chapter(
     chapter: dict[str, Any],
@@ -440,7 +450,8 @@ async def generate_volume_chapters(
     """
     from src.api.services.novel_manager import get_novel_manager
     from src.core.database import get_db_session
-    from src.core.llm.chapter_generator import generate_single_chapter
+    from src.api.services.novel_generator import is_task_paused
+    from src.core.llm.chapter_generator import generate_chapter_stream
     from src.core.llm.client import get_llm_client
 
     manager = get_novel_manager()
@@ -467,6 +478,9 @@ async def generate_volume_chapters(
         global_ch_num = chapter_start + i
         ch_outline["chapter"] = global_ch_num
 
+        while is_task_paused(task_id):
+            await asyncio.sleep(1)
+
         if i == 0:
             previous_chapter = prev_context or "这是本卷第一章"
         else:
@@ -487,19 +501,34 @@ async def generate_volume_chapters(
             story_bible_ctx = await _get_story_bible_context(novel_id, ch_outline)
             bp = await _get_blueprint(novel_id, ch_outline)
 
-            chapter_result = await generate_single_chapter(
+            async def on_token(token: str, accumulated: str) -> None:
+                await _emit_progress(task_id, EventType.CHAPTER_TOKEN, {
+                    "chapter": global_ch_num,
+                    "token": token,
+                    "accumulated_length": len(accumulated),
+                })
+
+            async def on_complete(full_text: str) -> None:
+                return None
+
+            chapter_result = await generate_chapter_stream(
                 client=client,
                 chapter_outline=ch_outline,
                 previous_chapter=previous_chapter,
                 characters_json=chars_str,
                 world_setting_json=world_str,
+                on_token=on_token,
+                on_complete=on_complete,
                 style_instruction=style_instruction,
                 target_words=words_per_chapter,
                 novel_id=novel_id,
                 blueprint=bp,
                 story_bible_context=story_bible_ctx,
             )
+            chapter_result["volume_number"] = volume_number
             generated_chapters.append(chapter_result)
+            if not chapter_result.get("generation_failed"):
+                await persist_single_chapter(novel_id, chapter_result)
 
             # Sync chapter_type to DB
             await _sync_chapter_type_to_db(
@@ -529,10 +558,6 @@ async def generate_volume_chapters(
             "percentage": int((len(generated_chapters) / len(chapters_data)) * 100),
         }
         await _emit_progress(task_id, EventType.CHAPTER_PROGRESS, progress_data)
-
-    # Persist successful chapters
-    successful = [ch for ch in generated_chapters if not ch.get("generation_failed")]
-    await persist_generated_chapters(novel_id, successful, volume_number)
 
     return generated_chapters
 

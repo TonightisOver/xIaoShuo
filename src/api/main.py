@@ -23,6 +23,7 @@ from src.api.routes import (
     story_bible_router,
     storylines_router,
     style_router,
+    tasks_router,
     ws_router,
 )
 from src.core.config import get_settings
@@ -133,6 +134,7 @@ app.add_middleware(
 # 注册路由
 app.include_router(health_router)
 app.include_router(novels_router)
+app.include_router(tasks_router)
 app.include_router(projects_router)
 app.include_router(conversations_router)
 app.include_router(style_router)

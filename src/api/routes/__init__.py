@@ -6,6 +6,7 @@ from .health import router as health_router
 from .knowledge_graph import router as knowledge_graph_router
 from .llm_config import router as llm_config_router
 from .novels import router as novels_router
+from .novels import tasks_router
 from .outline_sync import router as outline_sync_router
 from .outlines import router as outlines_router
 from .projects import router as projects_router
@@ -16,7 +17,7 @@ from .style import router as style_router
 from .ws import router as ws_router
 
 __all__ = [
-    "novels_router", "health_router", "projects_router", "ws_router",
+    "novels_router", "tasks_router", "health_router", "projects_router", "ws_router",
     "conversations_router", "style_router", "outlines_router",
     "storylines_router", "knowledge_graph_router", "story_bible_router",
     "export_router", "outline_sync_router", "reader_simulation_router",

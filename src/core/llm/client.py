@@ -88,6 +88,9 @@ class LLMClient:
         self._model_pro = model_pro
         self.max_retries = settings.DEEPSEEK_MAX_RETRIES
 
+    def _get_llm(self, use_flash: bool = False) -> ChatOpenAI:
+        return self.llm_flash if use_flash else self.llm_pro
+
     async def generate(
         self,
         prompt: str,
@@ -109,7 +112,7 @@ class LLMClient:
         Raises:
             Exception: API 调用失败（不可重试错误或超过重试次数）
         """
-        llm_instance = self.llm_flash if use_flash else self.llm_pro
+        llm_instance = self._get_llm(use_flash)
         model_name = self._model_flash if use_flash else self._model_pro
         tracker = get_token_tracker()
 
@@ -193,6 +196,20 @@ class LLMClient:
 
         # Unreachable — AsyncRetrying always raises or returns via attempt
         raise RuntimeError("Unexpected exit from retry loop")  # pragma: no cover
+
+    async def stream_generate(
+        self,
+        prompt: str,
+        use_flash: bool = False,
+    ):
+        """Stream generated text chunks."""
+        llm_instance = self._get_llm(use_flash)
+        messages = [HumanMessage(content=prompt)]
+
+        async for chunk in llm_instance.astream(messages):
+            content = getattr(chunk, "content", None)
+            if content is not None:
+                yield str(content)
 
 
 # 全局客户端实例

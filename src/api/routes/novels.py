@@ -28,6 +28,7 @@ from src.core.validation import ValidationError, validate_idea, validate_novel_t
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/novels", tags=["novels"])
+tasks_router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
 
 
 @router.post("", response_model=TaskResponse, status_code=202)
@@ -180,6 +181,46 @@ async def cancel_task(task_id: str):
         raise HTTPException(status_code=400, detail="Task already finished")
     await task_manager.fail_task(task_id, "用户手动取消：任务超时未完成")
     return {"status": "cancelled"}
+
+
+@tasks_router.post("/{task_id}/pause")
+async def pause_generation_task(task_id: str):
+    task_manager = get_task_manager()
+    task = await task_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task["status"] != "running":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Task can only be paused when running (current status: {task['status']})",
+        )
+    try:
+        from src.api.services.novel_generator import pause_task
+        await pause_task(task_id)
+        return {"task_id": task_id, "status": "paused"}
+    except Exception:
+        logger.exception(f"Failed to pause task {task_id}")
+        raise HTTPException(status_code=500, detail="Failed to pause task")
+
+
+@tasks_router.post("/{task_id}/resume")
+async def resume_generation_task(task_id: str):
+    task_manager = get_task_manager()
+    task = await task_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task["status"] != "paused":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Task can only be resumed when paused (current status: {task['status']})",
+        )
+    try:
+        from src.api.services.novel_generator import resume_task
+        await resume_task(task_id)
+        return {"task_id": task_id, "status": "running"}
+    except Exception:
+        logger.exception(f"Failed to resume task {task_id}")
+        raise HTTPException(status_code=500, detail="Failed to resume task")
 
 
 # --- Long-form novel endpoints ---
