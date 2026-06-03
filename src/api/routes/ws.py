@@ -63,7 +63,7 @@ async def task_progress_ws(websocket: WebSocket, task_id: str):
                 if event.event_type == EventType.ERROR and not event.data.get("non_blocking"):
                     await websocket.close(code=1000)
                     break
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await websocket.send_json({
                     "type": "heartbeat",
                     "timestamp": datetime.now().isoformat(),

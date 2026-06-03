@@ -12,31 +12,41 @@ from typing import Any
 
 import structlog
 
-from src.api.services.chapter_persistence_service import persist_generated_chapters
-from src.api.services.progress_event_bus import (
-    EventType,
-    ProgressEvent,
-    get_event_bus,
+from src.api.services.chapter_generation_utils import (
+    _context_builder,
+    _emit_progress,
+    _get_blueprint,
+    _get_story_bible_context,
+    _sync_chapter_type_to_db,
 )
-from src.api.services.novel_context_service import NovelContextBuilder
+from src.api.services.chapter_persistence_service import persist_generated_chapters
+from src.api.services.progress_event_bus import EventType
 
 logger = structlog.get_logger(__name__)
 
-_context_builder = NovelContextBuilder()
+def _normalize_outline_chapter(
+    chapter: dict[str, Any],
+    fallback: dict[str, Any],
+) -> dict[str, Any]:
+    normalized = {**chapter}
 
+    if not str(normalized.get("title") or "").strip():
+        normalized["title"] = fallback.get("title") or "[未命名章节]"
+    if not str(normalized.get("plot") or "").strip():
+        normalized["plot"] = fallback.get("plot") or "情节待展开"
+    if not str(normalized.get("chapter_type") or "").strip():
+        normalized["chapter_type"] = fallback.get("chapter_type") or "main_advance"
 
-async def _emit_progress(
-    task_id: str,
-    event_type: EventType,
-    data: dict[str, Any],
-) -> None:
-    """Emit a progress event."""
-    event_bus = get_event_bus()
-    await event_bus.publish(ProgressEvent(
-        task_id=task_id,
-        event_type=event_type,
-        data=data,
-    ))
+    for field in ("key_characters", "foreshadows_planted", "foreshadows_resolved"):
+        if not isinstance(normalized.get(field), list):
+            normalized[field] = fallback.get(field) or []
+
+    if not isinstance(normalized.get("turning_point"), str):
+        normalized["turning_point"] = fallback.get("turning_point", "")
+    if not isinstance(normalized.get("emotional_arc"), str):
+        normalized["emotional_arc"] = fallback.get("emotional_arc", "")
+
+    return normalized
 
 
 async def generate_master_outline(
@@ -223,7 +233,8 @@ async def _generate_outline_batch(
         ch["chapter"] = expected_num
         if expected_num not in seen_nums:
             seen_nums.add(expected_num)
-            normalized.append(ch)
+            fallback = fallback_chapters[expected_num - batch_start]
+            normalized.append(_normalize_outline_chapter(ch, fallback))
             expected_num += 1
         if expected_num >= batch_start + batch_count:
             break
@@ -446,10 +457,7 @@ async def generate_volume_chapters(
     # Get previous chapter context
     prev_context = ""
     if chapter_start > 1:
-        prev_chapters = await manager.list_chapters(novel_id)
-        prev_in_earlier = [c for c in prev_chapters if c.get("chapter_number", 0) == chapter_start - 1]
-        if prev_in_earlier:
-            prev_context = (prev_in_earlier[0].get("content", "") or "")[-500:]
+        prev_context = await manager.get_chapter_tail(novel_id, chapter_start - 1)
 
     chapters_data = vol_outline.get("chapters", [])
     generated_chapters = []
@@ -565,69 +573,3 @@ async def generate_volume_quality_report(
         "stalled_chapters": [],
     }
 
-
-# --- Private helpers used by generate_volume_chapters ---
-
-
-async def _get_story_bible_context(novel_id: str, chapter_outline: dict) -> str | None:
-    """Query StoryBible and extract relevant constraints for a chapter."""
-    try:
-        from sqlalchemy import select
-
-        from src.api.models.db_models import StoryBible
-        from src.api.services.story_bible_service import extract_relevant_constraints
-        from src.core.database import get_db_session
-
-        async with get_db_session() as session:
-            stmt = select(StoryBible).where(StoryBible.novel_id == novel_id)
-            res = await session.execute(stmt)
-            bible = res.scalar_one_or_none()
-            if bible:
-                chapter_num = chapter_outline.get("chapter", 0)
-                return extract_relevant_constraints(bible, chapter_outline, chapter_num)
-    except Exception as e:
-        logger.warning("story_bible_context_fetch_failed", error=str(e))
-    return None
-
-
-async def _get_blueprint(novel_id: str, chapter_outline: dict) -> dict | None:
-    """Fetch or generate a blueprint for a chapter."""
-    chapter_num = chapter_outline.get("chapter", 0)
-    try:
-        from src.api.services.blueprint_service import BlueprintService
-
-        bp_service = BlueprintService()
-        existing_bp = await bp_service.get_blueprint(novel_id, chapter_num)
-        if existing_bp:
-            return existing_bp
-        return await bp_service.generate_blueprint(
-            novel_id, chapter_num, chapter_outline
-        )
-    except Exception as e:
-        logger.warning("blueprint_fetch_failed", chapter=chapter_num, error=str(e))
-    return None
-
-
-async def _sync_chapter_type_to_db(
-    novel_id: str, chapter_num: int, chapter_type: str | None
-) -> None:
-    """Sync chapter_type from generation result to the Chapter DB record."""
-    if not chapter_type:
-        return
-    try:
-        from sqlalchemy import update
-
-        from src.api.models.db_models import Chapter
-        from src.core.database import get_db_session
-
-        async with get_db_session() as session:
-            await session.execute(
-                update(Chapter)
-                .where(
-                    Chapter.novel_id == novel_id,
-                    Chapter.chapter_number == chapter_num,
-                )
-                .values(chapter_type=chapter_type)
-            )
-    except Exception as e:
-        logger.warning("chapter_type_sync_failed", chapter=chapter_num, error=str(e))

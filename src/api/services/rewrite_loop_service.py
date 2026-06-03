@@ -4,9 +4,9 @@ import structlog
 from sqlalchemy import select
 
 from src.api.models.db_models import Character, Novel, WorldSetting
+from src.api.services.novel_context_service import NovelContextBuilder
 from src.api.services.novel_manager import get_novel_manager
 from src.api.services.quality_action_service import QualityActionService
-from src.api.services.novel_context_service import NovelContextBuilder
 from src.core.database import get_db_session
 from src.core.quality import QUALITY_DIMENSIONS
 from src.core.quality.evaluator import evaluate_chapter_quality

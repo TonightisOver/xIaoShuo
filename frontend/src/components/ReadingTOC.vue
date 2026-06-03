@@ -15,11 +15,11 @@
       >
         <header class="border-b border-neutral-200/70 px-4 py-4 dark:border-neutral-800/70">
           <div class="mb-3 flex items-center justify-between gap-3">
-            <h2 class="text-sm font-bold text-neutral-900 dark:text-neutral-100">Contents</h2>
+            <h2 class="text-sm font-bold text-neutral-900 dark:text-neutral-100">目录</h2>
             <button
               type="button"
               class="flex h-8 w-8 items-center justify-center rounded-full text-lg leading-none text-neutral-500 transition hover:bg-neutral-900/5 hover:text-neutral-900 active:scale-95 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-neutral-100"
-              aria-label="Close table of contents"
+              aria-label="关闭目录"
               @click="emit('close')"
             >
               x
@@ -28,7 +28,7 @@
 
           <div class="space-y-2">
             <div class="flex items-center justify-between text-xs font-medium text-neutral-500 dark:text-neutral-400">
-              <span>Reading progress</span>
+              <span>阅读进度</span>
               <span class="font-mono font-bold text-accent-600 dark:text-accent-400">{{ progressPercent }}%</span>
             </div>
             <div class="h-1.5 overflow-hidden rounded-full bg-neutral-200/80 dark:bg-neutral-800">
@@ -59,12 +59,12 @@
               @click="emit('go-to-chapter', chapter.chapter_number)"
             >
               <span class="shrink-0 font-mono text-[11px] opacity-60">{{ chapter.chapter_number }}</span>
-              <span class="min-w-0 flex-1 truncate">{{ chapter.title || `Chapter ${chapter.chapter_number}` }}</span>
+              <span class="min-w-0 flex-1 truncate">{{ chapter.title || `第 ${chapter.chapter_number} 章` }}</span>
               <span
                 v-if="isCurrentChapter(chapter)"
                 class="shrink-0 rounded bg-accent-100 px-1.5 py-0.5 text-[10px] font-bold text-accent-700 dark:bg-accent-950 dark:text-accent-300"
               >
-                Current
+                当前
               </span>
             </button>
           </div>
@@ -106,7 +106,7 @@ const groupedChapters = computed(() => {
     if (!groups.has(volumeNumber)) {
       groups.set(volumeNumber, {
         volumeNumber,
-        label: volumeNumber > 0 ? `Volume ${volumeNumber}` : 'Main Text',
+        label: volumeNumber > 0 ? `第 ${volumeNumber} 卷` : '正文',
         chapters: [],
       })
     }

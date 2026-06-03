@@ -7,7 +7,7 @@
             :to="`/novels/${novelId}`"
             class="group mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-accent-600 hover:text-accent-700"
           >
-            <svg class="h-4 w-4 transition-transform group-hover:-translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <svg class="h-4 w-4 transition-transform group-hover:-translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
             </svg>
             返回作品详情
@@ -90,7 +90,7 @@
 
         <div v-if="totalCount === 0" class="rounded-xl border border-neutral-200 bg-white p-12 text-center shadow-sm">
           <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-neutral-100 text-neutral-500">
-            <svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25A8.966 8.966 0 0 1 18 3.75c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
             </svg>
           </div>
@@ -100,16 +100,18 @@
 
         <template v-else>
           <div class="mb-6 rounded-xl border border-neutral-200 bg-white px-4 pt-4 shadow-sm">
-            <nav class="flex gap-3 overflow-x-auto pb-4">
+            <nav class="flex gap-3 overflow-x-auto pb-4" role="tablist">
               <button
                 v-for="tab in tabs"
                 :key="tab.id"
                 type="button"
+                role="tab"
+                :aria-selected="activeTab === tab.id"
                 class="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold transition"
                 :class="activeTab === tab.id ? tab.activeClass : 'border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50'"
                 @click="activeTab = tab.id"
               >
-                <svg v-if="tab.id === 'dangling'" class="h-4 w-4 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg v-if="tab.id === 'dangling'" class="h-4 w-4 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
                 </svg>
                 {{ tab.label }}
@@ -136,7 +138,7 @@
                   <p class="mt-2 max-w-3xl text-sm leading-6 text-neutral-500">{{ item.description || '暂无描述。' }}</p>
                 </div>
                 <span class="inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-extrabold" :class="currentTagClass">
-                  <svg v-if="activeTab === 'dangling'" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <svg v-if="activeTab === 'dangling'" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
                   </svg>
                   {{ currentStatusLabel }}
@@ -147,7 +149,7 @@
                 <span class="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-neutral-700">
                   种下：第 {{ chapterLabel(item.planted_chapter) }} 章
                 </span>
-                <svg class="h-4 w-4 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <svg class="h-4 w-4 text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
                 </svg>
                 <span

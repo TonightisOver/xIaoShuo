@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, toValue, onUnmounted } from 'vue'
 
 export function useNovelData(novelId) {
   const novel = ref(null)
@@ -11,21 +11,27 @@ export function useNovelData(novelId) {
   const storylinesData = ref(null)
   const outlineTree = ref(null)
   const loading = ref(true)
+  let controller = null
+
+  onUnmounted(() => controller?.abort())
 
   async function fetchAll() {
+    controller?.abort()
+    controller = new AbortController()
+    const { signal } = controller
     loading.value = true
     try {
-      const id = typeof novelId === 'object' ? novelId.value : novelId
+      const id = toValue(novelId)
       const [nRes, wRes, cRes, chRes, convRes, volRes, psRes, slRes, olRes] = await Promise.all([
-        fetch(`/api/v1/projects/${id}`),
-        fetch(`/api/v1/projects/${id}/world`),
-        fetch(`/api/v1/projects/${id}/characters`),
-        fetch(`/api/v1/projects/${id}/chapters`),
-        fetch(`/api/v1/projects/${id}/conversations`),
-        fetch(`/api/v1/projects/${id}/volumes`),
-        fetch(`/api/v1/projects/${id}/power-systems`),
-        fetch(`/api/v1/projects/${id}/relations`),
-        fetch(`/api/v1/projects/${id}/outlines`),
+        fetch(`/api/v1/projects/${id}`, { signal }),
+        fetch(`/api/v1/projects/${id}/world`, { signal }),
+        fetch(`/api/v1/projects/${id}/characters`, { signal }),
+        fetch(`/api/v1/projects/${id}/chapters`, { signal }),
+        fetch(`/api/v1/projects/${id}/conversations`, { signal }),
+        fetch(`/api/v1/projects/${id}/volumes`, { signal }),
+        fetch(`/api/v1/projects/${id}/power-systems`, { signal }),
+        fetch(`/api/v1/projects/${id}/relations`, { signal }),
+        fetch(`/api/v1/projects/${id}/outlines`, { signal }),
       ])
       if (nRes.ok) novel.value = await nRes.json()
       if (wRes.ok) world.value = await wRes.json()
@@ -36,8 +42,10 @@ export function useNovelData(novelId) {
       if (psRes.ok) powerSystems.value = await psRes.json()
       if (slRes.ok) storylinesData.value = await slRes.json()
       if (olRes.ok) outlineTree.value = await olRes.json()
+    } catch (e) {
+      if (e.name === 'AbortError') return
     } finally {
-      loading.value = false
+      if (!signal.aborted) loading.value = false
     }
   }
 

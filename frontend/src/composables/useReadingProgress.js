@@ -65,6 +65,19 @@ export function useReadingProgress(novelId) {
     }
   }
 
+  function dispose() {
+    const latestKey = getStorageKey()
+    if (latestKey && pendingProgress) {
+      localStorage.setItem(latestKey, JSON.stringify(pendingProgress))
+    }
+
+    if (throttleTimer) {
+      clearTimeout(throttleTimer)
+      throttleTimer = null
+    }
+    pendingProgress = null
+  }
+
   loadProgress()
 
   const hasProgress = computed(() => progress.value !== null)
@@ -73,6 +86,7 @@ export function useReadingProgress(novelId) {
     saveProgress,
     loadProgress,
     clearProgress,
+    dispose,
     hasProgress,
   }
 }

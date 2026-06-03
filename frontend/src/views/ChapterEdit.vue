@@ -281,11 +281,11 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import ReaderSimPanel from '../components/ReaderSimPanel.vue'
 import ChapterModals from '../components/ChapterModals.vue'
-import ChapterReadMode from '../components/ChapterReadMode.vue'
+const ChapterReadMode = defineAsyncComponent(() => import('../components/ChapterReadMode.vue'))
+const ReaderSimPanel = defineAsyncComponent(() => import('../components/ReaderSimPanel.vue'))
 import { useChapterContent } from '../composables/useChapterContent.js'
 import { useChapterRewrite } from '../composables/useChapterRewrite.js'
 import { useChapterVersions } from '../composables/useChapterVersions.js'

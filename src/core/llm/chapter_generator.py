@@ -51,7 +51,7 @@ CHAPTER_TIMEOUT_SECONDS = 600
 # Word count thresholds for long-form mode
 WORD_COUNT_MIN_RATIO = 0.8  # 80% of target = minimum acceptable
 WORD_COUNT_MAX_RATIO = 1.2  # 120% of target = maximum acceptable
-WORD_COUNT续写阈值 = 0.75  # Below 75% triggers continuation
+WORD_COUNT_CONTINUATION_THRESHOLD = 0.75  # Below 75% triggers continuation
 MAX_CONTINUATION_ATTEMPTS = 3  # 最多续写次数
 
 
@@ -176,7 +176,7 @@ async def generate_single_chapter(
             ),
             timeout=CHAPTER_TIMEOUT_SECONDS,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         chapter_num = chapter_outline.get("chapter", 0)
         logger.error("chapter_generation_timeout", chapter=chapter_num, timeout=CHAPTER_TIMEOUT_SECONDS)
         return {
@@ -323,7 +323,7 @@ async def _generate_single_chapter_inner(
             )
 
         # Continuation loop for short chapters — up to MAX_CONTINUATION_ATTEMPTS times
-        min_threshold = int(target_words * WORD_COUNT续写阈值)
+        min_threshold = int(target_words * WORD_COUNT_CONTINUATION_THRESHOLD)
         for attempt in range(MAX_CONTINUATION_ATTEMPTS):
             if word_count >= min_threshold:
                 break

@@ -18,6 +18,8 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/llm", tags=["llm"])
 
+# TODO: Add authentication/authorization dependency before exposing LLM config CRUD routes.
+
 
 # ---------------------------------------------------------------------------
 # Pydantic 模型
@@ -130,6 +132,7 @@ async def create_config(body: LLMConfigCreate) -> LLMConfigResponse:
 @router.put("/configs/{config_id}", response_model=LLMConfigResponse)
 async def update_config(config_id: int, body: LLMConfigUpdate) -> LLMConfigResponse:
     """更新 LLM 配置（部分字段可选）。"""
+    reload_config: LLMConfig | None = None
     async with get_db_session() as session:
         result = await session.execute(
             select(LLMConfig).where(LLMConfig.id == config_id)
@@ -152,8 +155,11 @@ async def update_config(config_id: int, body: LLMConfigUpdate) -> LLMConfigRespo
         await session.flush()
         await session.refresh(config)
         if config.is_active:
-            _reload_active_llm_client(config)
-        return _to_response(config)
+            reload_config = config
+        response = _to_response(config)
+    if reload_config:
+        _reload_active_llm_client(reload_config)
+    return response
 
 
 @router.delete("/configs/{config_id}", status_code=204)
@@ -176,6 +182,7 @@ async def delete_config(config_id: int) -> None:
 @router.post("/configs/{config_id}/activate", response_model=LLMConfigResponse)
 async def activate_config(config_id: int) -> LLMConfigResponse:
     """激活指定配置，同时将其他配置设为非激活（事务保证）。"""
+    reload_config: LLMConfig | None = None
     async with get_db_session() as session:
         result = await session.execute(
             select(LLMConfig).where(LLMConfig.id == config_id)
@@ -193,8 +200,11 @@ async def activate_config(config_id: int) -> LLMConfigResponse:
 
         await session.flush()
         await session.refresh(config)
-        _reload_active_llm_client(config)
-        return _to_response(config)
+        reload_config = config
+        response = _to_response(config)
+    if reload_config:
+        _reload_active_llm_client(reload_config)
+    return response
 
 
 @router.get("/token-stats")

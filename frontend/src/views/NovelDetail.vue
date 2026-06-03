@@ -373,7 +373,7 @@ import { useNovelData } from '../composables/useNovelData.js'
 import { useNovelActions } from '../composables/useNovelActions.js'
 
 const route = useRoute()
-const novelId = route.params.id
+const novelId = computed(() => route.params.id)
 
 const { novel, world, characters, chapters, volumes, conversations, powerSystems, storylinesData, outlineTree, loading, fetchAll } = useNovelData(novelId)
 const { generating, fullGenerating, deleteTargetUnassigned, generate, fullGenerate, startConversation, handleGenerateVolume, handleGenerateChapters, confirmDeleteUnassigned, doDeleteUnassigned, cleanupFailedChapters } = useNovelActions(novelId, chapters)
@@ -408,7 +408,7 @@ function cancelEditOverview() { editingOverview.value = false }
 async function saveOverview() {
   savingOverview.value = true; overviewError.value = ''
   try {
-    const res = await fetch(`/api/v1/projects/${novelId}`, {
+    const res = await fetch(`/api/v1/projects/${novelId.value}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: overviewForm.value.title, idea: overviewForm.value.idea }),
     })

@@ -51,9 +51,9 @@ async def lifespan(app: FastAPI):
     logger.info("Database initialized")
 
     # 初始化 LLMClient 全局单例 — 优先使用数据库激活配置
-    import src.core.llm.client as _llm_module
     from sqlalchemy import select as _sa_select
 
+    import src.core.llm.client as _llm_module
     from src.api.models.db_models import LLMConfig as _LLMConfig
     from src.core.database import get_db_session as _get_db_session
     from src.core.llm.client import LLMClient as _LLMClient

@@ -15,7 +15,6 @@ from src.core.langgraph.nodes import (
 )
 from src.core.langgraph.state import NovelState
 
-
 MAX_REGENERATION_ATTEMPTS = 2
 
 

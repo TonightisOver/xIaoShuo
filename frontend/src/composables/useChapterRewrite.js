@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, toValue, onUnmounted } from 'vue'
 
 export function useChapterRewrite(novelId, chapterNumber, content) {
   const showRewriteModal = ref(false)
@@ -9,9 +9,9 @@ export function useChapterRewrite(novelId, chapterNumber, content) {
   const selectionText = ref('')
   const selectionStart = ref(0)
   const selectionEnd = ref(0)
+  let controller = null
 
-  function _id() { return typeof novelId === 'object' ? novelId.value : novelId }
-  function _num() { return typeof chapterNumber === 'object' ? chapterNumber.value : chapterNumber }
+  onUnmounted(() => controller?.abort())
 
   function openRewriteModal() {
     rewriteInstruction.value = ''
@@ -28,14 +28,17 @@ export function useChapterRewrite(novelId, chapterNumber, content) {
 
   async function doRewrite() {
     if (!rewriteInstruction.value.trim()) return
+    controller?.abort()
+    controller = new AbortController()
     rewriting.value = true
     rewriteError.value = ''
     try {
-      const res = await fetch(`/api/v1/projects/${_id()}/chapters/${_num()}/rewrite`, {
+      const res = await fetch(`/api/v1/projects/${toValue(novelId)}/chapters/${toValue(chapterNumber)}/rewrite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
-          full_content: typeof content === 'object' ? content.value : content,
+          full_content: toValue(content),
           selected_text: selectionText.value,
           selection_start: selectionStart.value,
           selection_end: selectionEnd.value,
@@ -52,6 +55,7 @@ export function useChapterRewrite(novelId, chapterNumber, content) {
         rewriteResult.value = { original: data.original_text, rewritten: data.rewritten_text }
       }
     } catch (e) {
+      if (e.name === 'AbortError') return
       rewriteError.value = '网络错误，请重试'
     } finally {
       rewriting.value = false
@@ -60,7 +64,7 @@ export function useChapterRewrite(novelId, chapterNumber, content) {
 
   async function acceptRewrite(loadVersionsFn) {
     if (!rewriteResult.value) return
-    const currentContent = typeof content === 'object' ? content.value : content
+    const currentContent = toValue(content)
     const newContent = currentContent.slice(0, selectionStart.value) + rewriteResult.value.rewritten + currentContent.slice(selectionEnd.value)
     if (typeof content === 'object') {
       content.value = newContent
@@ -68,16 +72,20 @@ export function useChapterRewrite(novelId, chapterNumber, content) {
     showRewriteModal.value = false
     selectionText.value = ''
 
-    await fetch(`/api/v1/projects/${_id()}/chapters/${_num()}/versions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        content: newContent,
-        source: 'ai_rewrite',
-        rewrite_instruction: rewriteInstruction.value,
-      }),
-    })
-    if (loadVersionsFn) await loadVersionsFn()
+    try {
+      await fetch(`/api/v1/projects/${toValue(novelId)}/chapters/${toValue(chapterNumber)}/versions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: newContent,
+          source: 'ai_rewrite',
+          rewrite_instruction: rewriteInstruction.value,
+        }),
+      })
+      if (loadVersionsFn) await loadVersionsFn()
+    } catch (e) {
+      if (e.name === 'AbortError') return
+    }
   }
 
   return {

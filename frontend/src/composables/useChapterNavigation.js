@@ -1,22 +1,33 @@
-import { ref, computed } from 'vue'
+import { ref, computed, toValue, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 export function useChapterNavigation(novelId, chapterNumber) {
   const router = useRouter()
   const allChapters = ref([])
   const allVolumes = ref([])
+  let controller = null
 
-  function _id() { return typeof novelId === 'object' ? novelId.value : novelId }
+  onUnmounted(() => controller?.abort())
 
   async function loadAllChapters() {
-    const res = await fetch(`/api/v1/projects/${_id()}/chapters`)
-    if (res.ok) allChapters.value = await res.json()
+    controller?.abort()
+    controller = new AbortController()
+    try {
+      const res = await fetch(`/api/v1/projects/${toValue(novelId)}/chapters`, { signal: controller.signal })
+      if (res.ok) allChapters.value = await res.json()
+    } catch (e) {
+      if (e.name === 'AbortError') return
+    }
   }
 
   async function loadVolumes() {
-    const res = await fetch(`/api/v1/projects/${_id()}/volumes`)
-    if (res.ok) allVolumes.value = await res.json()
-    else allVolumes.value = []
+    try {
+      const res = await fetch(`/api/v1/projects/${toValue(novelId)}/volumes`, { signal: controller?.signal })
+      if (res.ok) allVolumes.value = await res.json()
+      else allVolumes.value = []
+    } catch (e) {
+      if (e.name === 'AbortError') return
+    }
   }
 
   const sortedChapters = computed(() =>
@@ -58,19 +69,19 @@ export function useChapterNavigation(novelId, chapterNumber) {
   }
 
   const prevChapter = computed(() => {
-    const num = typeof chapterNumber === 'object' ? parseInt(chapterNumber.value) : parseInt(chapterNumber)
+    const num = parseInt(toValue(chapterNumber))
     const idx = sortedChapters.value.findIndex(c => c.chapter_number === num)
     return idx > 0 ? sortedChapters.value[idx - 1] : null
   })
 
   const nextChapter = computed(() => {
-    const num = typeof chapterNumber === 'object' ? parseInt(chapterNumber.value) : parseInt(chapterNumber)
+    const num = parseInt(toValue(chapterNumber))
     const idx = sortedChapters.value.findIndex(c => c.chapter_number === num)
     return idx !== -1 && idx < sortedChapters.value.length - 1 ? sortedChapters.value[idx + 1] : null
   })
 
   function goToChapter(num) {
-    router.push(`/novels/${_id()}/chapters/${num}`)
+    router.push(`/novels/${toValue(novelId)}/chapters/${num}`)
   }
 
   return {

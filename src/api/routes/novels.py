@@ -5,7 +5,11 @@ from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
-from src.api.models.requests import CreateNovelRequest, LongFormNovelRequest, VolumeGenerateRequest
+from src.api.models.requests import (
+    CreateNovelRequest,
+    LongFormNovelRequest,
+    VolumeGenerateRequest,
+)
 from src.api.models.responses import (
     FillerDetectionResult,
     ForeshadowTrackerResult,
@@ -228,7 +232,10 @@ async def create_long_form_novel(
         )
 
         # Add background task
-        from src.api.services.novel_generator import generate_long_form_background
+        from src.api.services.novel_generator import (
+            calculate_long_form_chapter_plan,
+            generate_long_form_background,
+        )
         background_tasks.add_task(
             generate_long_form_background,
             task_id,
@@ -238,7 +245,7 @@ async def create_long_form_novel(
 
         logger.info(f"Created long-form novel task {task_id} for novel {novel_id}")
 
-        total_chapters = request.volumes * request.chapters_per_volume
+        total_chapters = calculate_long_form_chapter_plan(request)["total_chapters"]
         estimated_hours = (total_chapters * 3) / 60  # ~3 minutes per chapter
 
         return LongFormTaskResponse(
@@ -298,7 +305,9 @@ async def get_filler_detection(novel_id: str) -> FillerDetectionResult:
         HTTPException: 小说不存在
     """
     try:
-        from src.api.services.filler_detection_service import get_filler_detection_service
+        from src.api.services.filler_detection_service import (
+            get_filler_detection_service,
+        )
         service = get_filler_detection_service()
         result = await service.detect_filler_chapters(novel_id)
         return FillerDetectionResult(**result)
@@ -321,7 +330,9 @@ async def get_foreshadow_tracker(novel_id: str) -> ForeshadowTrackerResult:
         HTTPException: 小说不存在
     """
     try:
-        from src.api.services.foreshadow_tracker_service import get_foreshadow_tracker_service
+        from src.api.services.foreshadow_tracker_service import (
+            get_foreshadow_tracker_service,
+        )
         service = get_foreshadow_tracker_service()
         result = await service.track_foreshadows(novel_id)
         return ForeshadowTrackerResult(**result)
@@ -344,7 +355,9 @@ async def get_long_form_progress(novel_id: str) -> LongFormProgressResponse:
         HTTPException: 小说不存在
     """
     try:
-        from src.api.services.long_form_progress_service import get_long_form_progress_service
+        from src.api.services.long_form_progress_service import (
+            get_long_form_progress_service,
+        )
         service = get_long_form_progress_service()
         progress = await service.get_progress(novel_id)
         if "error" in progress:
@@ -379,7 +392,9 @@ async def trigger_volume_generate(
         HTTPException: 小说或卷不存在
     """
     try:
-        from src.api.services.long_form_progress_service import get_long_form_progress_service
+        from src.api.services.long_form_progress_service import (
+            get_long_form_progress_service,
+        )
         progress_service = get_long_form_progress_service()
 
         # Check if volume exists
@@ -442,7 +457,9 @@ async def pause_volume_generate(novel_id: str, volume_number: int):
         HTTPException: 操作失败
     """
     try:
-        from src.api.services.long_form_progress_service import get_long_form_progress_service
+        from src.api.services.long_form_progress_service import (
+            get_long_form_progress_service,
+        )
         service = get_long_form_progress_service()
         await service.update_volume_status(
             novel_id=novel_id,
@@ -475,7 +492,9 @@ async def resume_volume_generate(
         HTTPException: 操作失败
     """
     try:
-        from src.api.services.long_form_progress_service import get_long_form_progress_service
+        from src.api.services.long_form_progress_service import (
+            get_long_form_progress_service,
+        )
         progress_service = get_long_form_progress_service()
 
         vol_progress = await progress_service.get_volume_progress(novel_id, volume_number)

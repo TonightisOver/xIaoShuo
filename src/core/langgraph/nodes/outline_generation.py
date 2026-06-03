@@ -174,7 +174,7 @@ async def master_outline_generation_node(state: NovelState) -> NovelState:
             fallback_volumes.append({
                 "volume_number": i,
                 "title": f"第{i}卷",
-                "summary": f"本卷主要情节发展",
+                "summary": "本卷主要情节发展",
                 "chapter_types": {
                     "main_advance": int(chapters_per_vol * 0.45),
                     "climax": int(chapters_per_vol * 0.12),
@@ -363,7 +363,7 @@ async def volume_outline_generation_node(state: NovelState) -> NovelState:
                 "chapter": i,
                 "title": f"第{i}章",
                 "chapter_type": "main_advance",
-                "plot": f"情节待展开",
+                "plot": "情节待展开",
                 "key_characters": [],
                 "volume_number": current_volume,
             })

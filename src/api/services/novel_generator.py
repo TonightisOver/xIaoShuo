@@ -9,6 +9,13 @@ from typing import Any
 import structlog
 
 from src.api.models.requests import CreateNovelRequest
+from src.api.services.chapter_generation_utils import (
+    _context_builder,
+    _emit_progress,
+    _get_blueprint,
+    _get_story_bible_context,
+    _sync_chapter_type_to_db,
+)
 from src.api.services.chapter_persistence_service import (
     persist_chapters_with_replace,
     persist_generated_chapters,
@@ -22,7 +29,6 @@ from src.api.services.long_form_generation_helpers import (
     generate_volume_quality_report,
 )
 from src.api.services.long_form_progress_service import get_long_form_progress_service
-from src.api.services.novel_context_service import NovelContextBuilder
 from src.api.services.novel_manager import get_novel_manager
 from src.api.services.progress_event_bus import (
     EventType,
@@ -33,95 +39,6 @@ from src.api.services.task_manager import get_task_manager
 from src.core.langgraph.graph import create_novel_graph
 
 logger = structlog.get_logger(__name__)
-
-_context_builder = NovelContextBuilder()
-
-
-async def _emit_progress(
-    task_id: str,
-    event_type: EventType,
-    data: dict[str, Any],
-    *,
-    update_status: bool = False,
-    status: str = "running",
-) -> None:
-    """Emit a progress event and optionally update task status.
-
-    Reduces repetitive event_bus.publish + task_manager.update_status patterns.
-    """
-    event_bus = get_event_bus()
-    await event_bus.publish(ProgressEvent(
-        task_id=task_id,
-        event_type=event_type,
-        data=data,
-    ))
-    if update_status:
-        task_manager = get_task_manager()
-        await task_manager.update_status(task_id, status, progress=data)
-
-
-async def _get_story_bible_context(novel_id: str, chapter_outline: dict) -> str | None:
-    """Query StoryBible and extract relevant constraints for a chapter."""
-    try:
-        from sqlalchemy import select
-
-        from src.api.models.db_models import StoryBible
-        from src.api.services.story_bible_service import extract_relevant_constraints
-        from src.core.database import get_db_session
-
-        async with get_db_session() as session:
-            stmt = select(StoryBible).where(StoryBible.novel_id == novel_id)
-            res = await session.execute(stmt)
-            bible = res.scalar_one_or_none()
-            if bible:
-                chapter_num = chapter_outline.get("chapter", 0)
-                return extract_relevant_constraints(bible, chapter_outline, chapter_num)
-    except Exception as e:
-        logger.warning("story_bible_context_fetch_failed", error=str(e))
-    return None
-
-
-async def _get_blueprint(novel_id: str, chapter_outline: dict) -> dict | None:
-    """Fetch or generate a blueprint for a chapter."""
-    chapter_num = chapter_outline.get("chapter", 0)
-    try:
-        from src.api.services.blueprint_service import BlueprintService
-
-        bp_service = BlueprintService()
-        existing_bp = await bp_service.get_blueprint(novel_id, chapter_num)
-        if existing_bp:
-            return existing_bp
-        return await bp_service.generate_blueprint(
-            novel_id, chapter_num, chapter_outline
-        )
-    except Exception as e:
-        logger.warning("blueprint_fetch_failed", chapter=chapter_num, error=str(e))
-    return None
-
-
-async def _sync_chapter_type_to_db(
-    novel_id: str, chapter_num: int, chapter_type: str | None
-) -> None:
-    """Sync chapter_type from generation result to the Chapter DB record."""
-    if not chapter_type:
-        return
-    try:
-        from sqlalchemy import update
-
-        from src.api.models.db_models import Chapter
-        from src.core.database import get_db_session
-
-        async with get_db_session() as session:
-            await session.execute(
-                update(Chapter)
-                .where(
-                    Chapter.novel_id == novel_id,
-                    Chapter.chapter_number == chapter_num,
-                )
-                .values(chapter_type=chapter_type)
-            )
-    except Exception as e:
-        logger.warning("chapter_type_sync_failed", chapter=chapter_num, error=str(e))
 
 
 async def _prepare_chapter_context(
@@ -157,6 +74,29 @@ STAGE_ORDER = [
     "quality_check",
     "human_review",
 ]
+
+
+def calculate_long_form_chapter_plan(request: Any) -> dict[str, int]:
+    """Calculate actual long-form chapter counts used by generation."""
+    if request.auto_calc_chapters:
+        estimated_total_chapters = math.ceil(
+            request.target_words / request.words_per_chapter
+        )
+        computed_chapters_per_volume = math.ceil(
+            estimated_total_chapters / request.volumes
+        )
+        chapters_per_volume = max(20, min(60, computed_chapters_per_volume))
+    else:
+        estimated_total_chapters = request.volumes * request.chapters_per_volume
+        computed_chapters_per_volume = request.chapters_per_volume
+        chapters_per_volume = request.chapters_per_volume
+
+    return {
+        "estimated_total_chapters": estimated_total_chapters,
+        "computed_chapters_per_volume": computed_chapters_per_volume,
+        "chapters_per_volume": chapters_per_volume,
+        "total_chapters": request.volumes * chapters_per_volume,
+    }
 
 
 async def _build_initial_state(
@@ -730,11 +670,14 @@ async def generate_volume_background(
 
         # Fetch context: previous chapters from earlier volumes
         prev_context = ""
-        prev_chapters = await novel_manager.list_chapters(novel_id)
+        prev_chapters = await novel_manager.list_chapters_preview(novel_id)
         prev_in_earlier_vols = [c for c in prev_chapters if (c.get("volume_number") or 0) < volume_number]
         if prev_in_earlier_vols:
             last_ch = prev_in_earlier_vols[-1]
-            prev_context = f"前文最后一章《{last_ch.get('title', '')}》结尾：{(last_ch.get('content', '') or '')[-500:]}"
+            last_tail = await novel_manager.get_chapter_tail(
+                novel_id, last_ch["chapter_number"]
+            )
+            prev_context = f"前文最后一章《{last_ch.get('title', '')}》结尾：{last_tail}"
 
         # Generate chapters using unified batch function
         generated_chapters = await _generate_chapters_batch(
@@ -778,13 +721,11 @@ async def generate_chapters_background(
     try:
         await task_manager.update_status(task_id, "running")
 
-        all_chapters = await novel_manager.list_chapters(novel_id)
-
         prev_context = ""
         if chapter_start > 1:
-            prev_chs = [c for c in all_chapters if c["chapter_number"] == chapter_start - 1]
-            if prev_chs:
-                prev_context = (prev_chs[0].get("content", "") or "")[-500:]
+            prev_context = await novel_manager.get_chapter_tail(
+                novel_id, chapter_start - 1
+            )
 
         # Build ordered chapter outlines for the requested range
         volumes = await novel_manager.list_volumes(novel_id)
@@ -869,14 +810,14 @@ async def generate_long_form_background(
         total_volumes = request.volumes
         words_per_chapter = request.words_per_chapter
 
+        chapter_plan = calculate_long_form_chapter_plan(request)
+        chapters_per_vol = chapter_plan["chapters_per_volume"]
+
         if request.auto_calc_chapters:
-            total_chapters = math.ceil(request.target_words / request.words_per_chapter)
-            computed_chapters_per_vol = math.ceil(total_chapters / request.volumes)
-            chapters_per_vol = max(20, min(60, computed_chapters_per_vol))
-            if chapters_per_vol != computed_chapters_per_vol:
+            if chapters_per_vol != chapter_plan["computed_chapters_per_volume"]:
                 logger.warning(
                     "auto_calc_chapters_clamped",
-                    computed=computed_chapters_per_vol,
+                    computed=chapter_plan["computed_chapters_per_volume"],
                     clamped=chapters_per_vol,
                     target_words=request.target_words,
                     words_per_chapter=request.words_per_chapter,
@@ -886,11 +827,9 @@ async def generate_long_form_background(
                 "auto_calc_chapters",
                 target_words=request.target_words,
                 words_per_chapter=request.words_per_chapter,
-                total_chapters=total_chapters,
+                total_chapters=chapter_plan["estimated_total_chapters"],
                 chapters_per_vol=chapters_per_vol,
             )
-        else:
-            chapters_per_vol = request.chapters_per_volume
 
         # Initialize progress tracking (uses correct chapters_per_vol)
         await progress_service.initialize_progress(
@@ -965,9 +904,11 @@ async def generate_long_form_background(
                     outline_service = get_outline_service()
                     await outline_service.upsert_volume_outline(novel_id, vol_num, vol_outline)
                     chapters_data = vol_outline.get("chapters", [])
+                    volume_offset = (vol_num - 1) * chapters_per_vol
                     for idx, ch in enumerate(chapters_data):
-                        ch_num = ch.get("chapter", idx + 1)
-                        await outline_service.upsert_chapter_outline(novel_id, vol_num, ch_num, ch)
+                        local_ch_num = ch.get("chapter", idx + 1)
+                        global_ch_num = volume_offset + local_ch_num
+                        await outline_service.upsert_chapter_outline(novel_id, vol_num, global_ch_num, ch)
                     logger.info(
                         "volume_outline_persisted",
                         novel_id=novel_id,

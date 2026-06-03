@@ -2,34 +2,34 @@
   <div class="space-y-4">
     <div v-if="loading" class="flex flex-col items-center justify-center rounded-lg border border-neutral-200 bg-white py-12">
       <div class="h-8 w-8 animate-spin rounded-full border-2 border-accent-200 border-t-accent-600"></div>
-      <p class="mt-3 text-sm text-neutral-500">Loading version diff...</p>
+      <p class="mt-3 text-sm text-neutral-500">正在加载版本差异...</p>
     </div>
 
     <div v-else-if="error" class="rounded-lg border border-rose-200 bg-rose-50 p-5 text-center">
-      <h3 class="text-sm font-semibold text-rose-700">Failed to load diff</h3>
+      <h3 class="text-sm font-semibold text-rose-700">加载差异失败</h3>
       <p class="mt-1 text-xs text-rose-600">{{ error }}</p>
       <button
         type="button"
         class="mt-4 rounded-md border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100"
         @click="fetchCompare"
       >
-        Retry
+        重试
       </button>
     </div>
 
     <template v-else-if="compareData">
       <div class="grid gap-3 md:grid-cols-2">
-        <VersionMetaCard title="Base" :version="compareData.v1" />
-        <VersionMetaCard title="Compare" :version="compareData.v2" highlighted />
+        <VersionMetaCard title="基准版本" :version="compareData.v1" />
+        <VersionMetaCard title="对比版本" :version="compareData.v2" highlighted />
       </div>
 
       <div class="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
         <div class="flex items-center justify-between border-b border-neutral-200 bg-neutral-50 px-4 py-2">
-          <span class="font-mono text-xs font-semibold text-neutral-600">Unified diff</span>
+          <span class="font-mono text-xs font-semibold text-neutral-600">统一差异</span>
           <span class="text-xs text-neutral-500">
-            <span class="font-mono font-semibold text-emerald-600">+</span> added
+            <span class="font-mono font-semibold text-emerald-600">+</span> 新增
             <span class="mx-1 text-neutral-300">/</span>
-            <span class="font-mono font-semibold text-rose-600">-</span> removed
+            <span class="font-mono font-semibold text-rose-600">-</span> 删除
           </span>
         </div>
 
@@ -57,7 +57,7 @@
               </tr>
               <tr v-if="parsedLines.length === 0">
                 <td colspan="4" class="px-4 py-10 text-center text-sm text-neutral-400">
-                  No line differences returned.
+                  未返回行级差异。
                 </td>
               </tr>
             </tbody>
@@ -69,7 +69,8 @@
 </template>
 
 <script setup>
-import { computed, defineComponent, h, ref, watch } from 'vue'
+import { computed, defineComponent, h, onUnmounted, ref, watch } from 'vue'
+import { formatDate, formatNumber, sourceClass, sourceLabel } from '../utils/versionHelpers.js'
 
 const props = defineProps({
   novelId: {
@@ -93,6 +94,7 @@ const props = defineProps({
 const compareData = ref(null)
 const loading = ref(false)
 const error = ref('')
+const abortController = ref(null)
 
 const VersionMetaCard = defineComponent({
   props: {
@@ -125,7 +127,7 @@ const VersionMetaCard = defineComponent({
           h('span', { class: ['rounded-full px-2 py-0.5 text-[10px] font-semibold', sourceClass(cardProps.version?.source)] }, sourceLabel(cardProps.version?.source)),
         ]),
         h('div', { class: 'mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-500' }, [
-          h('span', null, `${formatNumber(cardProps.version?.word_count)} words`),
+          h('span', null, `${formatNumber(cardProps.version?.word_count)} 字`),
           h('span', null, formatDate(cardProps.version?.created_at)),
         ]),
       ],
@@ -134,8 +136,18 @@ const VersionMetaCard = defineComponent({
 })
 
 async function fetchCompare() {
-  if (!props.novelId || props.chapterNumber == null || props.v1 == null || props.v2 == null) return
+  if (abortController.value) {
+    abortController.value.abort()
+    abortController.value = null
+  }
 
+  if (!props.novelId || props.chapterNumber == null || props.v1 == null || props.v2 == null) {
+    loading.value = false
+    return
+  }
+
+  const controller = new AbortController()
+  abortController.value = controller
   loading.value = true
   error.value = ''
 
@@ -144,10 +156,12 @@ async function fetchCompare() {
       v1: String(props.v1),
       v2: String(props.v2),
     })
-    const res = await fetch(`/api/v1/projects/${encodeURIComponent(props.novelId)}/chapters/${props.chapterNumber}/versions/compare?${params}`)
+    const res = await fetch(`/api/v1/projects/${encodeURIComponent(props.novelId)}/chapters/${props.chapterNumber}/versions/compare?${params}`, {
+      signal: controller.signal,
+    })
 
     if (!res.ok) {
-      let message = `Request failed with ${res.status}`
+      let message = `请求失败，状态码 ${res.status}`
       try {
         const payload = await res.json()
         message = payload.detail || payload.message || message
@@ -158,12 +172,18 @@ async function fetchCompare() {
       throw new Error(message)
     }
 
-    compareData.value = await res.json()
+    const data = await res.json()
+    if (abortController.value !== controller) return
+    compareData.value = data
   } catch (err) {
+    if (controller.signal.aborted) return
     compareData.value = null
-    error.value = err instanceof Error ? err.message : 'Unknown error'
+    error.value = err instanceof Error ? err.message : '未知错误'
   } finally {
-    loading.value = false
+    if (abortController.value === controller) {
+      loading.value = false
+      abortController.value = null
+    }
   }
 }
 
@@ -207,6 +227,10 @@ watch(
   fetchCompare,
   { immediate: true },
 )
+
+onUnmounted(() => {
+  abortController.value?.abort()
+})
 
 function normalizeDiffLine(rawLine) {
   if (typeof rawLine === 'string') {
@@ -287,40 +311,4 @@ function lineMarker(type) {
   return ''
 }
 
-function sourceLabel(source) {
-  const labels = {
-    manual: 'Manual',
-    ai_rewrite: 'AI Rewrite',
-    rollback: 'Rollback',
-    generation: 'Generated',
-  }
-  return labels[source] || source || 'Unknown'
-}
-
-function sourceClass(source) {
-  const classes = {
-    manual: 'bg-neutral-100 text-neutral-700',
-    ai_rewrite: 'bg-blue-50 text-blue-700',
-    rollback: 'bg-amber-50 text-amber-700',
-    generation: 'bg-emerald-50 text-emerald-700',
-  }
-  return classes[source] || 'bg-neutral-100 text-neutral-700'
-}
-
-function formatDate(value) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-function formatNumber(value) {
-  if (value == null) return '-'
-  return Number(value).toLocaleString()
-}
 </script>

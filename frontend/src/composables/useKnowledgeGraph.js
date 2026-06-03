@@ -1,5 +1,7 @@
-import { ref, nextTick } from 'vue'
-import * as d3 from 'd3'
+import { ref, nextTick, toValue, onUnmounted } from 'vue'
+import { select } from 'd3-selection'
+import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide } from 'd3-force'
+import { drag } from 'd3-drag'
 
 export function useKnowledgeGraph(novelId, kgContainer, activeSubLayer) {
   const kgData = ref(null)
@@ -8,12 +10,13 @@ export function useKnowledgeGraph(novelId, kgContainer, activeSubLayer) {
   const extractProgress = ref('')
   const generatingStorylines = ref(false)
   const storylineGenError = ref('')
+  let controller = null
 
-  function _id() { return typeof novelId === 'object' ? novelId.value : novelId }
+  onUnmounted(() => controller?.abort())
 
   function getActiveGraphData() {
     if (!kgData.value) return null
-    const layer = typeof activeSubLayer === 'object' ? activeSubLayer.value : activeSubLayer
+    const layer = toValue(activeSubLayer)
     if (layer === 'character') return kgData.value.character_graph
     if (layer === 'plot') return kgData.value.plot_graph
     if (layer === 'foreshadowing') return kgData.value.foreshadowing_graph
@@ -21,10 +24,12 @@ export function useKnowledgeGraph(novelId, kgContainer, activeSubLayer) {
   }
 
   async function loadThreeLayerGraph(showAll) {
+    controller?.abort()
+    controller = new AbortController()
     kgLoading.value = true
     try {
       const minFreq = showAll ? 1 : 2
-      const res = await fetch(`/api/v1/projects/${_id()}/knowledge-graph/three-layer?min_frequency=${minFreq}`)
+      const res = await fetch(`/api/v1/projects/${toValue(novelId)}/knowledge-graph/three-layer?min_frequency=${minFreq}`, { signal: controller.signal })
       if (res.ok) {
         kgData.value = await res.json()
         await nextTick()
@@ -33,8 +38,10 @@ export function useKnowledgeGraph(novelId, kgContainer, activeSubLayer) {
           renderKnowledgeGraph(currentGraph)
         }
       }
+    } catch (e) {
+      if (e.name === 'AbortError') return
     } finally {
-      kgLoading.value = false
+      if (!controller.signal.aborted) kgLoading.value = false
     }
   }
 
@@ -43,7 +50,7 @@ export function useKnowledgeGraph(novelId, kgContainer, activeSubLayer) {
     extracting.value = true
     extractProgress.value = '正在读取章节文本并清除旧数据...'
     try {
-      const res = await fetch(`/api/v1/projects/${_id()}/knowledge-graph/extract-all`, {
+      const res = await fetch(`/api/v1/projects/${toValue(novelId)}/knowledge-graph/extract-all`, {
         method: 'POST'
       })
       if (res.ok) {
@@ -55,6 +62,7 @@ export function useKnowledgeGraph(novelId, kgContainer, activeSubLayer) {
         extractProgress.value = `提取异常：${err.detail || '服务错误'}`
       }
     } catch (err) {
+      if (err.name === 'AbortError') return
       console.error(err)
       extractProgress.value = '提取网络通信异常，请重试'
     } finally {
@@ -70,7 +78,7 @@ export function useKnowledgeGraph(novelId, kgContainer, activeSubLayer) {
     generatingStorylines.value = true
     storylineGenError.value = ''
     try {
-      const res = await fetch(`/api/v1/projects/${_id()}/storylines/generate-ai`, { method: 'POST' })
+      const res = await fetch(`/api/v1/projects/${toValue(novelId)}/storylines/generate-ai`, { method: 'POST' })
       if (res.ok) {
         if (loadFn) await loadFn()
       } else {
@@ -78,6 +86,7 @@ export function useKnowledgeGraph(novelId, kgContainer, activeSubLayer) {
         storylineGenError.value = err.detail || '生成失败，请重试'
       }
     } catch (e) {
+      if (e.name === 'AbortError') return
       storylineGenError.value = '网络错误，请重试'
     } finally {
       generatingStorylines.value = false
@@ -94,13 +103,13 @@ export function useKnowledgeGraph(novelId, kgContainer, activeSubLayer) {
     const width = Math.max(container.clientWidth, 800)
     const height = 600
 
-    const svg = d3.select(container)
+    const svg = select(container)
       .append('svg')
       .attr('width', width)
       .attr('height', height)
       .style('border-radius', '12px')
 
-    const layer = typeof activeSubLayer === 'object' ? activeSubLayer.value : activeSubLayer
+    const layer = toValue(activeSubLayer)
     let themeColor = '#8b5cf6'
     if (layer === 'character') themeColor = '#3b82f6'
     else if (layer === 'plot') themeColor = '#f59e0b'
@@ -120,11 +129,11 @@ export function useKnowledgeGraph(novelId, kgContainer, activeSubLayer) {
     const nodes = data.nodes.map(d => ({ ...d }))
     const edges = data.edges.map(d => ({ ...d }))
 
-    const simulation = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(edges).id(d => d.id).distance(150))
-      .force('charge', d3.forceManyBody().strength(-450))
-      .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius(28))
+    const simulation = forceSimulation(nodes)
+      .force('link', forceLink(edges).id(d => d.id).distance(150))
+      .force('charge', forceManyBody().strength(-450))
+      .force('center', forceCenter(width / 2, height / 2))
+      .force('collision', forceCollide().radius(28))
 
     const link = svg.append('g')
       .selectAll('line')
@@ -155,7 +164,7 @@ export function useKnowledgeGraph(novelId, kgContainer, activeSubLayer) {
       .data(nodes)
       .join('g')
       .style('cursor', 'grab')
-      .call(d3.drag()
+      .call(drag()
         .on('start', (event, d) => {
           if (!event.active) simulation.alphaTarget(0.3).restart()
           d.fx = d.x

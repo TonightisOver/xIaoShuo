@@ -1,7 +1,7 @@
 """小说项目管理服务"""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import func, select
@@ -9,8 +9,8 @@ from sqlalchemy.orm import selectinload
 
 from src.api.models.db_models import (
     Chapter,
-    Character,
     ChapterVersion,
+    Character,
     Novel,
     PowerSystem,
     Task,
@@ -41,8 +41,8 @@ class NovelManager:
                 custom_style_description=custom_style_description,
                 writing_style_prompt=writing_style_prompt,
                 status="draft",
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
             session.add(novel)
         logger.info(f"Created novel {novel_id}")
@@ -79,9 +79,20 @@ class NovelManager:
 
     async def list_novels(self, novel_type: str | None = None,
                            limit: int = 20, offset: int = 0):
-        # No N+1 issue here: _novel_summary() only accesses scalar columns on Novel
-        # itself and does not traverse any relationship, so no lazy-load is triggered.
         async with get_db_session() as session:
+            latest_task = (
+                select(
+                    Task.novel_id,
+                    Task.task_id,
+                    func.row_number()
+                    .over(
+                        partition_by=Task.novel_id,
+                        order_by=Task.created_at.desc(),
+                    )
+                    .label("rn"),
+                )
+                .subquery()
+            )
             query = select(Novel)
             if novel_type:
                 query = query.where(Novel.novel_type == novel_type)
@@ -89,22 +100,23 @@ class NovelManager:
             count_q = select(func.count()).select_from(query.subquery())
             total = (await session.execute(count_q)).scalar_one()
 
+            query = (
+                select(Novel, latest_task.c.task_id)
+                .outerjoin(
+                    latest_task,
+                    (latest_task.c.novel_id == Novel.novel_id)
+                    & (latest_task.c.rn == 1),
+                )
+            )
+            if novel_type:
+                query = query.where(Novel.novel_type == novel_type)
             query = query.order_by(Novel.updated_at.desc()).limit(limit).offset(offset)
-            novels = (await session.execute(query)).scalars().all()
+            rows = (await session.execute(query)).all()
 
             summaries = []
-            for n in novels:
+            for n, task_id in rows:
                 summary = self._novel_summary(n)
-                task_id = None
-                if n.status == "generating":
-                    task_res = await session.execute(
-                        select(Task.task_id)
-                        .where(Task.novel_id == n.novel_id)
-                        .order_by(Task.created_at.desc())
-                        .limit(1)
-                    )
-                    task_id = task_res.scalar_one_or_none()
-                summary["active_task_id"] = task_id
+                summary["active_task_id"] = task_id if n.status == "generating" else None
                 summaries.append(summary)
 
             return summaries, total
@@ -120,7 +132,7 @@ class NovelManager:
             for key, value in kwargs.items():
                 if hasattr(novel, key) and value is not None:
                     setattr(novel, key, value)
-            novel.updated_at = datetime.now(timezone.utc)
+            novel.updated_at = datetime.now(UTC)
         return True
 
     async def delete_novel(self, novel_id: str) -> bool:
@@ -164,10 +176,10 @@ class NovelManager:
                 for k, v in kwargs.items():
                     if hasattr(ws, k):
                         setattr(ws, k, v)
-                ws.updated_at = datetime.now(timezone.utc)
+                ws.updated_at = datetime.now(UTC)
             else:
                 ws = WorldSetting(novel_id=novel_id, **kwargs,
-                                  updated_at=datetime.now(timezone.utc))
+                                  updated_at=datetime.now(UTC))
                 session.add(ws)
 
     # --- Power Systems ---
@@ -187,7 +199,7 @@ class NovelManager:
         async with get_db_session() as session:
             ps = PowerSystem(novel_id=novel_id, name=name,
                              description=description, levels=levels or [],
-                             updated_at=datetime.now(timezone.utc))
+                             updated_at=datetime.now(UTC))
             session.add(ps)
             await session.flush()
             return ps.id
@@ -206,7 +218,7 @@ class NovelManager:
             for k, v in kwargs.items():
                 if hasattr(ps, k) and v is not None:
                     setattr(ps, k, v)
-            ps.updated_at = datetime.now(timezone.utc)
+            ps.updated_at = datetime.now(UTC)
         return True
 
     async def delete_power_system(self, novel_id: str, ps_id: int) -> bool:
@@ -239,7 +251,7 @@ class NovelManager:
     async def create_character(self, novel_id: str, **kwargs) -> int:
         async with get_db_session() as session:
             char = Character(novel_id=novel_id, **kwargs,
-                             updated_at=datetime.now(timezone.utc))
+                             updated_at=datetime.now(UTC))
             session.add(char)
             await session.flush()
             return char.id
@@ -273,7 +285,7 @@ class NovelManager:
             for k, v in kwargs.items():
                 if hasattr(char, k) and v is not None:
                     setattr(char, k, v)
-            char.updated_at = datetime.now(timezone.utc)
+            char.updated_at = datetime.now(UTC)
         return True
 
     async def delete_character(self, novel_id: str, char_id: int) -> bool:
@@ -304,6 +316,51 @@ class NovelManager:
                      "word_count": c.word_count, "status": c.status,
                      "updated_at": c.updated_at}
                     for c in result.scalars().all()]
+
+    async def list_chapters_preview(self, novel_id: str) -> list[dict]:
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(
+                    Chapter.id,
+                    Chapter.chapter_number,
+                    Chapter.volume_number,
+                    Chapter.title,
+                    Chapter.word_count,
+                    Chapter.status,
+                    Chapter.chapter_type,
+                    Chapter.updated_at,
+                )
+                .where(Chapter.novel_id == novel_id)
+                .order_by(Chapter.chapter_number)
+            )
+            return [
+                {
+                    "id": row.id,
+                    "chapter_number": row.chapter_number,
+                    "volume_number": row.volume_number,
+                    "title": row.title,
+                    "word_count": row.word_count,
+                    "status": row.status,
+                    "chapter_type": row.chapter_type,
+                    "updated_at": row.updated_at,
+                }
+                for row in result.all()
+            ]
+
+    async def get_chapter_tail(
+        self, novel_id: str, chapter_number: int, tail_chars: int = 500
+    ) -> str:
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(func.substr(Chapter.content, -tail_chars))
+                .where(
+                    Chapter.novel_id == novel_id,
+                    Chapter.chapter_number == chapter_number,
+                )
+                .order_by(Chapter.id.desc())
+                .limit(1)
+            )
+            return result.scalar_one_or_none() or ""
 
     async def get_chapter(self, novel_id: str, chapter_number: int) -> dict | None:
         async with get_db_session() as session:
@@ -341,7 +398,7 @@ class NovelManager:
             if "content" in kwargs and kwargs["content"]:
                 ch.word_count = len(kwargs["content"])
             ch.status = "edited"
-            ch.updated_at = datetime.now(timezone.utc)
+            ch.updated_at = datetime.now(UTC)
         return True
 
     async def delete_chapter(self, novel_id: str, chapter_number: int) -> bool:
@@ -433,7 +490,7 @@ class NovelManager:
                 kg_conflicts=kg_conflicts,
                 user_notes=user_notes,
                 is_active=is_active,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             session.add(version)
 
@@ -449,7 +506,7 @@ class NovelManager:
 
             ch.content = content
             ch.word_count = word_count
-            ch.updated_at = datetime.now(timezone.utc)
+            ch.updated_at = datetime.now(UTC)
 
             await session.flush()
             return new_version
@@ -573,7 +630,7 @@ class NovelManager:
             if ch and target.content:
                 ch.content = target.content
                 ch.word_count = target.word_count
-                ch.updated_at = datetime.now(timezone.utc)
+                ch.updated_at = datetime.now(UTC)
 
         return True
 
@@ -669,7 +726,7 @@ class NovelManager:
             vol = Volume(novel_id=novel_id, volume_number=volume_number,
                          title=title, summary=summary, outline=outline,
                          chapter_start=chapter_start, chapter_end=chapter_end,
-                         updated_at=datetime.now(timezone.utc))
+                         updated_at=datetime.now(UTC))
             session.add(vol)
             await session.flush()
             return vol.id
@@ -688,7 +745,7 @@ class NovelManager:
             for k, v in kwargs.items():
                 if hasattr(vol, k) and v is not None:
                     setattr(vol, k, v)
-            vol.updated_at = datetime.now(timezone.utc)
+            vol.updated_at = datetime.now(UTC)
         return True
 
     # --- Helpers ---

@@ -1,5 +1,7 @@
-import { ref, nextTick } from 'vue'
-import * as d3 from 'd3'
+import { ref, nextTick, toValue, onUnmounted } from 'vue'
+import { hierarchy, tree } from 'd3-hierarchy'
+import { select } from 'd3-selection'
+import { linkHorizontal } from 'd3-shape'
 
 const nodeColors = {
   root: '#8b5cf6',
@@ -15,8 +17,9 @@ const nodeColors = {
 export function useRelationGraph(novelId, treeContainer) {
   const relations = ref(null)
   const loading = ref(true)
+  let controller = null
 
-  function _id() { return typeof novelId === 'object' ? novelId.value : novelId }
+  onUnmounted(() => controller?.abort())
 
   function transformToTree(data) {
     const children = []
@@ -102,13 +105,13 @@ export function useRelationGraph(novelId, treeContainer) {
     const margin = { top: 20, right: 200, bottom: 20, left: 120 }
     const width = Math.max(container.clientWidth, 800)
 
-    const root = d3.hierarchy(data)
+    const root = hierarchy(data)
     const treeHeight = Math.max(root.descendants().length * 28, 450)
 
-    const treeLayout = d3.tree().size([treeHeight, width - margin.left - margin.right])
+    const treeLayout = tree().size([treeHeight, width - margin.left - margin.right])
     treeLayout(root)
 
-    const svg = d3.select(container)
+    const svg = select(container)
       .append('svg')
       .attr('width', width)
       .attr('height', treeHeight + margin.top + margin.bottom)
@@ -123,7 +126,7 @@ export function useRelationGraph(novelId, treeContainer) {
       .attr('fill', 'none')
       .attr('stroke', '#e5e5ea')
       .attr('stroke-width', 1.5)
-      .attr('d', d3.linkHorizontal().x(d => d.y).y(d => d.x))
+      .attr('d', linkHorizontal().x(d => d.y).y(d => d.x))
 
     const node = g.selectAll('.node')
       .data(root.descendants())
@@ -153,9 +156,11 @@ export function useRelationGraph(novelId, treeContainer) {
   }
 
   async function load() {
+    controller?.abort()
+    controller = new AbortController()
     loading.value = true
     try {
-      const res = await fetch(`/api/v1/projects/${_id()}/relations`)
+      const res = await fetch(`/api/v1/projects/${toValue(novelId)}/relations`, { signal: controller.signal })
       if (res.ok) {
         relations.value = await res.json()
         await nextTick()
@@ -166,8 +171,10 @@ export function useRelationGraph(novelId, treeContainer) {
           renderTree(treeData)
         }
       }
+    } catch (e) {
+      if (e.name === 'AbortError') return
     } finally {
-      loading.value = false
+      if (!controller.signal.aborted) loading.value = false
     }
   }
 

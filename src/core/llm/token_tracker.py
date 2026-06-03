@@ -1,7 +1,7 @@
 """Token 用量追踪器 — 内存聚合，进程重启后清零"""
 
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 

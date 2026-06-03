@@ -1,6 +1,5 @@
 """小说项目管理 API 路由"""
 
-import asyncio
 from typing import Literal
 
 import structlog
@@ -663,7 +662,7 @@ async def rewrite_chapter_segment(novel_id: str, chapter_number: int, request: R
             instruction=request.instruction,
             context=context,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         raise HTTPException(status_code=504, detail="AI rewrite timed out")
     except Exception as e:
         logger.error("rewrite_chapter_segment_failed", error=str(e))
@@ -911,7 +910,7 @@ async def targeted_rewrite_chapter(
                 instruction=request.instruction,
                 context=context,
             )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         raise HTTPException(status_code=504, detail="AI rewrite timed out")
     except Exception as e:
         logger.error("targeted_rewrite_failed", error=str(e))
