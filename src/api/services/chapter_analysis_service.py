@@ -28,8 +28,7 @@ ANALYSIS_PROMPT_TEMPLATE = """\
 - plot_point（情节点）：推进主线剧情的关键事件
 - character_event（角色事件）：角色的重要行为/变化/对话
 
-每个标注格式：
-{{"type": "类型", "start": 起始字符位置, "end": 结束字符位置, "label": "简短标签", "description": "50字以内描述"}}
+每个标注 JSON：{{"type", "start", "end", "label", "description"}}
 
 只输出 JSON 数组，不要其他内容。
 """
@@ -68,8 +67,15 @@ def _validate_annotation(
     ann_type = raw.get("type", "plot_point")
     if ann_type not in ANNOTATION_TYPES:
         ann_type = "plot_point"
-    start = max(0, min(raw.get("start", 0), content_length - 1))
-    end = max(start + 1, min(raw.get("end", start + 50), content_length))
+    if content_length <= 0:
+        content_length = 1
+    try:
+        start = int(raw.get("start", 0))
+        end = int(raw.get("end", start + 50))
+    except (ValueError, TypeError):
+        start, end = 0, min(50, content_length)
+    start = max(0, min(start, content_length - 1))
+    end = max(start + 1, min(end, content_length))
     return {
         "type": ann_type,
         "start": start,
