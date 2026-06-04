@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from copy import deepcopy
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from src.api.services.novel_manager import get_novel_manager
@@ -13,19 +13,24 @@ from src.core.llm.client import get_llm_client
 
 class InspirationWizard:
     steps = ["idea", "title", "description", "theme", "genre", "confirm"]
+    session_ttl = timedelta(hours=24)
+    max_sessions = 100
 
     def __init__(self) -> None:
         self._sessions: dict[str, dict[str, Any]] = {}
 
     def start_session(self) -> dict[str, Any]:
+        self._cleanup_sessions()
+        self._enforce_session_limit()
         session_id = f"inspiration-{uuid.uuid4().hex}"
+        now = datetime.now(UTC).isoformat()
         self._sessions[session_id] = {
             "session_id": session_id,
             "current_step": "idea",
             "collected": {},
             "outline": None,
-            "created_at": datetime.now(UTC).isoformat(),
-            "updated_at": datetime.now(UTC).isoformat(),
+            "created_at": now,
+            "updated_at": now,
         }
         welcome = (
             "欢迎进入灵感模式。先告诉我一个朦胧的念头、场景、人物或冲突，"
@@ -123,10 +128,42 @@ class InspirationWizard:
         self._sessions.clear()
 
     def _get_session(self, session_id: str) -> dict[str, Any]:
+        self._cleanup_sessions()
         session = self._sessions.get(session_id)
         if session is None:
             raise KeyError("Inspiration session not found")
         return session
+
+    def _cleanup_sessions(self) -> None:
+        now = datetime.now(UTC)
+        expired = [
+            session_id
+            for session_id, session in self._sessions.items()
+            if now - self._parse_time(session.get("created_at")) >= self.session_ttl
+        ]
+        for session_id in expired:
+            self._sessions.pop(session_id, None)
+
+    def _enforce_session_limit(self) -> None:
+        while len(self._sessions) >= self.max_sessions:
+            oldest_id = min(
+                self._sessions,
+                key=lambda session_id: self._parse_time(
+                    self._sessions[session_id].get("created_at")
+                ),
+            )
+            self._sessions.pop(oldest_id, None)
+
+    def _parse_time(self, value: Any) -> datetime:
+        if isinstance(value, datetime):
+            parsed = value
+        elif isinstance(value, str):
+            parsed = datetime.fromisoformat(value)
+        else:
+            return datetime.min.replace(tzinfo=UTC)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
 
     def _next_step(self, step: str) -> str | None:
         index = self.steps.index(step)

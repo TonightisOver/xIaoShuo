@@ -6,7 +6,7 @@ import os
 import re
 import uuid
 from copy import deepcopy
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +17,9 @@ CHAPTER_PATTERN = re.compile(r"(?im)(第.{1,5}章[^\n\r]*|Chapter\s+\d+[^\n\r]*)
 
 
 class BookImportService:
+    task_ttl = timedelta(hours=2)
+    max_tasks = 50
+
     def __init__(self) -> None:
         self._tasks: dict[str, dict[str, Any]] = {}
 
@@ -159,6 +162,8 @@ class BookImportService:
         }
 
     def create_task(self, chapters: list[dict[str, Any]]) -> str:
+        self._cleanup_tasks()
+        self._enforce_task_limit()
         task_id = f"book-import-{uuid.uuid4().hex}"
         now = datetime.now(UTC).isoformat()
         self._tasks[task_id] = {
@@ -211,6 +216,7 @@ class BookImportService:
         self._tasks.clear()
 
     def _get_task(self, task_id: str) -> dict[str, Any]:
+        self._cleanup_tasks()
         task = self._tasks.get(task_id)
         if task is None:
             raise KeyError("Book import task not found")
@@ -220,6 +226,37 @@ class BookImportService:
         task = self._get_task(task_id)
         task.update(updates)
         task["updated_at"] = datetime.now(UTC).isoformat()
+
+    def _cleanup_tasks(self) -> None:
+        now = datetime.now(UTC)
+        expired = [
+            task_id
+            for task_id, task in self._tasks.items()
+            if now - self._parse_time(task.get("created_at")) >= self.task_ttl
+        ]
+        for task_id in expired:
+            self._tasks.pop(task_id, None)
+
+    def _enforce_task_limit(self) -> None:
+        while len(self._tasks) >= self.max_tasks:
+            oldest_id = min(
+                self._tasks,
+                key=lambda task_id: self._parse_time(
+                    self._tasks[task_id].get("created_at")
+                ),
+            )
+            self._tasks.pop(oldest_id, None)
+
+    def _parse_time(self, value: Any) -> datetime:
+        if isinstance(value, datetime):
+            parsed = value
+        elif isinstance(value, str):
+            parsed = datetime.fromisoformat(value)
+        else:
+            return datetime.min.replace(tzinfo=UTC)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
 
     def _read_text(self, file_path_or_text: str) -> str:
         if os.path.exists(file_path_or_text):

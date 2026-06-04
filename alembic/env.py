@@ -1,19 +1,43 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-
-# Import your models' Base
-from src.core.database import Base
 from src.api.models.db_models import (  # noqa: F401 - register with Base
-    Novel, WorldSetting, PowerSystem, Character, Chapter, Volume, Task,
-    Conversation, Message, Outline, Storyline, CharacterArc, Scene, StorylineCharacter
+    CareerSystem,
+    Chapter,
+    ChapterBlueprint,
+    ChapterVersion,
+    Character,
+    CharacterArc,
+    CharacterCareer,
+    Conversation,
+    KnowledgeEntity,
+    KnowledgeEntityState,
+    KnowledgeExtractionLog,
+    KnowledgeTriple,
+    LLMConfig,
+    LongFormProgress,
+    Message,
+    Novel,
+    Outline,
+    OutlineSyncSuggestion,
+    PowerSystem,
+    ReaderSimulation,
+    Scene,
+    StoryBible,
+    Storyline,
+    StorylineCharacter,
+    Task,
+    Volume,
+    WorldSetting,
 )
 
 # Import settings for dynamic URL
 from src.core.config import get_settings
+
+# Import your models' Base
+from src.core.database import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
