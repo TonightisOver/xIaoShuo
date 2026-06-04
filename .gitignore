@@ -70,3 +70,7 @@ frontend/dist/
 
 # Git bundles
 *.bundle
+
+# Local deployment transfer artifacts
+.codex-deploy-*
+.codex_tmp_ed25519*

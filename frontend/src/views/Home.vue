@@ -10,10 +10,18 @@
         </h1>
         <p class="text-neutral-500 mt-1 text-sm">管理与监控你的 AI 小说创作项目</p>
       </div>
-      <select v-model="typeFilter" class="input w-36 text-sm">
-        <option value="">全部类型</option>
-        <option v-for="t in types" :key="t" :value="t">{{ t }}</option>
-      </select>
+      <div class="flex items-center gap-2">
+        <select v-model="typeFilter" class="input w-36 text-sm">
+          <option value="">全部类型</option>
+          <option v-for="t in types" :key="t" :value="t">{{ t }}</option>
+        </select>
+        <router-link to="/inspiration" class="btn-secondary text-sm inline-flex items-center gap-1.5 bg-gradient-to-r from-accent-500/5 to-indigo-500/5 hover:from-accent-500/10 hover:to-indigo-500/10 text-accent-700 border-accent-200">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5 text-accent-600">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 21l8.982-11.795H13.82l.93-5.205L5.772 15.904h4.041z" />
+          </svg>
+          <span>灵感模式</span>
+        </router-link>
+      </div>
     </div>
 
     <!-- Loading -->
@@ -31,12 +39,20 @@
       </div>
       <p class="text-neutral-800 text-lg font-semibold mb-1">书架空空如也</p>
       <p class="text-neutral-500 text-sm mb-6">尚未创建任何小说项目</p>
-      <router-link to="/create" class="btn-primary inline-flex items-center gap-1.5">
-        <span>创建第一本小说</span>
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-        </svg>
-      </router-link>
+      <div class="flex items-center justify-center gap-3">
+        <router-link to="/create" class="btn-primary inline-flex items-center gap-1.5">
+          <span>创建第一本小说</span>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+          </svg>
+        </router-link>
+        <router-link to="/inspiration" class="btn-secondary inline-flex items-center gap-1.5 bg-gradient-to-r from-accent-500/10 to-indigo-500/10 border-accent-200 text-accent-700 hover:from-accent-500/20 hover:to-indigo-500/20">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-accent-600">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 21l8.982-11.795H13.82l.93-5.205L5.772 15.904h4.041z" />
+          </svg>
+          <span>灵感向导</span>
+        </router-link>
+      </div>
     </div>
 
     <!-- Book Grid -->
