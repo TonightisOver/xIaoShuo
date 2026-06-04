@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from src.api.routes import (
     book_import_router,
     careers_router,
+    chapter_analysis_router,
     conversations_router,
     export_router,
     health_router,
@@ -146,6 +147,7 @@ app.include_router(tasks_router)
 app.include_router(projects_router)
 app.include_router(book_import_router)
 app.include_router(careers_router)
+app.include_router(chapter_analysis_router)
 app.include_router(conversations_router)
 app.include_router(style_router)
 app.include_router(outlines_router)

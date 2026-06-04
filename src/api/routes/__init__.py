@@ -2,6 +2,7 @@
 
 from .book_import import router as book_import_router
 from .careers import router as careers_router
+from .chapter_analysis import router as chapter_analysis_router
 from .conversations import router as conversations_router
 from .export import router as export_router
 from .health import router as health_router
