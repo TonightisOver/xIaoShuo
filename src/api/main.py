@@ -14,6 +14,7 @@ from src.api.routes import (
     conversations_router,
     export_router,
     health_router,
+    inspiration_router,
     knowledge_graph_router,
     llm_config_router,
     novels_router,
@@ -138,6 +139,7 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(health_router)
+app.include_router(inspiration_router)
 app.include_router(novels_router)
 app.include_router(tasks_router)
 app.include_router(projects_router)

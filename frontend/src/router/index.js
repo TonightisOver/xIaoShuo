@@ -16,6 +16,7 @@ const routes = [
   { path: '/novels/:id/graph', name: 'graph', component: () => import('../views/RelationGraph.vue') },
   { path: '/novels/:id/foreshadows', name: 'foreshadows', component: () => import('../views/ForeshadowTracker.vue') },
   { path: '/settings/llm', name: 'LLMSettings', component: () => import('../views/LLMSettings.vue') },
+  { path: '/inspiration', name: 'inspiration', component: () => import('../views/Inspiration.vue') },
 ]
 
 export default createRouter({

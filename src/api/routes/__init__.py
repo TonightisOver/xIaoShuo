@@ -4,6 +4,7 @@ from .careers import router as careers_router
 from .conversations import router as conversations_router
 from .export import router as export_router
 from .health import router as health_router
+from .inspiration import router as inspiration_router
 from .knowledge_graph import router as knowledge_graph_router
 from .llm_config import router as llm_config_router
 from .novels import router as novels_router
@@ -22,6 +23,6 @@ __all__ = [
     "conversations_router", "careers_router", "style_router", "outlines_router",
     "storylines_router", "knowledge_graph_router", "story_bible_router",
     "export_router", "outline_sync_router", "reader_simulation_router",
-    "llm_config_router",
+    "llm_config_router", "inspiration_router",
 ]
 
