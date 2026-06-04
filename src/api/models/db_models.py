@@ -7,6 +7,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     CheckConstraint,
+    Column,
     DateTime,
     Float,
     ForeignKey,
@@ -14,12 +15,31 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    TypeDecorator,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from src.core.database import Base
+from src.core.security.crypto import decrypt_string, encrypt_string
+
+
+class EncryptedString(TypeDecorator[str]):
+    """SQLAlchemy type that encrypts strings at rest."""
+
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value: str | None, dialect) -> str | None:
+        if value is None:
+            return None
+        return encrypt_string(value)
+
+    def process_result_value(self, value: str | None, dialect) -> str | None:
+        if value is None:
+            return None
+        return decrypt_string(value)
 
 
 class Novel(Base):
@@ -580,7 +600,12 @@ class ChapterVersion(Base):
 
     __tablename__ = "chapter_versions"
     __table_args__ = (
-        UniqueConstraint("novel_id", "chapter_number", "version_number", name="uq_chapter_version"),
+        UniqueConstraint(
+            "novel_id",
+            "chapter_number",
+            "version_number",
+            name="uq_chapter_version",
+        ),
         Index("ix_chapter_versions_novel_chapter", "novel_id", "chapter_number"),
         CheckConstraint(
             "source IN ('manual', 'ai_rewrite', 'rollback', 'generation')",
@@ -680,7 +705,7 @@ class LLMConfig(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     base_url: Mapped[str] = mapped_column(String(500), nullable=False)
-    api_key: Mapped[str] = mapped_column(String(500), nullable=False)
+    api_key: Mapped[str] = mapped_column(EncryptedString(), nullable=False)
     model_flash: Mapped[str] = mapped_column(String(100), nullable=False)
     model_pro: Mapped[str] = mapped_column(String(100), nullable=False)
     is_active: Mapped[bool] = mapped_column(
@@ -700,7 +725,15 @@ class ChapterBlueprint(Base):
 
     __tablename__ = "chapter_blueprints"
     __table_args__ = (
-        UniqueConstraint("novel_id", "chapter_number", "is_active", name="uq_blueprint_novel_chapter_active"),
+        # Partial unique index: only one active blueprint per (novel, chapter)
+        # Inactive (historical) blueprints may coexist for auditability.
+        Index(
+            "uq_blueprint_novel_chapter_active",
+            "novel_id",
+            "chapter_number",
+            unique=True,
+            postgresql_where=Column("is_active").is_(True),
+        ),
         Index("ix_blueprint_novel_chapter", "novel_id", "chapter_number"),
     )
 

@@ -6,19 +6,22 @@ from datetime import datetime
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 
 from src.api.models.db_models import LLMConfig
 from src.core.database import get_db_session
 from src.core.llm.token_tracker import get_token_tracker
+from src.core.security.auth import require_admin
 
 logger = structlog.get_logger(__name__)
 
-router = APIRouter(prefix="/api/v1/llm", tags=["llm"])
-
-# TODO: Add authentication/authorization dependency before exposing LLM config CRUD routes.
+router = APIRouter(
+    prefix="/api/v1/llm",
+    tags=["llm"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +97,11 @@ def _reload_active_llm_client(config: LLMConfig) -> None:
     from src.core.llm.client import LLMClient
 
     llm_module._client = LLMClient(llm_config=config)
-    logger.info("llm_client_reloaded_from_config", config_id=config.id, name=config.name)
+    logger.info(
+        "llm_client_reloaded_from_config",
+        config_id=config.id,
+        name=config.name,
+    )
 
 
 # ---------------------------------------------------------------------------

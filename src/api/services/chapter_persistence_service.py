@@ -139,6 +139,11 @@ async def persist_langgraph_result(
 
     except Exception as e:
         logger.error("persist_results_failed", novel_id=novel_id, error=str(e))
+        from src.core.exceptions import PersistenceError
+
+        raise PersistenceError(
+            f"Failed to persist langgraph result for {novel_id}: {e}"
+        ) from e
 
 
 async def persist_generated_chapters(

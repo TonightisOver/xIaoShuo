@@ -202,14 +202,27 @@ class LLMClient:
         prompt: str,
         use_flash: bool = False,
     ):
-        """Stream generated text chunks."""
+        """Stream generated text chunks with usage accounting on completion."""
+        from src.core.llm.token_tracker import get_token_tracker
+
+        tracker = get_token_tracker()
         llm_instance = self._get_llm(use_flash)
         messages = [HumanMessage(content=prompt)]
+        prompt_chars = len(prompt)
 
-        async for chunk in llm_instance.astream(messages):
-            content = getattr(chunk, "content", None)
-            if content is not None:
-                yield str(content)
+        try:
+            async for chunk in llm_instance.astream(messages):
+                content = getattr(chunk, "content", None)
+                if content is not None:
+                    yield str(content)
+        finally:
+            # Record approximate usage even when streaming provider omits token counts
+            tracker.record(
+                prompt_chars=prompt_chars,
+                completion_chars=0,
+                model=getattr(llm_instance, "model_name", "unknown"),
+                mode="stream",
+            )
 
 
 # 全局客户端实例

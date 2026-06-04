@@ -3,6 +3,8 @@ import { select } from 'd3-selection'
 import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide } from 'd3-force'
 import { drag } from 'd3-drag'
 
+let activeSimulation = null
+
 export function useKnowledgeGraph(novelId, kgContainer, activeSubLayer) {
   const kgData = ref(null)
   const kgLoading = ref(false)
@@ -12,7 +14,13 @@ export function useKnowledgeGraph(novelId, kgContainer, activeSubLayer) {
   const storylineGenError = ref('')
   let controller = null
 
-  onUnmounted(() => controller?.abort())
+  onUnmounted(() => {
+    controller?.abort()
+    if (activeSimulation) {
+      try { activeSimulation.stop() } catch (e) { /* ignore */ }
+      activeSimulation = null
+    }
+  })
 
   function getActiveGraphData() {
     if (!kgData.value) return null
@@ -98,6 +106,11 @@ export function useKnowledgeGraph(novelId, kgContainer, activeSubLayer) {
       ? kgContainer.value
       : kgContainer
     if (!container) return
+    // Stop any previous simulation to release tick listeners on detached DOM
+    if (activeSimulation) {
+      try { activeSimulation.stop() } catch (e) { /* ignore */ }
+      activeSimulation = null
+    }
     container.innerHTML = ''
 
     const width = Math.max(container.clientWidth, 800)
@@ -134,6 +147,7 @@ export function useKnowledgeGraph(novelId, kgContainer, activeSubLayer) {
       .force('charge', forceManyBody().strength(-450))
       .force('center', forceCenter(width / 2, height / 2))
       .force('collision', forceCollide().radius(28))
+    activeSimulation = simulation
 
     const link = svg.append('g')
       .selectAll('line')

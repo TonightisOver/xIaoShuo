@@ -33,12 +33,12 @@
           </span>
         </div>
 
-        <div class="max-h-[70vh] overflow-auto">
+        <div ref="scrollRoot" class="max-h-[70vh] overflow-auto" @scroll="onScroll">
           <table class="w-full border-collapse font-mono text-xs">
             <tbody>
               <tr
-                v-for="(line, index) in parsedLines"
-                :key="`${index}-${line.leftNumber}-${line.rightNumber}`"
+                v-for="line in visibleLines"
+                :key="`${line._index}-${line.leftNumber}-${line.rightNumber}`"
                 class="border-b border-neutral-100 last:border-b-0"
                 :class="lineRowClass(line.type)"
               >
@@ -69,8 +69,32 @@
 </template>
 
 <script setup>
-import { computed, defineComponent, h, onUnmounted, ref, watch } from 'vue'
+import { computed, defineComponent, h, onMounted, onUnmounted, ref, watch } from 'vue'
 import { formatDate, formatNumber, sourceClass, sourceLabel } from '../utils/versionHelpers.js'
+
+// Windowed rendering state: avoid rendering thousands of <tr> for huge diffs
+const scrollRoot = ref(null)
+const scrollTop = ref(0)
+const VIEWPORT_HEIGHT = 600 // matches max-h-[70vh] when 70vh ~ 600px
+const ROW_HEIGHT = 28 // matches `py-1 + text-xs` line height
+const OVERSCAN = 20
+
+const visibleLines = computed(() => {
+  if (parsedLines.value.length <= 200) {
+    // Small diff: render all, no virtualization needed
+    return parsedLines.value.map((l, i) => ({ ...l, _index: i }))
+  }
+  const start = Math.max(0, Math.floor(scrollTop.value / ROW_HEIGHT) - OVERSCAN)
+  const visible = Math.ceil(VIEWPORT_HEIGHT / ROW_HEIGHT) + OVERSCAN * 2
+  const end = Math.min(parsedLines.value.length, start + visible)
+  return parsedLines.value
+    .slice(start, end)
+    .map((l, i) => ({ ...l, _index: start + i }))
+})
+
+function onScroll(event) {
+  scrollTop.value = event.target.scrollTop
+}
 
 const props = defineProps({
   novelId: {

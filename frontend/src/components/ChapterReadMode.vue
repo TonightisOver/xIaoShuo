@@ -70,7 +70,7 @@
 </template>
 
 <script setup>
-import { nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import ReadingTOC from './ReadingTOC.vue'
 import { useReadingProgress } from '../composables/useReadingProgress.js'
 
@@ -165,13 +165,19 @@ function handleTOCChapter(chapterNumber) {
 onMounted(async () => {
   window.addEventListener('keydown', handleKeydown)
   readContainer.value?.addEventListener('scroll', handleScroll, { passive: true })
+})
 
+watch(() => props.chapter?.chapter_number, async (newNum) => {
+  if (newNum == null) return
+  await nextTick()
+  const el = readContainer.value
+  if (!el) return
+  el.scrollTop = 0
   const progress = loadProgress()
-  if (progress?.chapter === Number(props.chapter.chapter_number)) {
+  if (progress?.chapter === Number(newNum)) {
     await nextTick()
-    const el = readContainer.value
-    if (el) {
-      const maxScroll = el.scrollHeight - el.clientHeight
+    const maxScroll = el.scrollHeight - el.clientHeight
+    if (maxScroll > 0) {
       el.scrollTop = Math.max(0, maxScroll * (Number(progress.scrollPercent) / 100))
     }
   }

@@ -41,13 +41,11 @@ from src.core.langgraph.graph import create_novel_graph
 
 logger = structlog.get_logger(__name__)
 
-_paused_tasks: dict[str, bool] = {}
-
 
 async def pause_task(task_id: str) -> None:
-    _paused_tasks[task_id] = True
-    task_manager = get_task_manager()
-    await task_manager.update_status(task_id, "paused")
+    from src.api.services.pause_state_store import get_pause_state_store
+
+    await get_pause_state_store().set_paused(task_id)
     await _emit_progress(
         task_id,
         EventType.GENERATION_PAUSED,
@@ -56,9 +54,9 @@ async def pause_task(task_id: str) -> None:
 
 
 async def resume_task(task_id: str) -> None:
-    _paused_tasks.pop(task_id, None)
-    task_manager = get_task_manager()
-    await task_manager.update_status(task_id, "running")
+    from src.api.services.pause_state_store import get_pause_state_store
+
+    await get_pause_state_store().clear_paused(task_id)
     await _emit_progress(
         task_id,
         EventType.GENERATION_RESUMED,
@@ -66,8 +64,10 @@ async def resume_task(task_id: str) -> None:
     )
 
 
-def is_task_paused(task_id: str) -> bool:
-    return _paused_tasks.get(task_id, False)
+async def is_task_paused(task_id: str) -> bool:
+    from src.api.services.pause_state_store import get_pause_state_store
+
+    return await get_pause_state_store().is_paused(task_id)
 
 
 async def _prepare_chapter_context(
@@ -610,7 +610,7 @@ async def _generate_chapters_batch(
     generated_chapters: list[dict] = []
 
     for i, ch_outline in enumerate(chapter_outlines):
-        while is_task_paused(task_id):
+        while await is_task_paused(task_id):
             await asyncio.sleep(1)
 
         # Determine previous chapter text with richer context for continuity

@@ -37,8 +37,9 @@
 
         <button
           :disabled="!isStreaming && !isPaused"
+          title="Esc"
           class="btn-control bg-rose-500 hover:bg-rose-600 text-white disabled:opacity-40 disabled:cursor-not-allowed"
-          @click="$emit('stop')"
+          @click="requestStop"
         >
           <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
             <rect x="6" y="6" width="12" height="12" rx="1" />
@@ -59,9 +60,42 @@
       </div>
     </div>
   </div>
+
+  <Teleport to="body">
+    <div
+      v-if="showStopConfirm"
+      class="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 backdrop-blur-sm px-4"
+      @click.self="cancelStop"
+    >
+      <div class="w-full max-w-sm rounded-2xl border border-white/30 bg-white/75 dark:bg-gray-900/75 shadow-2xl backdrop-blur-xl ring-1 ring-black/5 dark:ring-white/10">
+        <div class="px-6 py-5 space-y-4">
+          <div class="space-y-2">
+            <h3 class="text-base font-semibold text-[#1d1d1f] dark:text-gray-100">确定停止生成？</h3>
+            <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">未保存进度将丢失</p>
+          </div>
+          <div class="flex justify-end gap-3">
+            <button
+              class="rounded-lg bg-white/80 dark:bg-gray-800/80 px-4 py-2 text-sm font-semibold text-[#1d1d1f] dark:text-gray-100 shadow-sm transition-colors hover:bg-white dark:hover:bg-gray-700"
+              @click="cancelStop"
+            >
+              继续生成
+            </button>
+            <button
+              class="rounded-lg bg-rose-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-rose-600"
+              @click="confirmStop"
+            >
+              确认停止
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup>
+import { onBeforeUnmount, ref } from 'vue'
+
 defineProps({
   taskId: { type: String, default: '' },
   isPaused: { type: Boolean, default: false },
@@ -71,7 +105,58 @@ defineProps({
   wordCount: { type: Number, default: 0 },
 })
 
-defineEmits(['pause', 'resume', 'stop', 'edit'])
+const emit = defineEmits(['pause', 'resume', 'stop', 'edit'])
+
+const showStopConfirm = ref(false)
+let stopConfirmTimer = null
+
+function clearStopTimer() {
+  if (stopConfirmTimer) {
+    clearTimeout(stopConfirmTimer)
+    stopConfirmTimer = null
+  }
+}
+
+function closeStopConfirm() {
+  showStopConfirm.value = false
+  clearStopTimer()
+}
+
+function requestStop() {
+  if (showStopConfirm.value) {
+    confirmStop()
+    return
+  }
+
+  showStopConfirm.value = true
+  clearStopTimer()
+  stopConfirmTimer = setTimeout(() => {
+    showStopConfirm.value = false
+    stopConfirmTimer = null
+  }, 2000)
+}
+
+function confirmStop() {
+  closeStopConfirm()
+  emit('stop')
+}
+
+function cancelStop() {
+  closeStopConfirm()
+}
+
+function handleKeydown(event) {
+  if (event.key === 'Escape' && showStopConfirm.value) {
+    cancelStop()
+  }
+}
+
+window.addEventListener('keydown', handleKeydown)
+
+onBeforeUnmount(() => {
+  clearStopTimer()
+  window.removeEventListener('keydown', handleKeydown)
+})
 </script>
 
 <style scoped>

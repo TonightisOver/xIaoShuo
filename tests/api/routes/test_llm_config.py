@@ -1,28 +1,45 @@
 """LLM 配置路由测试（CHANGE-051 T6）"""
 
+import os
 from unittest.mock import patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+os.environ.setdefault("ADMIN_TOKEN", "secret")
+os.environ.setdefault(
+    "LLM_ENCRYPTION_KEY",
+    "8bj5PGK84njNhOHlIV64dHHMh7QGgdrNKm5eozsXDKY=",
+)
+
 from src.api.main import app
 from src.core.database import Base, get_engine
+from src.core.security import crypto
+
+ADMIN_HEADERS = {"X-Admin-Token": "secret"}
 
 
 @pytest.fixture(scope="module")
 async def _db_setup():
+    crypto._get_fernet.cache_clear()
     engine = get_engine()
     async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     yield
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+    crypto._get_fernet.cache_clear()
 
 
 @pytest.fixture
 async def client(_db_setup):
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers=ADMIN_HEADERS,
+    ) as ac:
         yield ac
 
 

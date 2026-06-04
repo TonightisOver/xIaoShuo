@@ -450,12 +450,35 @@ async def generate_volume_chapters(
     """
     from src.api.services.novel_manager import get_novel_manager
     from src.core.database import get_db_session
-    from src.api.services.novel_generator import is_task_paused
+    from src.api.services.pause_state_store import get_pause_state_store
     from src.core.llm.chapter_generator import generate_chapter_stream
     from src.core.llm.client import get_llm_client
 
     manager = get_novel_manager()
     client = get_llm_client()
+    pause_store = get_pause_state_store()
+
+    # CHANGE-059: bounded concurrent prefetch of StoryBible context for
+    # upcoming chapters (PREFETCH_WINDOW ahead of the serial generation loop).
+    PREFETCH_WINDOW = 3
+    prefetched_contexts: dict[int, Any] = {}
+    sem = asyncio.Semaphore(PREFETCH_WINDOW)
+
+    async def _prefetch_one(idx: int) -> None:
+        async with sem:
+            try:
+                async with get_db_session() as session:
+                    ctx = await _context_builder.build_generation_context(
+                        session, novel_id
+                    )
+                    prefetched_contexts[idx] = ctx
+            except Exception as exc:  # pragma: no cover - prefetch is best-effort
+                logger.warning(
+                    "long_form_prefetch_failed",
+                    novel_id=novel_id,
+                    idx=idx,
+                    error=str(exc),
+                )
 
     # Build context via NovelContextBuilder
     async with get_db_session() as session:
@@ -478,7 +501,7 @@ async def generate_volume_chapters(
         global_ch_num = chapter_start + i
         ch_outline["chapter"] = global_ch_num
 
-        while is_task_paused(task_id):
+        while await pause_store.is_paused(task_id):
             await asyncio.sleep(1)
 
         if i == 0:
@@ -511,6 +534,9 @@ async def generate_volume_chapters(
             async def on_complete(full_text: str) -> None:
                 return None
 
+            async def pause_checker() -> bool:
+                return await pause_store.is_paused(task_id)
+
             chapter_result = await generate_chapter_stream(
                 client=client,
                 chapter_outline=ch_outline,
@@ -524,6 +550,7 @@ async def generate_volume_chapters(
                 novel_id=novel_id,
                 blueprint=bp,
                 story_bible_context=story_bible_ctx,
+                pause_checker=pause_checker,
             )
             chapter_result["volume_number"] = volume_number
             generated_chapters.append(chapter_result)

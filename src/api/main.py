@@ -29,6 +29,8 @@ from src.api.routes import (
 from src.core.config import get_settings
 from src.core.database import close_db, init_db
 from src.core.logging_config import setup_logging
+from src.core.security.auth import validate_admin_token
+from src.core.security.crypto import validate_encryption_key
 
 # 设置日志
 settings = get_settings()
@@ -48,6 +50,8 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     # Startup
     logger.info("xIaoShuo API starting up...")
+    validate_encryption_key()
+    validate_admin_token()
     await init_db()
     logger.info("Database initialized")
 
@@ -84,7 +88,7 @@ async def lifespan(app: FastAPI):
         _llm_module._client = _LLMClient()
 
     # Validate API Key at startup
-    _PLACEHOLDER_KEYS = {
+    placeholder_keys = {
         "",
         "dummy_key_for_compilation",
         "your-api-key-here",
@@ -92,7 +96,7 @@ async def lifespan(app: FastAPI):
         "sk-placeholder",
     }
     api_key = (settings.DEEPSEEK_API_KEY or "").strip()
-    if not api_key or api_key.lower() in _PLACEHOLDER_KEYS:
+    if not api_key or api_key.lower() in placeholder_keys:
         logger.warning(
             "api_key_not_configured",
             message=(
