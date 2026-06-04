@@ -1,5 +1,7 @@
 """Prompt 模板定义"""
 
+# ruff: noqa: E501
+
 from langchain_core.prompts import PromptTemplate
 
 # 创意扩展 Prompt

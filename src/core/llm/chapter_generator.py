@@ -1,8 +1,11 @@
 """单章生成共享逻辑"""
 
+# ruff: noqa: E501
+
 import asyncio
 import json
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import structlog
 
@@ -50,8 +53,9 @@ CHAPTER_TIMEOUT_SECONDS = 600
 
 # Word count thresholds for long-form mode
 WORD_COUNT_MIN_RATIO = 0.8  # 80% of target = minimum acceptable
-WORD_COUNT_MAX_RATIO = 1.2  # 120% of target = maximum acceptable
+WORD_COUNT_MAX_RATIO = 1.0  # 100% of target = maximum acceptable
 WORD_COUNT_CONTINUATION_THRESHOLD = 0.75  # Below 75% triggers continuation
+CHAPTER_WORD_HARD_CAP = 4000
 MAX_CONTINUATION_ATTEMPTS = 3  # 最多续写次数
 
 
@@ -76,8 +80,38 @@ def _check_word_count(
 
     if word_count < min_words:
         return False, f"字数不足：{word_count}字 < 最低{min_words}字（目标{target_words}字的80%）"
+    elif word_count > CHAPTER_WORD_HARD_CAP:
+        return True, f"字数超过硬上限：{word_count}字 > {CHAPTER_WORD_HARD_CAP}字"
     elif word_count > max_words:
-        return True, f"字数偏多：{word_count}字 > 建议{max_words}字（目标{target_words}字的120%），但保留完整性不截断"
+        return True, f"字数偏多：{word_count}字 > 建议{max_words}字（目标{target_words}字的100%），但保留完整性不截断"
+    return True, None
+
+
+def check_overcap_quota(
+    chapters_list: list[dict[str, Any]],
+    total_chapters: int,
+) -> tuple[bool, str | None]:
+    """Check if the number of chapters exceeding CHAPTER_WORD_HARD_CAP
+    is within the allowed 10% tolerance.
+
+    Returns:
+        (is_valid, warning_message)
+    """
+    if total_chapters <= 0:
+        return True, None
+
+    overcap_count = sum(
+        1
+        for chapter in chapters_list
+        if chapter.get("word_count", 0) > CHAPTER_WORD_HARD_CAP
+    )
+    allowed_overcap = max(1, int(total_chapters * 0.1))  # 10% tolerance
+    if overcap_count > allowed_overcap:
+        return (
+            False,
+            f"章节超出{CHAPTER_WORD_HARD_CAP}字上限过多："
+            f"{overcap_count}/{total_chapters}章（允许{allowed_overcap}章）",
+        )
     return True, None
 
 

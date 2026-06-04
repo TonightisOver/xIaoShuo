@@ -7,8 +7,11 @@
 - generate_volume_quality_report
 """
 
+# ruff: noqa: E501
+
 import asyncio
 import json
+import math
 from typing import Any
 
 import structlog
@@ -88,7 +91,7 @@ async def generate_master_outline(
         target_words=request.target_words,
         volumes=request.volumes,
         chapters_per_volume=chapters_per_vol,
-        words_per_chapter=request.words_per_chapter,
+        words_per_chapter=min(request.words_per_chapter, 4000),
     )
 
     style_instruction = get_style_instruction(
@@ -283,6 +286,7 @@ async def generate_volume_outline(
     from src.core.validation import get_style_instruction
 
     client = get_llm_client()
+    words_per_chapter = min(words_per_chapter, 4000)
 
     volumes = master_outline.get("volumes", [])
     vol_info = next(
@@ -449,20 +453,24 @@ async def generate_volume_chapters(
         List of generated chapter dicts
     """
     from src.api.services.novel_manager import get_novel_manager
-    from src.core.database import get_db_session
     from src.api.services.pause_state_store import get_pause_state_store
-    from src.core.llm.chapter_generator import generate_chapter_stream
+    from src.core.database import get_db_session
+    from src.core.llm.chapter_generator import (
+        CHAPTER_WORD_HARD_CAP,
+        generate_chapter_stream,
+    )
     from src.core.llm.client import get_llm_client
 
     manager = get_novel_manager()
     client = get_llm_client()
     pause_store = get_pause_state_store()
+    words_per_chapter = min(words_per_chapter, CHAPTER_WORD_HARD_CAP)
 
     # CHANGE-059: bounded concurrent prefetch of StoryBible context for
-    # upcoming chapters (PREFETCH_WINDOW ahead of the serial generation loop).
-    PREFETCH_WINDOW = 3
+    # upcoming chapters (prefetch_window ahead of the serial generation loop).
+    prefetch_window = 3
     prefetched_contexts: dict[int, Any] = {}
-    sem = asyncio.Semaphore(PREFETCH_WINDOW)
+    sem = asyncio.Semaphore(prefetch_window)
 
     async def _prefetch_one(idx: int) -> None:
         async with sem:
@@ -495,6 +503,17 @@ async def generate_volume_chapters(
 
     chapters_data = vol_outline.get("chapters", [])
     generated_chapters = []
+    existing_chapters = await manager.list_chapters(novel_id)
+    generated_word_count = sum(
+        ch.get("word_count", 0)
+        for ch in existing_chapters
+        if ch.get("chapter", 0) < chapter_start
+    )
+    total_chapters = max(
+        chapter_end,
+        getattr(request, "volumes", 1) * max(chapter_end - chapter_start + 1, 1),
+    )
+    target_total_words = getattr(request, "target_words", 0) or 0
 
     for i, ch_outline in enumerate(chapters_data):
         # Map volume-local chapter number to global chapter number
@@ -537,6 +556,19 @@ async def generate_volume_chapters(
             async def pause_checker() -> bool:
                 return await pause_store.is_paused(task_id)
 
+            remaining_words = max(target_total_words - generated_word_count, 0)
+            is_final_chapter = global_ch_num >= total_chapters
+            if target_total_words <= 0:
+                chapter_target_words = words_per_chapter
+            elif is_final_chapter:
+                chapter_target_words = remaining_words
+            else:
+                remaining_chapters = max(total_chapters - global_ch_num + 1, 1)
+                chapter_target_words = min(
+                    CHAPTER_WORD_HARD_CAP,
+                    max(1, math.ceil(remaining_words / remaining_chapters)),
+                )
+
             chapter_result = await generate_chapter_stream(
                 client=client,
                 chapter_outline=ch_outline,
@@ -546,7 +578,7 @@ async def generate_volume_chapters(
                 on_token=on_token,
                 on_complete=on_complete,
                 style_instruction=style_instruction,
-                target_words=words_per_chapter,
+                target_words=chapter_target_words,
                 novel_id=novel_id,
                 blueprint=bp,
                 story_bible_context=story_bible_ctx,
@@ -554,6 +586,7 @@ async def generate_volume_chapters(
             )
             chapter_result["volume_number"] = volume_number
             generated_chapters.append(chapter_result)
+            generated_word_count += chapter_result.get("word_count", 0)
             if not chapter_result.get("generation_failed"):
                 await persist_single_chapter(novel_id, chapter_result)
 
