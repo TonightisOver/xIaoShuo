@@ -52,10 +52,12 @@ def _format_blueprint_constraint(blueprint: dict) -> str:
 CHAPTER_TIMEOUT_SECONDS = 600
 
 # Word count thresholds for long-form mode
-WORD_COUNT_MIN_RATIO = 0.8  # 80% of target = minimum acceptable
-WORD_COUNT_MAX_RATIO = 1.0  # 100% of target = maximum acceptable
-WORD_COUNT_CONTINUATION_THRESHOLD = 0.75  # Below 75% triggers continuation
-CHAPTER_WORD_HARD_CAP = 4000
+CHAPTER_WORD_HARD_MIN = 2000   # Absolute minimum per chapter
+CHAPTER_WORD_HARD_CAP = 4000   # Absolute maximum per chapter
+CHAPTER_WORD_TARGET = 3000     # Default target per chapter
+WORD_COUNT_MIN_RATIO = CHAPTER_WORD_HARD_MIN / CHAPTER_WORD_TARGET
+WORD_COUNT_MAX_RATIO = CHAPTER_WORD_HARD_CAP / CHAPTER_WORD_TARGET
+WORD_COUNT_CONTINUATION_THRESHOLD = 0.6  # Below 60% of target triggers continuation
 MAX_CONTINUATION_ATTEMPTS = 3  # 最多续写次数
 
 
@@ -75,15 +77,19 @@ def _check_word_count(
     if target_words is None or target_words <= 0:
         return True, None
 
-    min_words = int(target_words * WORD_COUNT_MIN_RATIO)
-    max_words = int(target_words * WORD_COUNT_MAX_RATIO)
-
-    if word_count < min_words:
-        return False, f"字数不足：{word_count}字 < 最低{min_words}字（目标{target_words}字的80%）"
+    if word_count < CHAPTER_WORD_HARD_MIN:
+        return False, (
+            f"字数不足：{word_count}字 < 最低{CHAPTER_WORD_HARD_MIN}字"
+        )
     elif word_count > CHAPTER_WORD_HARD_CAP:
-        return True, f"字数超过硬上限：{word_count}字 > {CHAPTER_WORD_HARD_CAP}字"
-    elif word_count > max_words:
-        return True, f"字数偏多：{word_count}字 > 建议{max_words}字（目标{target_words}字的100%），但保留完整性不截断"
+        return True, (
+            f"字数超过硬上限：{word_count}字 > {CHAPTER_WORD_HARD_CAP}字"
+        )
+    elif word_count > int(target_words * WORD_COUNT_MAX_RATIO):
+        return True, (
+            f"字数偏多：{word_count}字 > 建议上限"
+            f"（目标{target_words}字，硬上限{CHAPTER_WORD_HARD_CAP}字）"
+        )
     return True, None
 
 
