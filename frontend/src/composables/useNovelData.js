@@ -8,6 +8,7 @@ export function useNovelData(novelId) {
   const volumes = ref([])
   const conversations = ref([])
   const powerSystems = ref([])
+  const careersList = ref([])
   const storylinesData = ref(null)
   const outlineTree = ref(null)
   const loading = ref(true)
@@ -22,7 +23,7 @@ export function useNovelData(novelId) {
     loading.value = true
     try {
       const id = toValue(novelId)
-      const [nRes, wRes, cRes, chRes, convRes, volRes, psRes, slRes, olRes] = await Promise.all([
+      const [nRes, wRes, cRes, chRes, convRes, volRes, psRes, slRes, olRes, carRes] = await Promise.all([
         fetch(`/api/v1/projects/${id}`, { signal }),
         fetch(`/api/v1/projects/${id}/world`, { signal }),
         fetch(`/api/v1/projects/${id}/characters`, { signal }),
@@ -32,6 +33,7 @@ export function useNovelData(novelId) {
         fetch(`/api/v1/projects/${id}/power-systems`, { signal }),
         fetch(`/api/v1/projects/${id}/relations`, { signal }),
         fetch(`/api/v1/projects/${id}/outlines`, { signal }),
+        fetch(`/api/v1/projects/${id}/careers`, { signal }).catch(() => null),
       ])
       if (nRes.ok) novel.value = await nRes.json()
       if (wRes.ok) world.value = await wRes.json()
@@ -42,6 +44,17 @@ export function useNovelData(novelId) {
       if (psRes.ok) powerSystems.value = await psRes.json()
       if (slRes.ok) storylinesData.value = await slRes.json()
       if (olRes.ok) outlineTree.value = await olRes.json()
+      
+      if (carRes && carRes.ok) {
+        careersList.value = await carRes.json()
+      } else {
+        const local = localStorage.getItem(`careers_${id}`)
+        if (local) {
+          careersList.value = JSON.parse(local)
+        } else {
+          careersList.value = []
+        }
+      }
     } catch (e) {
       if (e.name === 'AbortError') return
     } finally {
@@ -57,6 +70,7 @@ export function useNovelData(novelId) {
     volumes,
     conversations,
     powerSystems,
+    careersList,
     storylinesData,
     outlineTree,
     loading,

@@ -86,6 +86,9 @@ class Novel(Base):
     power_systems: Mapped[list["PowerSystem"]] = relationship(
         back_populates="novel", cascade="all, delete-orphan"
     )
+    career_systems: Mapped[list["CareerSystem"]] = relationship(
+        back_populates="novel", cascade="all, delete-orphan"
+    )
     characters: Mapped[list["Character"]] = relationship(
         back_populates="novel", cascade="all, delete-orphan"
     )
@@ -150,6 +153,36 @@ class PowerSystem(Base):
     novel: Mapped["Novel"] = relationship(back_populates="power_systems")
 
 
+class CareerSystem(Base):
+    """鑱屼笟/绛夌骇闃舵浣撶郴"""
+
+    __tablename__ = "career_systems"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    category: Mapped[str] = mapped_column(String(50), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    stages: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    max_stage: Mapped[int | None] = mapped_column(Integer)
+    requirements: Mapped[str | None] = mapped_column(Text)
+    special_abilities: Mapped[str | None] = mapped_column(Text)
+    worldview_rules: Mapped[str | None] = mapped_column(Text)
+    attribute_bonuses: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now()
+    )
+
+    novel: Mapped["Novel"] = relationship(back_populates="career_systems")
+    character_careers: Mapped[list["CharacterCareer"]] = relationship(
+        back_populates="career", cascade="all, delete-orphan"
+    )
+
+
 class Character(Base):
     """人物"""
 
@@ -173,6 +206,39 @@ class Character(Base):
     )
 
     novel: Mapped["Novel"] = relationship(back_populates="characters")
+    careers: Mapped[list["CharacterCareer"]] = relationship(
+        back_populates="character", cascade="all, delete-orphan"
+    )
+
+
+class CharacterCareer(Base):
+    """浜虹墿鑱屼笟鍏宠仈"""
+
+    __tablename__ = "character_careers"
+    __table_args__ = (
+        UniqueConstraint(
+            "character_id", "career_id", name="uq_character_career"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    character_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("characters.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    career_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("career_systems.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    current_stage: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now()
+    )
+
+    character: Mapped["Character"] = relationship(back_populates="careers")
+    career: Mapped["CareerSystem"] = relationship(back_populates="character_careers")
+
 
 
 class Volume(Base):

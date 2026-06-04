@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.api.routes import (
+    careers_router,
     conversations_router,
     export_router,
     health_router,
@@ -140,6 +141,7 @@ app.include_router(health_router)
 app.include_router(novels_router)
 app.include_router(tasks_router)
 app.include_router(projects_router)
+app.include_router(careers_router)
 app.include_router(conversations_router)
 app.include_router(style_router)
 app.include_router(outlines_router)

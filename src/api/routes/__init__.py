@@ -1,5 +1,6 @@
 """路由模块"""
 
+from .careers import router as careers_router
 from .conversations import router as conversations_router
 from .export import router as export_router
 from .health import router as health_router
@@ -18,7 +19,7 @@ from .ws import router as ws_router
 
 __all__ = [
     "novels_router", "tasks_router", "health_router", "projects_router", "ws_router",
-    "conversations_router", "style_router", "outlines_router",
+    "conversations_router", "careers_router", "style_router", "outlines_router",
     "storylines_router", "knowledge_graph_router", "story_bible_router",
     "export_router", "outline_sync_router", "reader_simulation_router",
     "llm_config_router",
