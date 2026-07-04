@@ -89,6 +89,7 @@ class LLMClient:
         self.max_retries = settings.DEEPSEEK_MAX_RETRIES
 
     def _get_llm(self, use_flash: bool = False) -> ChatOpenAI:
+        """返回指定模型实例：flash（快速/便宜）或 pro（高质量）。"""
         return self.llm_flash if use_flash else self.llm_pro
 
     async def generate(
@@ -98,20 +99,7 @@ class LLMClient:
         max_tokens: int | None = None,
         use_flash: bool = False,
     ) -> str:
-        """生成文本。
-
-        Args:
-            prompt: 输入 prompt
-            temperature: 温度参数（可选）
-            max_tokens: 最大 token 数（可选）
-            use_flash: True 时使用 flash 模型，默认使用 pro 模型
-
-        Returns:
-            生成的文本
-
-        Raises:
-            Exception: API 调用失败（不可重试错误或超过重试次数）
-        """
+        """调用 LLM 生成文本，带自动重试和 token 用量追踪。"""
         llm_instance = self._get_llm(use_flash)
         model_name = self._model_flash if use_flash else self._model_pro
         tracker = get_token_tracker()
@@ -202,7 +190,7 @@ class LLMClient:
         prompt: str,
         use_flash: bool = False,
     ):
-        """Stream generated text chunks with usage accounting on completion."""
+        """流式生成文本，逐块 yield，完成时记录用量到 tracker。"""
         from src.core.llm.token_tracker import get_token_tracker
 
         tracker = get_token_tracker()

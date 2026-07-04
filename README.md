@@ -161,8 +161,7 @@ curl -X POST http://localhost:8000/api/v1/projects/{id}/generate-full
 ## 项目结构
 
 ```
-xiaoshuo_review/
-├── src/
+src/
 │   ├── api/
 │   │   ├── routes/               # API 路由层
 │   │   ├── services/             # 业务逻辑层

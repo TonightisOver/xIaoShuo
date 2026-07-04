@@ -25,13 +25,13 @@ def _get_fernet() -> Fernet:
 
 
 def encrypt_string(value: str) -> str:
-    """Encrypt a string for database storage."""
+    """用 Fernet 加密字符串，用于数据库存储。"""
     return _get_fernet().encrypt(value.encode("utf-8")).decode("utf-8")
 
 
 def decrypt_string(value: str) -> str:
-    """Decrypt a database value encrypted by encrypt_string."""
+    """解密由 encrypt_string 加密的数据库值。"""
     try:
         return _get_fernet().decrypt(value.encode("utf-8")).decode("utf-8")
     except InvalidToken as exc:
-        raise RuntimeError("Encrypted value could not be decrypted") from exc
+        raise RuntimeError("无法解密：加密值可能被篡改或使用了不同的密钥") from exc

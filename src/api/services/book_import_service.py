@@ -1,4 +1,4 @@
-"""Book import service for TXT novel analysis."""
+"""TXT 小说拆书导入服务"""
 
 from __future__ import annotations
 
