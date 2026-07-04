@@ -13,6 +13,8 @@ from src.api.routes import (
     book_import_router,
     careers_router,
     chapter_analysis_router,
+    characters_router,
+    chapters_router,
     conversations_router,
     export_router,
     health_router,
@@ -28,6 +30,8 @@ from src.api.routes import (
     storylines_router,
     style_router,
     tasks_router,
+    volumes_router,
+    world_router,
     ws_router,
 )
 from src.core.config import get_settings
@@ -147,6 +151,8 @@ app.include_router(tasks_router)
 app.include_router(projects_router)
 app.include_router(book_import_router)
 app.include_router(careers_router)
+app.include_router(characters_router)
+app.include_router(chapters_router)
 app.include_router(chapter_analysis_router)
 app.include_router(conversations_router)
 app.include_router(style_router)
@@ -159,6 +165,8 @@ app.include_router(export_router)
 app.include_router(outline_sync_router)
 app.include_router(reader_simulation_router)
 app.include_router(llm_config_router)
+app.include_router(volumes_router)
+app.include_router(world_router)
 
 # 挂载前端静态文件
 if FRONTEND_DIR.exists():

@@ -1,25 +1,25 @@
 <template>
   <div class="max-w-3xl mx-auto px-6 py-10">
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-xl font-bold text-ink-900">世界观设定</h1>
+      <h1 class="text-xl font-bold text-neutral-900">世界观设定</h1>
       <router-link :to="`/novels/${novelId}`" class="btn-secondary text-sm">返回</router-link>
     </div>
 
     <form @submit.prevent="save" class="space-y-5">
       <div>
-        <label class="block text-sm font-medium text-ink-700 mb-2">世界背景</label>
+        <label class="block text-sm font-medium text-neutral-700 mb-2">世界背景</label>
         <textarea v-model="form.background" class="input min-h-[100px] resize-y" placeholder="描述这个世界的基本设定..."></textarea>
       </div>
       <div>
-        <label class="block text-sm font-medium text-ink-700 mb-2">地理环境</label>
+        <label class="block text-sm font-medium text-neutral-700 mb-2">地理环境</label>
         <textarea v-model="form.geography" class="input min-h-[80px] resize-y" placeholder="大陆、国家、地形..."></textarea>
       </div>
       <div>
-        <label class="block text-sm font-medium text-ink-700 mb-2">文化体系</label>
+        <label class="block text-sm font-medium text-neutral-700 mb-2">文化体系</label>
         <textarea v-model="form.culture" class="input min-h-[80px] resize-y" placeholder="宗门、势力、社会结构..."></textarea>
       </div>
       <div>
-        <label class="block text-sm font-medium text-ink-700 mb-2">世界规则</label>
+        <label class="block text-sm font-medium text-neutral-700 mb-2">世界规则</label>
         <textarea v-model="form.rules" class="input min-h-[80px] resize-y" placeholder="修炼体系、力量法则..."></textarea>
       </div>
 

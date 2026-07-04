@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>xIaoShuo 后端架构流程图</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Noto Sans SC", sans-serif;
+    background: #f5f5f7;
+    color: #1d1d1f;
+    padding: 40px 24px;
+  }
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    letter-spacing: -0.02em;
+  }
+  .subtitle {
+    color: #86868b;
+    font-size: 14px;
+    margin-bottom: 32px;
+  }
+  .section {
+    background: white;
+    border-radius: 16px;
+    padding: 28px 32px;
+    margin-bottom: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    border: 1px solid #e5e5ea;
+  }
+  .section h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: #1d1d1f;
+  }
+  .section h2 .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 6px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .badge-blue { background: #e8f0fe; color: #1a73e8; }
+  .badge-green { background: #e6f4ea; color: #1e8e3e; }
+  .badge-orange { background: #fef3e0; color: #e37400; }
+  .mermaid-box {
+    width: 100%;
+    overflow-x: auto;
+    padding: 8px 0;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #f0f0f2;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #5f6368;
+  }
+  .legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  /* Two-column layout for diagrams */
+  .diagram-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 800px) {
+    .diagram-grid { grid-template-columns: 1fr; }
+    body { padding: 20px 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>🖥️ xIaoShuo 后端架构流程图</h1>
+  <p class="subtitle">重构后 v2.0 · 路由拆分 + 服务层拆分 · 148 端点 · 15,190 行 Python</p>
+
+  <!-- 图1：整体架构 -->
+  <div class="section">
+    <h2>1. 系统分层架构 <span class="badge badge-blue">概览</span></h2>
+    <div class="mermaid-box">
+      <pre class="mermaid">
+%%{init: {'theme':'base', 'themeVariables': {
+  'primaryColor': '#e8f0fe',
+  'primaryTextColor': '#1d1d1f',
+  'primaryBorderColor': '#c4d8f5',
+  'lineColor': '#5f6368',
+  'secondaryColor': '#f5f5f7',
+  'tertiaryColor': '#ffffff',
+  'fontSize': '13px'
+}}}%%
+
+graph TB
+    subgraph Client["🌐 客户端层"]
+        direction LR
+        Browser["前端 SPA\nVue 3 + Tailwind"]
+        Ext["外部调用\nAPI Client"]
+    end
+
+    subgraph Gateway["🚪 API 网关层"]
+        FastAPI["FastAPI App\nmain.py"]
+        Router["路由注册\n__init__.py"]
+    end
+
+    subgraph Routes["📡 路由层 (routes/)"]
+        direction LR
+        R1["projects.py\nNovel CRUD + 生成触发"]
+        R2["chapters.py\n章节 + 版本管理"]
+        R3["volumes.py\n卷管理"]
+        R4["characters.py\n人物管理"]
+        R5["world.py\n世界观 + 力量体系"]
+        R6["novels.py\n长篇流程"]
+        R7["其他 10+ 路由"]
+    end
+
+    subgraph Services["⚙️ 服务层 (services/)"]
+        direction LR
+        S1["novel_manager.py\nNovel CRUD"]
+        S2["chapter_service.py\n章节 + 版本"]
+        S3["volume_service.py\n卷管理"]
+        S4["character_service.py\n人物管理"]
+        S5["world_service.py\n世界观/力量体系"]
+        S6["novel_generator.py\n生成管线"]
+        S7["其他 20+ 服务"]
+    end
+
+    subgraph Data["🗄️ 数据层"]
+        Models["SQLAlchemy ORM\ndb_models.py"]
+        DB[("PostgreSQL")]
+    end
+
+    subgraph External["🔌 外部依赖"]
+        LLM[("DeepSeek API")]
+        Cache[("Redis")]
+        TaskQ[("Celery")]
+    end
+
+    Client --> FastAPI
+    FastAPI --> Router
+    Router --> Routes
+    Routes --> Services
+    Services --> Models
+    Models --> DB
+    Services --> LLM
+    Services --> Cache
+    Services --> TaskQ
+      </pre>
+    </div>
+    <div class="legend">
+      <span class="legend-item"><span class="legend-dot" style="background:#e8f0fe;border:1px solid #c4d8f5"></span> 路由层</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#e6f4ea;border:1px solid #a8dab5"></span> 服务层</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#fef3e0;border:1px solid #fdd663"></span> 重构新增</span>
+    </div>
+  </div>
+
+  <!-- 图2：重构前后对比 -->
+  <div class="section">
+    <h2>2. 重构前后对比 <span class="badge badge-orange">聚焦变化</span></h2>
+    <div class="diagram-grid">
+      <div>
+        <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;color:#d93025;">❌ 重构前（单体）</h3>
+        <div class="mermaid-box">
+          <pre class="mermaid">
+graph TD
+    subgraph Before[" "]
+        P["projects.py\n（980 行）\n所有路由 + request 模型"]
+        NM["novel_manager.py\n（792 行）\n所有数据操作 + 业务逻辑"]
+        P --> NM
+        NM --> DB[(PostgreSQL)]
+    end
+    style P fill:#fce8e6,stroke:#d93025,color:#1d1d1f
+    style NM fill:#fce8e6,stroke:#d93025,color:#1d1d1f
+          </pre>
+        </div>
+      </div>
+      <div>
+        <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;color:#188038;">✅ 重构后（模块化）</h3>
+        <div class="mermaid-box">
+          <pre class="mermaid">
+graph TD
+    subgraph After[" "]
+        direction LR
+        PR["projects.py\n363 行\nNovel CRUD"]
+        CH["chapters.py\n427 行"]
+        VO["volumes.py\n55 行"]
+        CA["characters.py\n52 行"]
+        WO["world.py\n79 行"]
+    end
+    subgraph Svc[" "]
+        NM2["novel_manager.py\n184 行"]
+        CS["chapter_service.py\n382 行"]
+        VS["volume_service.py\n91 行"]
+        CHS["character_service.py\n89 行"]
+        WS["world_service.py\n109 行"]
+    end
+    PR --> NM2
+    CH --> CS
+    VO --> VS
+    CA --> CHS
+    WO --> WS
+    NM2 --> DB2[(PostgreSQL)]
+    CS --> DB2
+    VS --> DB2
+    CHS --> DB2
+    WS --> DB2
+    style PR fill:#e6f4ea,stroke:#188038,color:#1d1d1f
+    style CH fill:#e6f4ea,stroke:#188038,color:#1d1d1f
+    style VO fill:#e6f4ea,stroke:#188038,color:#1d1d1f
+    style CA fill:#e6f4ea,stroke:#188038,color:#1d1d1f
+    style WO fill:#e6f4ea,stroke:#188038,color:#1d1d1f
+    style NM2 fill:#e8f0fe,stroke:#1a73e8,color:#1d1d1f
+    style CS fill:#e8f0fe,stroke:#1a73e8,color:#1d1d1f
+    style VS fill:#e8f0fe,stroke:#1a73e8,color:#1d1d1f
+    style CHS fill:#e8f0fe,stroke:#1a73e8,color:#1d1d1f
+    style WS fill:#e8f0fe,stroke:#1a73e8,color:#1d1d1f
+          </pre>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:12px;font-size:13px;color:#5f6368;text-align:center;">
+      <span style="margin-right:16px">📉 projects.py: <strong>63% 缩减</strong></span>
+      <span>📉 novel_manager.py: <strong>77% 缩减</strong></span>
+    </div>
+  </div>
+
+  <!-- 图3：请求处理流程 -->
+  <div class="section">
+    <h2>3. 典型请求处理流程 <span class="badge badge-blue">示例：新建人物</span></h2>
+    <div class="mermaid-box">
+      <pre class="mermaid">
+sequenceDiagram
+    actor User as 前端用户
+    participant Router as FastAPI Router
+    participant Route as characters.py
+    participant Service as character_service.py
+    participant DB as PostgreSQL
+
+    User->>Router: POST /api/v1/projects/{id}/characters
+    Router->>Route: 匹配路由
+    Route->>Route: 解析 JSON → CharacterRequest
+    Route->>Service: get_character_service().create_character(data)
+    Service->>Service: 校验参数
+    Service->>DB: INSERT INTO characters ...
+    DB-->>Service: 返回 ORM 对象
+    Service-->>Route: 返回 dict
+    Route->>Route: 序列化为 JSONResponse
+    Route-->>User: 201 Created + 人物数据
+      </pre>
+    </div>
+  </div>
+
+  <!-- 图4：小说全生成管线 -->
+  <div class="section">
+    <h2>4. 小说全生成管线 <span class="badge badge-orange">核心流程</span></h2>
+    <div class="mermaid-box">
+      <pre class="mermaid">
+flowchart TB
+    subgraph Trigger["🚀 触发入口"]
+        A["POST /projects/{id}/generate-full\nprojects.py"]
+    end
+
+    subgraph Orchestrator["🧠 生成编排"]
+        B["task_manager.py\n创建后台任务"]
+        C["novel_generator.py\nLangGraph 管线"]
+    end
+
+    subgraph Steps["📋 生成步骤"]
+        D["1. 世界观生成\nworld_service"]
+        E["2. 人物生成\ncharacter_service"]
+        F["3. 力量体系生成\nworld_service (power_system)"]
+        G["4. 卷纲生成\noutline_service"]
+        H["5. 章纲生成\noutline_service"]
+        I["6. 章节正文生成\nchapter_service"]
+    end
+
+    subgraph LLM["🤖 AI 调用"]
+        J["LLM Client\nDeepSeek API"]
+    end
+
+    subgraph Persist["💾 持久化"]
+        K[(PostgreSQL)]
+    end
+
+    A --> B
+    B --> C
+    C --> D
+    D --> LLM
+    LLM --> D
+    D --> E
+    E --> LLM
+    LLM --> E
+    E --> F
+    F --> LLM
+    LLM --> F
+    F --> G
+    G --> LLM
+    LLM --> G
+    G --> H
+    H --> LLM
+    LLM --> H
+    H --> I
+    I --> LLM
+    LLM --> I
+    I --> K
+
+    style A fill:#e8f0fe,stroke:#1a73e8
+    style C fill:#fef3e0,stroke:#e37400
+    style J fill:#fce8e6,stroke:#d93025
+      </pre>
+    </div>
+  </div>
+
+  <!-- 图5：service层方法一览 -->
+  <div class="section">
+    <h2>5. 重构后服务层方法一览 <span class="badge badge-green">领域分布</span></h2>
+    <div class="mermaid-box">
+      <pre class="mermaid">
+classDiagram
+    class NovelManager {
+        +create_novel()
+        +get_novel()
+        +list_novels()
+        +update_novel()
+        +delete_novel()
+    }
+    class ChapterService {
+        +list_chapters()
+        +get_chapter()
+        +update_chapter()
+        +delete_chapter()
+        +create_chapter_version()
+        +list_chapter_versions()
+        +rollback_chapter_version()
+        +compare_chapter_versions()
+        +delete_failed_chapters()
+    }
+    class VolumeService {
+        +list_volumes()
+        +get_volume()
+        +create_volume()
+        +update_volume()
+    }
+    class CharacterService {
+        +list_characters()
+        +create_character()
+        +update_character()
+        +delete_character()
+        +get_character_by_name()
+    }
+    class WorldService {
+        +get_world_setting()
+        +upsert_world_setting()
+        +list_power_systems()
+        +create_power_system()
+        +update_power_system()
+        +delete_power_system()
+    }
+
+    NovelManager <|-- ChapterService : 同层引用
+    ChapterService ..> NovelManager : 查询 novel 存在性
+      </pre>
+    </div>
+  </div>
+
+  <!-- 图6：工作流与机器人 -->
+  <div class="section">
+    <h2>6. 模块依赖图 <span class="badge badge-blue">重构后</span></h2>
+    <div class="mermaid-box">
+      <pre class="mermaid">
+graph LR
+    subgraph Routes["Routes Layer"]
+        RP["projects.py"]
+        RC["chapters.py"]
+        RV["volumes.py"]
+        RCH["characters.py"]
+        RW["world.py"]
+    end
+    subgraph Services["Services Layer"]
+        NM["novel_manager.py"]
+        CHS["chapter_service.py"]
+        VS["volume_service.py"]
+        CHRS["character_service.py"]
+        WS["world_service.py"]
+    end
+    subgraph Gen["Generation Pipeline"]
+        NG["novel_generator.py"]
+        OS["outline_service.py"]
+        BPS["blueprint_service.py"]
+        RLS["rewrite_loop_service.py"]
+    end
+    subgraph Core["Core"]
+        CFG["config.py"]
+        CRYPTO["security/crypto.py"]
+        DB["database.py"]
+    end
+    subgraph Ext["External"]
+        LLM["DeepSeek API"]
+    end
+
+    RP --> NM
+    RP --> CHS
+    RP --> NG
+    RC --> CHS
+    RC --> NM
+    RV --> VS
+    RCH --> CHRS
+    RW --> WS
+    NG --> OS
+    NG --> BPS
+    NG --> RLS
+    NG --> CHS
+    NG --> WS
+    NG --> CHRS
+    NG --> LLM
+    NM --> CFG
+    WS --> CFG
+    CHS --> CRYPTO
+    CHS --> DB
+    NM --> DB
+
+    style RP fill:#e8f0fe,stroke:#1a73e8
+    style RC fill:#e8f0fe,stroke:#1a73e8
+    style RV fill:#e8f0fe,stroke:#1a73e8
+    style RCH fill:#e8f0fe,stroke:#1a73e8
+    style RW fill:#e8f0fe,stroke:#1a73e8
+    style NM fill:#e6f4ea,stroke:#188038
+    style CHS fill:#e6f4ea,stroke:#188038
+    style VS fill:#e6f4ea,stroke:#188038
+    style CHRS fill:#e6f4ea,stroke:#188038
+    style WS fill:#e6f4ea,stroke:#188038
+      </pre>
+    </div>
+    <div class="legend">
+      <span class="legend-item"><span class="legend-dot" style="background:#e8f0fe;border:1px solid #1a73e8"></span> 路由层</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#e6f4ea;border:1px solid #188038"></span> 服务层</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#fef3e0;border:1px solid #e37400"></span> 生成管线</span>
+    </div>
+  </div>
+
+  <!-- 图7：路由端点统计 -->
+  <div class="section">
+    <h2>7. 路由端点分布 <span class="badge badge-blue">148 个端点</span></h2>
+    <div class="mermaid-box">
+      <pre class="mermaid">
+pie showData
+    title 各路由文件端点占比
+    "chapters.py（17）" : 17
+    "novels.py（15）" : 15
+    "knowledge_graph.py（12）" : 12
+    "projects.py（11）" : 11
+    "careers.py（8）" : 8
+    "llm_config.py（6）" : 6
+    "其他 12 个路由（79）" : 79
+      </pre>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      primaryColor: '#e8f0fe',
+      primaryTextColor: '#1d1d1f',
+      primaryBorderColor: '#c4d8f5',
+      lineColor: '#5f6368',
+      secondaryColor: '#f5f5f7',
+      tertiaryColor: '#ffffff',
+      fontSize: '13px'
+    },
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+</script>
+<noscript>
+  <div style="padding:20px;text-align:center;color:#d93025;">
+    ⚠️ 请启用 JavaScript 以查看 mermaid 流程图
+  </div>
+</noscript>
+</body>
+</html>

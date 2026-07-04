@@ -1,13 +1,13 @@
 <template>
   <div class="space-y-6">
-    <div v-for="vol in volumes" :key="vol.id" class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+    <div v-for="vol in volumes" :key="vol.id" class="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden">
       <!-- Volume Header -->
-      <div class="flex items-center justify-between px-6 py-4 border-b border-gray-50">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-neutral-50">
         <div class="flex items-center gap-3">
           <span class="text-xs font-medium px-2.5 py-1 bg-indigo-50 text-indigo-600 rounded-lg">
             卷 {{ vol.volume_number }}
           </span>
-          <h3 class="font-semibold text-gray-900 text-[15px]">{{ vol.title || '未命名分卷' }}</h3>
+          <h3 class="font-semibold text-neutral-900 text-[15px]">{{ vol.title || '未命名分卷' }}</h3>
           <span :class="statusClasses(vol.status)" class="text-[11px] font-medium px-2 py-0.5 rounded-full">
             {{ statusLabel(vol.status) }}
           </span>
@@ -22,27 +22,27 @@
       </div>
 
       <!-- Volume Summary -->
-      <p v-if="vol.summary" class="px-6 py-3 text-sm text-gray-500 leading-relaxed border-b border-gray-50">{{ vol.summary }}</p>
+      <p v-if="vol.summary" class="px-6 py-3 text-sm text-neutral-500 leading-relaxed border-b border-neutral-50">{{ vol.summary }}</p>
 
       <!-- Chapter List -->
-      <div v-if="volumeChapters(vol)" class="divide-y divide-gray-50">
+      <div v-if="volumeChapters(vol)" class="divide-y divide-neutral-50">
         <div
           v-for="ch in volumeChapters(vol)"
           :key="ch.id"
-          class="flex items-center justify-between px-6 py-3.5 hover:bg-gray-50/50 transition-colors group"
+          class="flex items-center justify-between px-6 py-3.5 hover:bg-neutral-50/50 transition-colors group"
         >
           <router-link
             :to="`/novels/${novelId}/chapters/${ch.chapter_number}`"
             class="flex-1 flex items-center gap-3 min-w-0"
           >
-            <span class="text-sm text-gray-400 font-mono w-6 shrink-0">{{ chapterIndexInVolume(vol, ch) }}</span>
-            <span class="text-sm font-medium text-gray-800 truncate">{{ ch.title }}</span>
+            <span class="text-sm text-neutral-400 font-mono w-6 shrink-0">{{ chapterIndexInVolume(vol, ch) }}</span>
+            <span class="text-sm font-medium text-neutral-800 truncate">{{ ch.title }}</span>
           </router-link>
           <div class="flex items-center gap-3 shrink-0">
-            <span class="text-xs text-gray-400 font-mono">{{ ch.word_count || 0 }} 字</span>
+            <span class="text-xs text-neutral-400 font-mono">{{ ch.word_count || 0 }} 字</span>
             <button
               @click.prevent="confirmDelete(ch)"
-              class="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all p-1 rounded"
+              class="opacity-0 group-hover:opacity-100 text-neutral-300 hover:text-red-500 transition-all p-1 rounded"
               title="删除章节"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
@@ -52,7 +52,7 @@
           </div>
         </div>
       </div>
-      <p v-else class="px-6 py-6 text-sm text-gray-400 text-center">暂无章节</p>
+      <p v-else class="px-6 py-6 text-sm text-neutral-400 text-center">暂无章节</p>
     </div>
 
     <!-- Delete Confirmation Modal -->
@@ -60,12 +60,12 @@
       <div v-if="deleteTarget" class="fixed inset-0 z-50 flex items-center justify-center">
         <div class="absolute inset-0 bg-black/20 backdrop-blur-sm" @click="deleteTarget = null"></div>
         <div class="relative bg-white rounded-2xl shadow-xl p-6 w-80 mx-4">
-          <h3 class="text-base font-semibold text-gray-900 mb-2">确认删除</h3>
-          <p class="text-sm text-gray-500 mb-5">
+          <h3 class="text-base font-semibold text-neutral-900 mb-2">确认删除</h3>
+          <p class="text-sm text-neutral-500 mb-5">
             确定要删除「第{{ deleteTarget.chapter_number }}章：{{ deleteTarget.title }}」吗？此操作不可撤销。
           </p>
           <div class="flex gap-3 justify-end">
-            <button @click="deleteTarget = null" class="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100 transition-colors">
+            <button @click="deleteTarget = null" class="px-4 py-2 text-sm font-medium text-neutral-600 hover:text-neutral-800 rounded-lg hover:bg-neutral-100 transition-colors">
               取消
             </button>
             <button @click="doDelete" class="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors">
@@ -109,12 +109,12 @@ function chapterIndexInVolume(vol, ch) {
 
 function statusClasses(s) {
   const map = {
-    draft: 'bg-gray-100 text-gray-500',
+    draft: 'bg-neutral-100 text-neutral-500',
     generating: 'bg-amber-50 text-amber-600',
     completed: 'bg-emerald-50 text-emerald-600',
     failed: 'bg-red-50 text-red-500',
   }
-  return map[s] || 'bg-gray-100 text-gray-500'
+  return map[s] || 'bg-neutral-100 text-neutral-500'
 }
 
 function statusLabel(s) {

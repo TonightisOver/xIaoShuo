@@ -66,20 +66,24 @@ async def persist_langgraph_result(
                     abilities=char.get("abilities") or char.get("能力"),
                     background_story=char.get("background_story") or char.get("背景"),
                 )
-                existing = await manager.get_character_by_name(novel_id, char_data["name"])
+                from src.api.services.character_service import get_character_service
+                char_svc = get_character_service()
+                existing = await char_svc.get_character_by_name(novel_id, char_data["name"])
                 if existing:
-                    await manager.update_character(novel_id, existing["id"], **char_data)
+                    await char_svc.update_character(novel_id, existing["id"], **char_data)
                 else:
-                    await manager.create_character(novel_id, **char_data)
+                    await char_svc.create_character(novel_id, **char_data)
 
         # Volumes
+        from src.api.services.volume_service import get_volume_service
+        volume_svc = get_volume_service()
         volumes = result.get("volumes", [])
         for vol in volumes:
             if isinstance(vol, dict):
                 vol_chapters = vol.get("chapters", [])
                 ch_start = vol_chapters[0].get("chapter", 1) if vol_chapters else None
                 ch_end = vol_chapters[-1].get("chapter", 1) if vol_chapters else None
-                await manager.create_volume(
+                await volume_svc.create_volume(
                     novel_id,
                     volume_number=vol.get("volume_number", 1),
                     title=vol.get("title"),

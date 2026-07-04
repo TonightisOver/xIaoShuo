@@ -70,8 +70,10 @@ class AIGenerationService:
         novel = await manager.get_novel(novel_id)
         if not novel:
             raise ValueError("小说不存在")
-        world = await manager.get_world_setting(novel_id)
-        characters = await manager.list_characters(novel_id)
+        from src.api.services.world_service import get_world_service
+        world = await get_world_service().get_world_setting(novel_id)
+        from src.api.services.character_service import get_character_service
+        characters = await get_character_service().list_characters(novel_id)
 
         idea_part = (novel.get('idea') or '')[:200]
         context = f"小说类型：{novel.get('novel_type', '')}\n创意：{idea_part}\n"
@@ -119,7 +121,8 @@ class AIGenerationService:
         novel = await manager.get_novel(novel_id)
         if not novel:
             raise ValueError("小说不存在")
-        world = await manager.get_world_setting(novel_id)
+        from src.api.services.world_service import get_world_service
+        world = await get_world_service().get_world_setting(novel_id)
 
         idea_part = (novel.get('idea') or '')[:300]
         context_parts = [
@@ -156,7 +159,8 @@ class AIGenerationService:
         created: list[dict] = []
         for ps_data in data:
             if isinstance(ps_data, dict) and ps_data.get("name"):
-                ps_id = await manager.create_power_system(
+                from src.api.services.world_service import get_world_service
+                ps_id = await get_world_service().create_power_system(
                     novel_id,
                     name=ps_data.get("name", ""),
                     description=ps_data.get("description", ""),
@@ -175,12 +179,14 @@ class AIGenerationService:
         from src.core.llm.helpers import generate_and_parse_json
 
         manager = get_novel_manager()
-        characters = await manager.list_characters(novel_id)
+        from src.api.services.character_service import get_character_service
+        characters = await get_character_service().list_characters(novel_id)
         if not characters:
             return []
 
         novel = await manager.get_novel(novel_id)
-        world = await manager.get_world_setting(novel_id)
+        from src.api.services.world_service import get_world_service
+        world = await get_world_service().get_world_setting(novel_id)
         sl_service = get_storyline_service()
         try:
             storylines = await sl_service.list_storylines(novel_id)
@@ -295,7 +301,8 @@ class AIGenerationService:
         from src.core.llm.helpers import generate_and_parse_json
 
         manager = get_novel_manager()
-        world = await manager.get_world_setting(novel_id)
+        from src.api.services.world_service import get_world_service
+        world = await get_world_service().get_world_setting(novel_id)
 
         context = ""
         if world:

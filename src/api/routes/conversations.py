@@ -100,7 +100,8 @@ async def apply_suggestion(novel_id: str, conv_id: int, request: ApplySuggestion
         if len(name) > 10:
             name = name[:10]
         description = content[len(name):].lstrip("：:-— ") if len(content) > len(name) else content
-        char_id = await manager.create_character(
+        from src.api.services.character_service import get_character_service
+        char_id = await get_character_service().create_character(
             novel_id, name=name or "新角色",
             description=description or content
         )

@@ -6,8 +6,8 @@
         <span class="font-semibold">
           第{{ currentChapter }}章 / {{ totalChapters }}章
         </span>
-        <span class="text-gray-400 dark:text-gray-500">|</span>
-        <span class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ wordCount.toLocaleString() }} 字</span>
+        <span class="text-neutral-400 dark:text-neutral-500">|</span>
+        <span class="font-mono text-xs text-neutral-500 dark:text-neutral-400">{{ wordCount.toLocaleString() }} 字</span>
       </div>
 
       <!-- Action buttons -->
@@ -49,7 +49,7 @@
 
         <button
           :disabled="!isPaused"
-          class="btn-control bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-[#1d1d1f] dark:text-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+          class="btn-control bg-neutral-200 dark:bg-gray-700 hover:bg-neutral-300 dark:hover:bg-gray-600 text-[#1d1d1f] dark:text-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
           @click="$emit('edit')"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -71,7 +71,7 @@
         <div class="px-6 py-5 space-y-4">
           <div class="space-y-2">
             <h3 class="text-base font-semibold text-[#1d1d1f] dark:text-gray-100">确定停止生成？</h3>
-            <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">未保存进度将丢失</p>
+            <p class="text-sm leading-6 text-neutral-600 dark:text-gray-300">未保存进度将丢失</p>
           </div>
           <div class="flex justify-end gap-3">
             <button

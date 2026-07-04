@@ -4,13 +4,13 @@
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2 mb-1">
           <span :class="'badge-' + task.status">{{ statusLabel }}</span>
-          <span class="text-xs text-ink-400">{{ formatTime(task.created_at) }}</span>
+          <span class="text-xs text-neutral-400">{{ formatTime(task.created_at) }}</span>
         </div>
-        <p class="text-sm font-medium text-ink-800 truncate group-hover:text-primary-600 transition-colors">
+        <p class="text-sm font-medium text-neutral-800 truncate group-hover:text-accent-600 transition-colors">
           {{ task.task_id }}
         </p>
       </div>
-      <svg class="w-5 h-5 text-ink-300 group-hover:text-primary-500 transition-colors shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg class="w-5 h-5 text-neutral-300 group-hover:text-accent-500 transition-colors shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
       </svg>
     </div>

@@ -10,7 +10,7 @@
           stageStatus(stage.id) === 'done' ? 'bg-emerald-50/70 border-emerald-100 text-emerald-800' :
           stageStatus(stage.id) === 'active' ? 'bg-purple-50/80 border-purple-200 text-purple-900 ring-2 ring-purple-500/60 ring-offset-1 font-semibold shadow-md shadow-purple-500/5' :
           stageStatus(stage.id) === 'failed' ? 'bg-rose-50 border-rose-200 text-rose-800 ring-2 ring-rose-500/60 ring-offset-1 font-semibold shadow-md' :
-          'bg-gray-50/40 border-gray-100/60 text-gray-400'
+          'bg-neutral-50/40 border-neutral-100/60 text-neutral-400'
         ]"
       >
         <!-- Status Indicator Icon/Number -->
@@ -20,7 +20,7 @@
             stageStatus(stage.id) === 'done' ? 'bg-emerald-500 text-white' :
             stageStatus(stage.id) === 'active' ? 'bg-purple-600 text-white animate-pulse' :
             stageStatus(stage.id) === 'failed' ? 'bg-rose-600 text-white' :
-            'bg-gray-200 text-gray-500'
+            'bg-neutral-200 text-neutral-500'
           ]"
         >
           <svg v-if="stageStatus(stage.id) === 'done'" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
@@ -63,7 +63,7 @@
           {{ activeDetail.title }}
         </h3>
       </div>
-      <p class="text-xs md:text-sm text-gray-600 leading-relaxed font-sans">
+      <p class="text-xs md:text-sm text-neutral-600 leading-relaxed font-sans">
         {{ activeDetail.description }}
       </p>
     </div>

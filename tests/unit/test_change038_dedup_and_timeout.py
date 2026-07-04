@@ -54,6 +54,6 @@ class TestChapterTimeout:
 class TestGetCharacterByName:
 
     def test_method_exists(self):
-        from src.api.services.novel_manager import NovelManager
-        assert hasattr(NovelManager, "get_character_by_name")
-        assert callable(getattr(NovelManager, "get_character_by_name"))
+        from src.api.services.character_service import CharacterService
+        assert hasattr(CharacterService, "get_character_by_name")
+        assert callable(getattr(CharacterService, "get_character_by_name"))

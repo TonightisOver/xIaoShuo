@@ -105,7 +105,8 @@ class ConversationService:
         novel_manager = get_novel_manager()
         novel = await novel_manager.get_novel(conv_data["novel_id"])
         world = await novel_manager.get_world_setting(conv_data["novel_id"])
-        characters = await novel_manager.list_characters(conv_data["novel_id"])
+        from src.api.services.character_service import get_character_service
+        characters = await get_character_service().list_characters(conv_data["novel_id"])
 
         context_parts = []
         if world:
@@ -229,7 +230,8 @@ class ConversationService:
             if len(name) > 10:
                 name = name[:10]
             desc = content[len(name):].lstrip("：:- ") or content
-            char_id = await novel_manager.create_character(novel_id, name=name or "新角色", description=desc)
+            from src.api.services.character_service import get_character_service
+            char_id = await get_character_service().create_character(novel_id, name=name or "新角色", description=desc)
             return {"status": "confirmed", "target": "characters", "id": char_id}
 
         elif confirm_as == "storyline":
@@ -256,7 +258,8 @@ class ConversationService:
             raise ValueError("小说不存在")
 
         world = await manager.get_world_setting(novel_id)
-        characters = await manager.list_characters(novel_id)
+        from src.api.services.character_service import get_character_service
+        characters = await get_character_service().list_characters(novel_id)
 
         # Build initial topic
         topic = f"小说设定完善 — {novel.get('title', '')}"
