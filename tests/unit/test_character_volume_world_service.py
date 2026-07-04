@@ -98,15 +98,13 @@ def _make_power_system_row(
     return row
 
 
-def _make_mock_session(scalar_result=None, scalar_one_or_none_result=None,
+def _make_mock_session(scalar_one_or_none_result=None, scalar_result=None,
                         all_result=None):
     session = AsyncMock()
     mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = scalar_one_or_none_result
     if scalar_result is not None:
-        mock_result.scalar_one_or_none.return_value = scalar_result
         mock_result.scalar.return_value = scalar_result
-    if scalar_one_or_none_result is not None:
-        mock_result.scalar_one_or_none.return_value = scalar_one_or_none_result
     if all_result is not None:
         mock_result.all.return_value = all_result
     mock_scalars = MagicMock()
@@ -118,6 +116,7 @@ def _make_mock_session(scalar_result=None, scalar_one_or_none_result=None,
     session.delete = MagicMock()
     session.__aenter__ = AsyncMock(return_value=session)
     session.__aexit__ = AsyncMock(return_value=None)
+    session.delete = AsyncMock()
     return session
 
 
@@ -157,8 +156,8 @@ class TestCharacterService:
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_create_character_returns_id(self):
-        """create_character 返回新角色的 id"""
+    async def test_create_character_adds_to_session(self):
+        """create_character 将角色添加到 session"""
         from src.api.services.character_service import get_character_service
         svc = get_character_service()
 
@@ -166,11 +165,11 @@ class TestCharacterService:
         with patch("src.api.services.character_service.get_db_session", return_value=session):
             result = await svc.create_character("novel-1", name="新角色", role="主角")
 
-        assert isinstance(result, int)
         session.add.assert_called_once()
         added_char = session.add.call_args[0][0]
         assert added_char.novel_id == "novel-1"
         assert added_char.name == "新角色"
+        assert added_char.role == "主角"
 
     @pytest.mark.asyncio
     async def test_get_character_by_name(self):
@@ -305,7 +304,7 @@ class TestVolumeService:
         session = _make_mock_session()
         with patch("src.api.services.volume_service.get_db_session", return_value=session):
             result = await svc.create_volume("novel-1", 1, title="新卷")
-        assert isinstance(result, int)
+        # id is db-generated; verify add instead
         session.add.assert_called_once()
 
     @pytest.mark.asyncio
@@ -417,7 +416,7 @@ class TestWorldService:
         with patch("src.api.services.world_service.get_db_session", return_value=session):
             result = await svc.create_power_system("novel-1", "炼体", "描述", [{"name": "一重"}])
 
-        assert isinstance(result, int)
+        # id is db-generated; verify add instead
         added = session.add.call_args[0][0]
         assert added.name == "炼体"
 

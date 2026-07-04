@@ -156,7 +156,8 @@ async def _build_initial_state(
     initial_state["novel_id"] = novel_id
     if novel_id:
         novel_manager = get_novel_manager()
-        existing_world = await novel_manager.get_world_setting(novel_id)
+        from src.api.services.world_service import get_world_service
+        existing_world = await get_world_service().get_world_setting(novel_id)
         from src.api.services.character_service import get_character_service
         existing_chars = await get_character_service().list_characters(novel_id)
         ws_keys = ["background", "rules", "culture", "geography"]
@@ -705,11 +706,13 @@ async def generate_volume_background(
 
         # Fetch context: previous chapters from earlier volumes
         prev_context = ""
-        prev_chapters = await novel_manager.list_chapters_preview(novel_id)
+        from src.api.services.chapter_service import get_chapter_service
+        ch_service = get_chapter_service()
+        prev_chapters = await ch_service.list_chapters_preview(novel_id)
         prev_in_earlier_vols = [c for c in prev_chapters if (c.get("volume_number") or 0) < volume_number]
         if prev_in_earlier_vols:
             last_ch = prev_in_earlier_vols[-1]
-            last_tail = await novel_manager.get_chapter_tail(
+            last_tail = await ch_service.get_chapter_tail(
                 novel_id, last_ch["chapter_number"]
             )
             prev_context = f"前文最后一章《{last_ch.get('title', '')}》结尾：{last_tail}"
@@ -759,7 +762,8 @@ async def generate_chapters_background(
 
         prev_context = ""
         if chapter_start > 1:
-            prev_context = await novel_manager.get_chapter_tail(
+            from src.api.services.chapter_service import get_chapter_service
+            prev_context = await get_chapter_service().get_chapter_tail(
                 novel_id, chapter_start - 1
             )
 

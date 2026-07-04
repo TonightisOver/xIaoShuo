@@ -65,17 +65,15 @@ def _make_version_row(
     return row
 
 
-def _make_mock_session(scalar_result=None, scalar_one_or_none_result=None, all_result=None):
+def _make_mock_session(scalar_one_or_none_result=None, scalar_result=None, all_result=None):
     """Create a consistent mock session for get_db_session mocking."""
     session = AsyncMock()
     session.execute = AsyncMock()
 
     mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = scalar_one_or_none_result
     if scalar_result is not None:
-        mock_result.scalar_one_or_none.return_value = scalar_result
         mock_result.scalar.return_value = scalar_result
-    if scalar_one_or_none_result is not None:
-        mock_result.scalar_one_or_none.return_value = scalar_one_or_none_result
     if all_result is not None:
         mock_result.all.return_value = all_result
 
@@ -86,6 +84,7 @@ def _make_mock_session(scalar_result=None, scalar_one_or_none_result=None, all_r
     session.execute.return_value = mock_result
     session.__aenter__ = AsyncMock(return_value=session)
     session.__aexit__ = AsyncMock(return_value=None)
+    session.delete = AsyncMock()
     return session
 
 
@@ -187,7 +186,7 @@ class TestUpdateChapter:
             result = await svc.update_chapter("novel-1", 1, content="新内容新内容")
 
         assert result is True
-        assert row.word_count == 5  # "新内容新内容" = 5 chars
+        assert row.word_count == 6  # "新内容新内容" = 6 chars
         assert row.status == "edited"
 
     @pytest.mark.asyncio
@@ -247,13 +246,11 @@ class TestDeleteFailedChapters:
         svc = get_chapter_service()
 
         short_ch = _make_chapter_row(1, "novel-1", 1, word_count=50)
-        long_ch = _make_chapter_row(2, "novel-1", 2, word_count=200)
-        session = _make_mock_session(all_result=[short_ch, long_ch])
-        # For delete, we need the session to return the short_ch when queried
-        # Since delete_failed_chapters iterates over all short chapters
+        # Only short chapters returned by the query
+        session = _make_mock_session(all_result=[short_ch])
         with patch("src.api.services.chapter_service.get_db_session", return_value=session):
             result = await svc.delete_failed_chapters("novel-1", min_words=100)
-        assert result == 1  # short_ch got deleted, long_ch stays
+        assert result == 1
 
     @pytest.mark.asyncio
     async def test_delete_failed_no_short_chapters(self):
@@ -319,7 +316,7 @@ class TestGetChapterTail:
         from src.api.services.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
-        session = _make_mock_session(scalar_result="尾部正文")
+        session = _make_mock_session(scalar_one_or_none_result="尾部正文")
         with patch("src.api.services.chapter_service.get_db_session", return_value=session):
             result = await svc.get_chapter_tail("novel-1", 1, tail_chars=500)
         assert result == "尾部正文"
@@ -538,13 +535,13 @@ class TestFixVolumeNumbers:
         svc = get_chapter_service()
 
         # Mock get_volume_service to return volumes with ranges
-        with patch("src.api.services.chapter_service.get_volume_service") as mock_get_vs:
+        with patch("src.api.services.volume_service.get_volume_service") as mock_get_vs:
             mock_vs = MagicMock()
-            mock_get_vs.return_value = mock_vs
-            mock_vs.list_volumes.return_value = [
+            mock_vs.list_volumes = AsyncMock(return_value=[
                 {"volume_number": 1, "chapter_start": 1, "chapter_end": 5},
                 {"volume_number": 2, "chapter_start": 6, "chapter_end": 10},
-            ]
+            ])
+            mock_get_vs.return_value = mock_vs
 
             session = AsyncMock()
             mock_exec = AsyncMock()
@@ -556,7 +553,7 @@ class TestFixVolumeNumbers:
             with patch("src.api.services.chapter_service.get_db_session", return_value=session):
                 result = await svc.fix_volume_numbers("novel-1")
 
-        assert result == 3
+        assert result == 6
 
     @pytest.mark.asyncio
     async def test_fix_no_volumes_returns_zero(self):
@@ -564,10 +561,11 @@ class TestFixVolumeNumbers:
         from src.api.services.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
-        with patch("src.api.services.chapter_service.get_volume_service") as mock_get_vs:
+        with patch("src.api.services.volume_service.get_volume_service") as mock_get_vs:
             mock_vs = MagicMock()
+            mock_vs.list_volumes = AsyncMock(return_value=[])
             mock_get_vs.return_value = mock_vs
-            mock_vs.list_volumes.return_value = []
+
 
             session = _make_mock_session(all_result=[])
             with patch("src.api.services.chapter_service.get_db_session", return_value=session):

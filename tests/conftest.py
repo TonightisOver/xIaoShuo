@@ -5,7 +5,11 @@ import os
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
-TEST_DATABASE_URL = "postgresql+asyncpg://xiaoshuo:xiaoshuo2026@localhost:5433/xiaoshuo_test?ssl=disable"
+# Allow override via env var for Docker/nonstandard setups
+TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://xiaoshuo:xiaoshuo2026@localhost:5433/xiaoshuo_test?ssl=disable",
+)
 
 
 def pytest_configure(config):

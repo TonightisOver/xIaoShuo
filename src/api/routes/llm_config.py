@@ -20,7 +20,8 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(
     prefix="/api/v1/llm",
     tags=["llm"],
-    dependencies=[Depends(require_admin)],
+    # GET 端点（list/token-stats）不需要 auth，只返回脱敏数据
+    # POST/PUT/DELETE 端点各自加 Depends(require_admin)
 )
 
 
@@ -119,7 +120,7 @@ async def list_configs() -> list[LLMConfigResponse]:
 
 
 @router.post("/configs", response_model=LLMConfigResponse, status_code=201)
-async def create_config(body: LLMConfigCreate) -> LLMConfigResponse:
+async def create_config(body: LLMConfigCreate, _admin=Depends(require_admin)) -> LLMConfigResponse:
     """创建新 LLM 配置。"""
     async with get_db_session() as session:
         config = LLMConfig(
@@ -137,7 +138,7 @@ async def create_config(body: LLMConfigCreate) -> LLMConfigResponse:
 
 
 @router.put("/configs/{config_id}", response_model=LLMConfigResponse)
-async def update_config(config_id: int, body: LLMConfigUpdate) -> LLMConfigResponse:
+async def update_config(config_id: int, body: LLMConfigUpdate, _admin=Depends(require_admin)) -> LLMConfigResponse:
     """更新 LLM 配置（部分字段可选）。"""
     reload_config: LLMConfig | None = None
     async with get_db_session() as session:
@@ -170,7 +171,7 @@ async def update_config(config_id: int, body: LLMConfigUpdate) -> LLMConfigRespo
 
 
 @router.delete("/configs/{config_id}", status_code=204)
-async def delete_config(config_id: int) -> None:
+async def delete_config(config_id: int, _admin=Depends(require_admin)) -> None:
     """删除 LLM 配置。若为激活配置则拒绝删除（返回 400）。"""
     async with get_db_session() as session:
         result = await session.execute(
@@ -187,7 +188,7 @@ async def delete_config(config_id: int) -> None:
 
 
 @router.post("/configs/{config_id}/activate", response_model=LLMConfigResponse)
-async def activate_config(config_id: int) -> LLMConfigResponse:
+async def activate_config(config_id: int, _admin=Depends(require_admin)) -> LLMConfigResponse:
     """激活指定配置，同时将其他配置设为非激活（事务保证）。"""
     reload_config: LLMConfig | None = None
     async with get_db_session() as session:

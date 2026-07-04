@@ -4,6 +4,7 @@
 
 import asyncio
 import json
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -471,6 +472,12 @@ async def _generate_single_chapter_inner(
                 )
                 break
 
+
+    # 后处理：去 AI 味
+    # post_process_chapter is in this file
+    content = post_process_chapter(content)
+    word_count = len(content)
+
     # 8. 提取 chapter_type 到返回值（由调用方负责 DB 更新）
     chapter_type = blueprint.get("chapter_type") if blueprint else None
 
@@ -484,3 +491,41 @@ async def _generate_single_chapter_inner(
         "word_count": word_count,
         "chapter_type": chapter_type,
     }
+
+# ============================================================
+# 后处理：去 AI 味
+# ============================================================
+
+_AI_PATTERNS = [
+    (r"——{2,}", "——"),
+    (r"…{4,}", "……"),
+    (r"首先[，,]", ""),
+    (r"其次[，,]", ""),
+    (r"最后[，,]", ""),
+    (r"值得注意的是[，,]", ""),
+    (r"毋庸置疑[，,]", ""),
+    (r"很显然[，,]", ""),
+    (r"顾名思义[，,]", ""),
+    (r"总而言之[，,]", ""),
+    (r"总的来说[，,]", ""),
+    (r"换言之[，,]", ""),
+    (r"换句话说[，,]", ""),
+    (r"不可否认[，,]", ""),
+    (r"毫无疑问[，,]", ""),
+]
+
+
+def post_process_chapter(content: str) -> str:
+    """清洗 AI 生成文本中的 AI 味特征
+
+    包括：标点规范化、删除AI结构词、优化句式
+    """
+    for pattern, replacement in _AI_PATTERNS:
+        content = re.sub(pattern, replacement, content)
+
+    # 去除多余空行（超过 3 行连续空行合并为 2 行）
+    content = re.sub(r"\n{4,}", "\n\n\n", content)
+    content = content.strip()
+
+    return content
+

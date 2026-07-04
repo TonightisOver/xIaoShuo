@@ -27,6 +27,7 @@ RUN poetry source add --priority=primary tsinghua https://pypi.tuna.tsinghua.edu
 RUN poetry lock --no-interaction && poetry install --only main --no-root --no-interaction
 
 COPY src/ ./src/
+COPY tests/ ./tests/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./
 COPY run_api.py ./
