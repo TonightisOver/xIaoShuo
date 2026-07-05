@@ -7,7 +7,7 @@ from secrets import compare_digest
 
 from fastapi import Header, HTTPException, status
 
-from src.api.models.db_models import User
+from src.core.auth_models import User
 from src.core.security.users import get_session_user
 
 

@@ -672,15 +672,20 @@ class TestAIGenerationService:
         with patch(
             "src.api.services.novel_manager.get_novel_manager"
         ) as mock_mgr_fn, patch(
+            "src.api.services.world_service.get_world_service"
+        ) as mock_ws_fn, patch(
             "src.core.llm.helpers.safe_json_parse", return_value=llm_response
         ), patch(
             "src.core.llm.client.get_llm_client"
         ) as mock_llm_fn:
             mock_mgr = AsyncMock()
             mock_mgr.get_novel = AsyncMock(return_value=mock_novel)
-            mock_mgr.get_world_setting = AsyncMock(return_value=mock_world)
-            mock_mgr.create_power_system = AsyncMock(return_value="ps-1")
             mock_mgr_fn.return_value = mock_mgr
+
+            mock_ws = AsyncMock()
+            mock_ws.get_world_setting = AsyncMock(return_value=mock_world)
+            mock_ws.create_power_system = AsyncMock(return_value="ps-1")
+            mock_ws_fn.return_value = mock_ws
 
             mock_client = AsyncMock()
             mock_client.generate = AsyncMock(return_value="[]")
@@ -694,7 +699,7 @@ class TestAIGenerationService:
         assert len(result) == 1
         assert result[0]["name"] == "修仙境界"
         assert len(result[0]["levels"]) == 2
-        mock_mgr.create_power_system.assert_called_once()
+        mock_ws.create_power_system.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_generate_power_systems_ai_novel_not_found(self):

@@ -281,7 +281,7 @@ class TestContinuationLoop:
         short_content = "字" * 1800  # 60%, triggers continuation
         # First continuation: still short (1900 chars, still < 2250)
         # Second continuation: sufficient (2500 chars, > 2250)
-        continuation_results = ["字" * 1900, "字" * 2500]
+        continuation_results = ["字" * 1500, "字" * 2500]
 
         mock_client = AsyncMock()
         mock_client.generate = AsyncMock(return_value=short_content)

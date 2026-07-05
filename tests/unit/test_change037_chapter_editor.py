@@ -16,11 +16,46 @@ def _make_mock_session():
     return session
 
 
-def _patch_db_session(mock_session):
+def _make_mock_context(session):
+    """Create a mock async context manager that yields the given session."""
     mock_ctx = MagicMock()
-    mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_ctx.__aenter__ = AsyncMock(return_value=session)
     mock_ctx.__aexit__ = AsyncMock(return_value=False)
-    return patch("src.api.services.novel_manager.get_db_session", return_value=mock_ctx)
+    return mock_ctx
+
+
+def _patch_db_session(session):
+    """Patch get_db_session in all modules that use it.
+
+    NovelManager.create_chapter_version delegates to ChapterService,
+    which imports get_db_session at module level from src.core.database.
+    We need to patch both:
+    - src.core.database.get_db_session (for core modules)
+    - src.api.services.chapter_service.get_db_session (for ChapterService)
+    - src.api.services.novel_manager.get_db_session (for NovelManager direct use)
+    """
+    mock_ctx = _make_mock_context(session)
+    return _CombinedPatcher([
+        patch("src.core.database.get_db_session", return_value=mock_ctx),
+        patch("src.api.services.chapter_service.get_db_session", return_value=mock_ctx),
+        patch("src.api.services.novel_manager.get_db_session", return_value=mock_ctx),
+    ])
+
+
+class _CombinedPatcher:
+    """Apply multiple patches as a context manager."""
+    def __init__(self, patchers):
+        self._patchers = patchers
+
+    def __enter__(self):
+        for p in self._patchers:
+            p.start()
+        return self
+
+    def __exit__(self, *args):
+        for p in reversed(self._patchers):
+            p.stop()
+        return False
 
 
 class TestChapterVersionModel:
@@ -304,10 +339,12 @@ def _make_app():
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from src.api.routes.projects import router
+    from src.api.routes.chapters import router as chapters_router
+    from src.api.routes.projects import router as projects_router
 
     app = FastAPI()
-    app.include_router(router)
+    app.include_router(chapters_router)
+    app.include_router(projects_router)
     return TestClient(app)
 
 
@@ -337,15 +374,15 @@ class TestChapterEditorEndpoints:
             yield MagicMock()
 
         with patch(
-            "src.api.routes.projects.get_novel_manager", return_value=mock_manager
+            "src.api.routes.chapters.get_chapter_service", return_value=mock_manager
         ), patch(
+            "src.core.database.get_db_session",
+            _fake_session,
+        ) as mock_get_db, patch(
             "src.core.llm.chapter_rewriter.get_llm_client",
         ) as mock_llm, patch(
             "src.api.services.novel_context_service.NovelContextBuilder",
             return_value=mock_builder,
-        ), patch(
-            "src.core.database.get_db_session",
-            _fake_session,
         ):
             mock_llm.return_value.generate = AsyncMock(return_value="rewritten")
             response = client.post(
@@ -390,15 +427,15 @@ class TestChapterEditorEndpoints:
             yield MagicMock()
 
         with patch(
-            "src.api.routes.projects.get_novel_manager", return_value=mock_manager
+            "src.api.routes.chapters.get_chapter_service", return_value=mock_manager
         ), patch(
+            "src.core.database.get_db_session",
+            _fake_session,
+        ) as mock_get_db, patch(
             "src.core.llm.chapter_rewriter.get_llm_client",
         ) as mock_llm, patch(
             "src.api.services.novel_context_service.NovelContextBuilder",
             return_value=mock_builder,
-        ), patch(
-            "src.core.database.get_db_session",
-            _fake_session,
         ):
             mock_llm.return_value.generate = AsyncMock(
                 side_effect=asyncio.TimeoutError()
@@ -447,7 +484,7 @@ class TestChapterEditorEndpoints:
         mock_manager.create_chapter_version = AsyncMock(return_value=2)
         mock_manager.rollback_chapter_version = AsyncMock(return_value=3)
 
-        with patch("src.api.routes.projects.get_novel_manager", return_value=mock_manager):
+        with patch("src.api.routes.chapters.get_chapter_service", return_value=mock_manager):
             list_response = client.get("/api/v1/projects/novel-001/chapters/1/versions")
             get_response = client.get("/api/v1/projects/novel-001/chapters/1/versions/1")
             create_response = client.post(

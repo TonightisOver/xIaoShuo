@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, UTC
 
 from sqlalchemy import select
 
-from src.api.models.db_models import User, UserSession
+from src.core.auth_models import User, UserSession
 from src.core.database import get_db_session
 
 # PBKDF2 password hashing parameters

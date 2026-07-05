@@ -11,6 +11,8 @@ from src.api.models.db_models import (
     Novel,
     Task,
 )
+from src.api.services.chapter_service import get_chapter_service
+from src.api.services.world_service import get_world_service
 from src.core.database import get_db_session
 
 logger = structlog.get_logger(__name__)
@@ -146,6 +148,116 @@ class NovelManager:
                 return False
             await session.delete(novel)
         return True
+
+    # --- Chapter Versions (delegated to ChapterService) ---
+
+    async def create_chapter_version(self, novel_id: str, chapter_number: int,
+                                      content: str, source: str = "manual",
+                                      rewrite_instruction: str | None = None,
+                                      quality_score: float | None = None,
+                                      model_name: str | None = None,
+                                      prompt_summary: str | None = None,
+                                      diff_from_previous: str | None = None,
+                                      kg_conflicts: dict | None = None,
+                                      user_notes: str | None = None,
+                                      is_active: bool = False) -> int:
+        """创建章节版本快照，代理到 ChapterService。"""
+        return await get_chapter_service().create_chapter_version(
+            novel_id=novel_id,
+            chapter_number=chapter_number,
+            content=content,
+            source=source,
+            rewrite_instruction=rewrite_instruction,
+            quality_score=quality_score,
+            model_name=model_name,
+            prompt_summary=prompt_summary,
+            diff_from_previous=diff_from_previous,
+            kg_conflicts=kg_conflicts,
+            user_notes=user_notes,
+            is_active=is_active,
+        )
+
+    async def list_chapter_versions(self, novel_id: str,
+                                     chapter_number: int) -> list[dict]:
+        """返回版本列表（不含 content），代理到 ChapterService。"""
+        return await get_chapter_service().list_chapter_versions(
+            novel_id=novel_id, chapter_number=chapter_number
+        )
+
+    async def get_chapter_version(self, novel_id: str, chapter_number: int,
+                                   version_number: int) -> dict | None:
+        """返回单个版本完整内容，代理到 ChapterService。"""
+        return await get_chapter_service().get_chapter_version(
+            novel_id=novel_id,
+            chapter_number=chapter_number,
+            version_number=version_number,
+        )
+
+    async def rollback_chapter_version(self, novel_id: str, chapter_number: int,
+                                        version_number: int) -> int | None:
+        """将指定版本内容写回 Chapter.content，并创建 source=rollback 的新版本。"""
+        target = await self.get_chapter_version(novel_id, chapter_number, version_number)
+        if not target:
+            return None
+        return await self.create_chapter_version(
+            novel_id=novel_id,
+            chapter_number=chapter_number,
+            content=target["content"] or "",
+            source="rollback",
+            rewrite_instruction=f"回滚自版本 {version_number}",
+        )
+
+    async def activate_chapter_version(self, novel_id: str, chapter_number: int,
+                                        version_number: int) -> bool | None:
+        """将指定版本设为活跃版本，代理到 ChapterService。"""
+        return await get_chapter_service().activate_chapter_version(
+            novel_id=novel_id,
+            chapter_number=chapter_number,
+            version_number=version_number,
+        )
+
+    async def compare_chapter_versions(self, novel_id: str, chapter_number: int,
+                                        v1: int, v2: int) -> dict | None:
+        """对比两个版本，代理到 ChapterService。"""
+        return await get_chapter_service().compare_chapter_versions(
+            novel_id=novel_id,
+            chapter_number=chapter_number,
+            v1=v1,
+            v2=v2,
+        )
+
+    async def fix_volume_numbers(self, novel_id: str) -> int:
+        """根据卷的 chapter_start/chapter_end 为章节补充 volume_number。"""
+        return await get_chapter_service().fix_volume_numbers(novel_id)
+
+    # --- Power Systems (delegated to WorldService) ---
+
+    async def list_power_systems(self, novel_id: str) -> list[dict]:
+        """返回力量体系列表，代理到 WorldService。"""
+        return await get_world_service().list_power_systems(novel_id)
+
+    async def create_power_system(self, novel_id: str, name: str,
+                                   description: str | None = None,
+                                   levels: list | None = None) -> int:
+        """创建力量体系，代理到 WorldService。"""
+        return await get_world_service().create_power_system(
+            novel_id=novel_id,
+            name=name,
+            description=description,
+            levels=levels,
+        )
+
+    async def update_power_system(self, novel_id: str, ps_id: int, **kwargs) -> bool:
+        """更新力量体系，代理到 WorldService（带 novel_id ownership 校验）。"""
+        return await get_world_service().update_power_system(
+            novel_id=novel_id, ps_id=ps_id, **kwargs
+        )
+
+    async def delete_power_system(self, novel_id: str, ps_id: int) -> bool:
+        """删除力量体系，代理到 WorldService（带 novel_id ownership 校验）。"""
+        return await get_world_service().delete_power_system(
+            novel_id=novel_id, ps_id=ps_id
+        )
 
     # --- Helpers ---
 

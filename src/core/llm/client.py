@@ -25,6 +25,10 @@ logger = structlog.get_logger(__name__)
 
 def _is_retryable_status_error(exc: httpx.HTTPStatusError | openai.APIStatusError) -> bool:
     """判断 HTTP 状态错误是否应该触发重试。"""
+    # 非 HTTP 状态错误，直接返回 False
+    if not isinstance(exc, httpx.HTTPStatusError | openai.APIStatusError):
+        return False
+
     # 统一获取 status_code：httpx 和 openai 的 API 不同
     if isinstance(exc, openai.APIStatusError):
         status = exc.status_code

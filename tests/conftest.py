@@ -6,13 +6,22 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
 # Allow override via env var for Docker/nonstandard setups
-TEST_DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL",
+# Try multiple database URLs for local vs Docker environments
+_TEST_DB_URLS = [
+    os.environ.get("TEST_DATABASE_URL"),
+    "postgresql+asyncpg://xiaoshuo:xiaoshuo2026@localhost:5432/xiaoshuo_test",
     "postgresql+asyncpg://xiaoshuo:xiaoshuo2026@localhost:5433/xiaoshuo_test?ssl=disable",
-)
+    "postgresql+asyncpg://postgres:postgres@localhost:5432/postgres",
+    "postgresql+asyncpg://a1:@localhost:5432/postgres",
+]
+
+TEST_DATABASE_URL = None
+for url in _TEST_DB_URLS:
+    if url:
+        TEST_DATABASE_URL = url
+        break
 
 # Test Fernet key for LLM_ENCRYPTION_KEY
-# Must match the key used in test files (e.g., test_llm_config.py)
 TEST_FERNET_KEY = "8bj5PGK84njNhOHlIV64dHHMh7QGgdrNKm5eozsXDKY="
 
 

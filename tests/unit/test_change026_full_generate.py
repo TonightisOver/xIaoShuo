@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.api.services.progress_event_bus import EventType
+
 
 # ============================================================
 #  generate_power_systems_ai  tests
@@ -53,7 +55,8 @@ class TestGeneratePowerSystemsAI:
                                "description": description, "levels": levels})
             return ps_id
 
-        with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
+        with patch("src.api.services.world_service.get_world_service") as mock_ws, \
+             patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
              patch("src.core.llm.helpers.safe_json_parse", return_value=llm_response):
 
@@ -63,9 +66,12 @@ class TestGeneratePowerSystemsAI:
 
             mock_manager = AsyncMock()
             mock_manager.get_novel = AsyncMock(return_value=novel_data)
-            mock_manager.get_world_setting = AsyncMock(return_value=world_data)
-            mock_manager.create_power_system = AsyncMock(side_effect=mock_create_ps)
             mock_mgr.return_value = mock_manager
+
+            mock_ws_instance = AsyncMock()
+            mock_ws_instance.get_world_setting = AsyncMock(return_value=world_data)
+            mock_ws_instance.create_power_system = AsyncMock(side_effect=mock_create_ps)
+            mock_ws.return_value = mock_ws_instance
 
             result = await service.generate_power_systems_ai("novel-test-1")
 
@@ -93,7 +99,14 @@ class TestGeneratePowerSystemsAI:
              "levels": [{"name": "L1", "description": "行星文明", "breakthrough": "核聚变"}]},
         ]
 
+        created_ps = []
+
+        async def mock_create_ps(novel_id, name, description, levels):
+            created_ps.append({"name": name, "description": description})
+            return 1
+
         with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
+             patch("src.api.services.world_service.get_world_service") as mock_ws, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
              patch("src.core.llm.helpers.safe_json_parse", return_value=llm_response):
 
@@ -103,9 +116,12 @@ class TestGeneratePowerSystemsAI:
 
             mock_manager = AsyncMock()
             mock_manager.get_novel = AsyncMock(return_value=novel_data)
-            mock_manager.get_world_setting = AsyncMock(return_value=None)
-            mock_manager.create_power_system = AsyncMock(return_value=1)
             mock_mgr.return_value = mock_manager
+
+            mock_ws_instance = AsyncMock()
+            mock_ws_instance.get_world_setting = AsyncMock(return_value=None)
+            mock_ws_instance.create_power_system = AsyncMock(return_value=1)
+            mock_ws.return_value = mock_ws_instance
 
             result = await service.generate_power_systems_ai("novel-test-2")
 
@@ -207,7 +223,14 @@ class TestGeneratePowerSystemsAI:
             {"name": "体系B", "description": "有效", "levels": []},
         ]
 
+        created_ps = []
+
+        async def mock_create_ps(novel_id, name, description, levels):
+            created_ps.append({"name": name})
+            return len(created_ps)
+
         with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
+             patch("src.api.services.world_service.get_world_service") as mock_ws, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
              patch("src.core.llm.helpers.safe_json_parse", return_value=llm_response):
 
@@ -217,9 +240,12 @@ class TestGeneratePowerSystemsAI:
 
             mock_manager = AsyncMock()
             mock_manager.get_novel = AsyncMock(return_value=novel_data)
-            mock_manager.get_world_setting = AsyncMock(return_value={})
-            mock_manager.create_power_system = AsyncMock(return_value=1)
             mock_mgr.return_value = mock_manager
+
+            mock_ws_instance = AsyncMock()
+            mock_ws_instance.get_world_setting = AsyncMock(return_value={})
+            mock_ws_instance.create_power_system = AsyncMock(side_effect=mock_create_ps)
+            mock_ws.return_value = mock_ws_instance
 
             result = await service.generate_power_systems_ai("novel-test-4")
 
@@ -607,7 +633,7 @@ class TestRunSubFeature:
 
         class FakeEventBus:
             async def publish(self, event):
-                event_bus_events.append((event.event_type, event.data))
+                event_bus_events.append(event)
 
         class FakeTaskManager:
             async def update_status(self, task_id, status, progress=None):
@@ -621,7 +647,7 @@ class TestRunSubFeature:
         )
 
         with patch(
-            "src.api.services.novel_generator.get_event_bus"
+            "src.api.services.chapter_generation_utils.get_event_bus"
         ) as mock_bus, patch(
             "src.api.services.novel_generator.get_task_manager"
         ) as mock_tm, patch(
@@ -647,18 +673,21 @@ class TestRunSubFeature:
                 label="力量体系",
             )
 
-        # Verify events
-        event_types = [e[0] for e in event_bus_events if e[0] != "sub_feature_complete"]
-        start_event = next((e for e in event_bus_events if e[0] == "sub_feature_start"), None)
-        complete_event = next((e for e in event_bus_events if e[0] == "sub_feature_complete"), None)
+        # Verify events (FakeEventBus stores progress_event objects)
+        start_event = next(
+            (e for e in event_bus_events if e.event_type == EventType.SUB_FEATURE_START), None
+        )
+        complete_event = next(
+            (e for e in event_bus_events if e.event_type == EventType.SUB_FEATURE_COMPLETE), None
+        )
 
-        assert start_event is not None
-        assert start_event[1]["feature"] == "power_systems"
-        assert start_event[1]["label"] == "力量体系"
+        assert start_event is not None, f"Events captured: {event_bus_events}"
+        assert start_event.data["feature"] == "power_systems"
+        assert start_event.data["label"] == "力量体系"
 
-        assert complete_event is not None
-        assert complete_event[1]["feature"] == "power_systems"
-        assert complete_event[1]["count"] == 1
+        assert complete_event is not None, f"Events captured: {event_bus_events}"
+        assert complete_event.data["feature"] == "power_systems"
+        assert complete_event.data["count"] == 1
 
         mock_sl_instance.generate_power_systems_ai.assert_awaited_once_with("novel-ps")
 
@@ -686,7 +715,7 @@ class TestRunSubFeature:
             writing_style="现代白话",
         )
 
-        with patch("src.api.services.novel_generator.get_event_bus") as mock_bus, \
+        with patch("src.api.services.chapter_generation_utils.get_event_bus") as mock_bus, \
              patch("src.api.services.novel_generator.get_task_manager") as mock_tm:
 
             mock_bus.return_value = FakeEventBus()
@@ -702,12 +731,14 @@ class TestRunSubFeature:
                 label="大纲持久化",
             )
 
-        # Should emit start and complete (since feature matches none of the
+        # Should emit start (since feature matches none of the
         # branches that need novel_id), then update_status
+        from src.api.services.progress_event_bus import EventType
         start_exists = any(
-            e.event_type == "sub_feature_start" for e in event_bus_events
+            getattr(e, 'event_type', None) is EventType.SUB_FEATURE_START
+            for e in event_bus_events
         )
-        assert start_exists  # start is always emitted
+        assert start_exists, f"Events captured: {event_bus_events}"
 
     @pytest.mark.asyncio
     async def test_sub_feature_handles_error_gracefully(self):
@@ -733,7 +764,7 @@ class TestRunSubFeature:
             writing_style="现代白话",
         )
 
-        with patch("src.api.services.novel_generator.get_event_bus") as mock_bus, \
+        with patch("src.api.services.chapter_generation_utils.get_event_bus") as mock_bus, \
              patch("src.api.services.novel_generator.get_task_manager") as mock_tm, \
              patch(
                 "src.api.services.ai_generation_service.get_ai_generation_service"
@@ -760,10 +791,11 @@ class TestRunSubFeature:
             )
 
         # Should have START, ERROR (non_blocking) events
+        from src.api.services.progress_event_bus import EventType
         error_event = next(
-            (e for e in event_bus_events if e.event_type == "error"), None
+            (e for e in event_bus_events if e.event_type is EventType.ERROR), None
         )
-        assert error_event is not None
+        assert error_event is not None, f"Events captured: {event_bus_events}"
         assert error_event.data["feature"] == "power_systems"
         assert error_event.data["non_blocking"] is True
         assert "LLM API timeout" in error_event.data["error"]

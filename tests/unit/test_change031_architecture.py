@@ -80,17 +80,21 @@ class TestBuildInitialState:
         ]
 
         with patch("src.api.services.novel_generator.get_task_manager") as mock_tm, \
-             patch("src.api.services.novel_generator.get_novel_manager") as mock_nm, \
+             patch("src.api.services.world_service.get_world_service") as mock_ws, \
+             patch("src.api.services.character_service.get_character_service") as mock_cs, \
              patch("src.api.services.storyline_service.get_storyline_service") as mock_sl:
 
             mock_task_mgr = AsyncMock()
             mock_task_mgr.get_task = AsyncMock(return_value={"novel_id": "novel-123"})
             mock_tm.return_value = mock_task_mgr
 
-            mock_novel_mgr = AsyncMock()
-            mock_novel_mgr.get_world_setting = AsyncMock(return_value=world)
-            mock_novel_mgr.list_characters = AsyncMock(return_value=characters)
-            mock_nm.return_value = mock_novel_mgr
+            mock_world_svc = AsyncMock()
+            mock_world_svc.get_world_setting = AsyncMock(return_value=world)
+            mock_ws.return_value = mock_world_svc
+
+            mock_char_svc = AsyncMock()
+            mock_char_svc.list_characters = AsyncMock(return_value=characters)
+            mock_cs.return_value = mock_char_svc
 
             mock_sl_svc = AsyncMock()
             mock_sl_svc.list_storylines = AsyncMock(return_value=[])
@@ -121,17 +125,21 @@ class TestBuildInitialState:
         ]
 
         with patch("src.api.services.novel_generator.get_task_manager") as mock_tm, \
-             patch("src.api.services.novel_generator.get_novel_manager") as mock_nm, \
+             patch("src.api.services.world_service.get_world_service") as mock_ws, \
+             patch("src.api.services.character_service.get_character_service") as mock_cs, \
              patch("src.api.services.storyline_service.get_storyline_service") as mock_sl:
 
             mock_task_mgr = AsyncMock()
             mock_task_mgr.get_task = AsyncMock(return_value={"novel_id": "novel-456"})
             mock_tm.return_value = mock_task_mgr
 
-            mock_novel_mgr = AsyncMock()
-            mock_novel_mgr.get_world_setting = AsyncMock(return_value=None)
-            mock_novel_mgr.list_characters = AsyncMock(return_value=[])
-            mock_nm.return_value = mock_novel_mgr
+            mock_world_svc = AsyncMock()
+            mock_world_svc.get_world_setting = AsyncMock(return_value=None)
+            mock_ws.return_value = mock_world_svc
+
+            mock_char_svc = AsyncMock()
+            mock_char_svc.list_characters = AsyncMock(return_value=[])
+            mock_cs.return_value = mock_char_svc
 
             mock_sl_svc = AsyncMock()
             mock_sl_svc.list_storylines = AsyncMock(return_value=storylines)
@@ -165,17 +173,21 @@ class TestBuildInitialState:
         }
 
         with patch("src.api.services.novel_generator.get_task_manager") as mock_tm, \
-             patch("src.api.services.novel_generator.get_novel_manager") as mock_nm, \
+             patch("src.api.services.world_service.get_world_service") as mock_ws, \
+             patch("src.api.services.character_service.get_character_service") as mock_cs, \
              patch("src.api.services.storyline_service.get_storyline_service") as mock_sl:
 
             mock_task_mgr = AsyncMock()
             mock_task_mgr.get_task = AsyncMock(return_value={"novel_id": "novel-789"})
             mock_tm.return_value = mock_task_mgr
 
-            mock_novel_mgr = AsyncMock()
-            mock_novel_mgr.get_world_setting = AsyncMock(return_value=empty_world)
-            mock_novel_mgr.list_characters = AsyncMock(return_value=[])
-            mock_nm.return_value = mock_novel_mgr
+            mock_world_svc = AsyncMock()
+            mock_world_svc.get_world_setting = AsyncMock(return_value=empty_world)
+            mock_ws.return_value = mock_world_svc
+
+            mock_char_svc = AsyncMock()
+            mock_char_svc.list_characters = AsyncMock(return_value=[])
+            mock_cs.return_value = mock_char_svc
 
             mock_sl_svc = AsyncMock()
             mock_sl_svc.list_storylines = AsyncMock(return_value=[])

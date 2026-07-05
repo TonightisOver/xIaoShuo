@@ -435,7 +435,7 @@ async def _generate_single_chapter_inner(
         # Continuation loop for short chapters — up to MAX_CONTINUATION_ATTEMPTS times
         min_threshold = int(target_words * WORD_COUNT_CONTINUATION_THRESHOLD)
         for attempt in range(MAX_CONTINUATION_ATTEMPTS):
-            if word_count >= min_threshold:
+            if word_count > min_threshold:
                 break
             logger.info(
                 "chapter_continuation_attempt",
@@ -525,7 +525,8 @@ def post_process_chapter(content: str) -> str:
 
     # 去除多余空行（超过 3 行连续空行合并为 2 行）
     content = re.sub(r"\n{4,}", "\n\n\n", content)
-    content = content.strip()
+    # 仅去除首尾空格/制表符，保留换行符（章节之间用 \n\n 拼接时需要）
+    content = content.strip(" \t")
 
     return content
 

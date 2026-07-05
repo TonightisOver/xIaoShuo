@@ -394,7 +394,7 @@ class TestQualityReportService:
         """Empty chapter list returns zeroed report."""
         from src.api.services.quality_report_service import QualityReportService
         svc = QualityReportService()
-        report = svc._build_volume_report(1, [])
+        report = svc._build_volume_report(1, [], {}, {})  # volume_number, chapters, version_map, overall_score_map
 
         assert report["volume_number"] == 1
         assert report["chapter_count"] == 0
@@ -407,7 +407,7 @@ class TestQualityReportService:
         from src.api.services.quality_report_service import QualityReportService
         svc = QualityReportService()
         chapters = self._make_chapters(3, word_count=4000)
-        report = svc._build_volume_report(1, chapters)
+        report = svc._build_volume_report(1, chapters, {}, {})  # volume_number, chapters, version_map, overall_score_map
 
         assert report["chapter_count"] == 3
         assert report["total_word_count"] == 12000
@@ -425,7 +425,7 @@ class TestQualityReportService:
             _make_chapter(volume_number=1, chapter_number=2, word_count=4000),
             _make_chapter(volume_number=1, chapter_number=3, word_count=500),  # much lower
         ]
-        report = svc._build_volume_report(1, chapters)
+        report = svc._build_volume_report(1, chapters, {}, {})
 
         # Should detect the low word count chapter
         word_warnings = [w for w in report["warnings"] if "字数异常偏少" in w]
@@ -492,14 +492,13 @@ class TestQualityReportService:
     # --- _extract_chapter_scores ---
 
     def test_extract_chapter_scores_returns_default(self):
-        """Default scores are all 0.7 for each dimension."""
+        """Default scores are all 0.7 when no version data available."""
         from src.api.services.quality_report_service import (
             QUALITY_DIMENSIONS,
             QualityReportService,
         )
         svc = QualityReportService()
-        ch = _make_chapter()
-        scores = svc._extract_chapter_scores(ch)
+        scores = svc._extract_chapter_scores(1, {}, {})  # chapter_number, version_map, overall_score_map
 
         assert len(scores) == len(QUALITY_DIMENSIONS)
         assert all(v == 0.7 for v in scores.values())
@@ -559,9 +558,12 @@ class TestQualityReportService:
         vol_result.scalars.return_value.all.return_value = volumes
         ch_result = MagicMock()
         ch_result.scalars.return_value.all.return_value = chapters
+        # Empty version result for ChapterVersion query
+        ver_result = MagicMock()
+        ver_result.scalars.return_value.all.return_value = []
 
         session = AsyncMock()
-        session.execute = AsyncMock(side_effect=[vol_result, ch_result])
+        session.execute = AsyncMock(side_effect=[vol_result, ch_result, ver_result])
 
         @asynccontextmanager
         async def _ctx():

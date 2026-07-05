@@ -125,10 +125,10 @@ class TestVolumeOutlinePersistence:
             from src.api.services.novel_generator import generate_long_form_background
             await generate_long_form_background("task-p2", "novel-p2", request)
 
-        # 2 volumes × 3 chapters = 6 calls
+        # 2 volumes × 3 chapters = 6 calls, chapter numbers are continuous across volumes
         assert outline_svc.upsert_chapter_outline.call_count == 6
         chapter_nums = [c.args[2] for c in outline_svc.upsert_chapter_outline.call_args_list]
-        assert chapter_nums == [1, 2, 3, 1, 2, 3]
+        assert chapter_nums == [1, 2, 3, 4, 5, 6]
 
     @pytest.mark.asyncio
     async def test_persist_failure_does_not_interrupt_generation(self):

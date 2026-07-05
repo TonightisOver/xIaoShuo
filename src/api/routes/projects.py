@@ -50,6 +50,20 @@ class UpdateProjectRequest(BaseModel):
     writing_style_prompt: str | None = None
 
 
+class CreateVersionRequest(BaseModel):
+    """章节版本创建请求"""
+    content: str = Field(..., min_length=1)
+    source: str = Field(default="manual", pattern="^(manual|ai_rewrite|rollback)$")
+    rewrite_instruction: str | None = None
+    quality_score: float | None = Field(default=None, ge=0, le=1)
+    model_name: str | None = None
+    prompt_summary: str | None = None
+    diff_from_previous: str | None = None
+    kg_conflicts: dict | None = None
+    user_notes: str | None = None
+    is_active: bool = False
+
+
 async def _get_project_and_verify_owner(novel_id: str, current_user: User) -> dict:
     """Helper to verify ownership of a novel."""
     manager = get_novel_manager()

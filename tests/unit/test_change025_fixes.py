@@ -113,7 +113,8 @@ class TestArcGenerationFix:
             created_arcs.append({"id": arc_id, "character_id": character_id})
             return arc_id
 
-        with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
+        with patch("src.api.services.character_service.get_character_service") as mock_char_svc, \
+             patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
              patch("src.core.llm.helpers.safe_json_parse", return_value=llm_arcs), \
              patch("src.api.services.storyline_service.get_storyline_service") as mock_sl:
@@ -123,8 +124,11 @@ class TestArcGenerationFix:
             mock_sl_instance.list_storylines = AsyncMock(return_value=[])
             mock_sl.return_value = mock_sl_instance
 
+            mock_char_instance = AsyncMock()
+            mock_char_instance.list_characters = AsyncMock(return_value=actual_characters)
+            mock_char_svc.return_value = mock_char_instance
+
             mock_manager = AsyncMock()
-            mock_manager.list_characters = AsyncMock(return_value=actual_characters)
             mock_mgr.return_value = mock_manager
 
             mock_client = AsyncMock()
@@ -159,7 +163,8 @@ class TestArcGenerationFix:
             created_count += 1
             return created_count
 
-        with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
+        with patch("src.api.services.character_service.get_character_service") as mock_char_svc, \
+             patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
              patch("src.core.llm.helpers.safe_json_parse", return_value=llm_arcs), \
              patch("src.api.services.storyline_service.get_storyline_service") as mock_sl:
@@ -169,8 +174,11 @@ class TestArcGenerationFix:
             mock_sl_instance.list_storylines = AsyncMock(return_value=[])
             mock_sl.return_value = mock_sl_instance
 
+            mock_char_instance = AsyncMock()
+            mock_char_instance.list_characters = AsyncMock(return_value=actual_characters)
+            mock_char_svc.return_value = mock_char_instance
+
             mock_manager = AsyncMock()
-            mock_manager.list_characters = AsyncMock(return_value=actual_characters)
             mock_mgr.return_value = mock_manager
 
             mock_client = AsyncMock()
