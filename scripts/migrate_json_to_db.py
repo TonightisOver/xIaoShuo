@@ -30,7 +30,7 @@ async def migrate_tasks() -> None:
     logger.info("Database initialized")
 
     # Load JSON data
-    with open(json_path, "r", encoding="utf-8") as f:
+    with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
 
     logger.info(f"Found {len(data)} tasks in JSON file")

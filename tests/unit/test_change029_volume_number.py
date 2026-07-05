@@ -6,11 +6,10 @@ Tests cover:
 - _persist_to_novel() passes volume_number when constructing Chapter objects
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -36,7 +35,7 @@ def _make_chapter_row(
     row.content = content
     row.word_count = word_count
     row.status = status
-    row.updated_at = datetime(2026, 5, 19, tzinfo=timezone.utc)
+    row.updated_at = datetime(2026, 5, 19, tzinfo=UTC)
     return row
 
 

@@ -8,9 +8,9 @@ Create Date: 2026-05-26 10:20:00.000000
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "20260526_export_sync_reader"
 down_revision: str | None = "20260525_blueprint"

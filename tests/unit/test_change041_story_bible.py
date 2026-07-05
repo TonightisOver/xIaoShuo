@@ -1,18 +1,16 @@
 """Unit tests for CHANGE-041: StoryBible constraint system."""
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.api.services.story_bible_service import (
-    extract_relevant_constraints,
+    _character_matches,
     _extract_chapter_characters,
     _extract_chapter_locations,
-    _character_matches,
     _foreshadowing_relevant,
+    extract_relevant_constraints,
 )
-
 
 # ===========================================================================
 # 1. extract_relevant_constraints - precise extraction
@@ -170,7 +168,7 @@ class TestDetectBibleConflicts:
 
     @pytest.mark.asyncio
     async def test_forgotten_hook_detection(self):
-        from unittest.mock import patch, AsyncMock, MagicMock
+        from unittest.mock import MagicMock
 
         bible = MagicMock()
         bible.unresolved_hooks = [

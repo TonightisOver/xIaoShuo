@@ -9,9 +9,10 @@ These tests use a real database connection (configured in tests/conftest.py).
 Background task execution (LLM) is mocked to avoid real API calls during tests.
 """
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from httpx import ASGITransport, AsyncClient
-from unittest.mock import AsyncMock, patch
 
 from src.api.main import app
 from src.core.database import Base, get_engine

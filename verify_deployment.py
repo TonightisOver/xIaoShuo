@@ -3,8 +3,8 @@
 import asyncio
 
 from src.core.config import get_settings
-from src.core.logging_config import setup_logging
 from src.core.llm.client import get_llm_client
+from src.core.logging_config import setup_logging
 
 
 async def verify_deployment():
@@ -23,14 +23,14 @@ async def verify_deployment():
     # 2. 验证日志系统
     print("\n2. 验证日志系统...")
     setup_logging(log_level=settings.LOG_LEVEL, log_file=settings.LOG_FILE)
-    print(f"   [OK] 日志已配置")
+    print("   [OK] 日志已配置")
 
     # 3. 验证 API 连接
     print("\n3. 验证 API 连接...")
     try:
         client = get_llm_client()
         response = await client.generate("你好，请回复'OK'")
-        print(f"   [OK] API 连接正常")
+        print("   [OK] API 连接正常")
         print(f"   响应: {response[:50]}...")
     except Exception as e:
         print(f"   [FAIL] API 连接失败: {e}")
@@ -43,7 +43,7 @@ async def verify_deployment():
     try:
         validate_idea("一个测试创意")
         validate_novel_type("玄幻")
-        print(f"   [OK] 输入验证正常")
+        print("   [OK] 输入验证正常")
     except Exception as e:
         print(f"   [FAIL] 输入验证失败: {e}")
         return False
@@ -55,9 +55,9 @@ async def verify_deployment():
     test_json = '{"name": "test", "value": 123}'
     result = safe_json_parse(test_json)
     if result and result.get("name") == "test":
-        print(f"   [OK] JSON 解析正常")
+        print("   [OK] JSON 解析正常")
     else:
-        print(f"   [FAIL] JSON 解析失败")
+        print("   [FAIL] JSON 解析失败")
         return False
 
     print("\n" + "=" * 60)

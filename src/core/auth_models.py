@@ -8,19 +8,17 @@ main API Base to avoid "Table 'users' is already defined" errors when both
 core/auth_models and api/models/db_models are imported.
 """
 
-from datetime import datetime
-from datetime import timedelta
-from datetime import timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class AuthBase(DeclarativeBase):
     pass
 
 
-UTC = timezone.utc
+UTC = UTC
 
 
 class User(AuthBase):

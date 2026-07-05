@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
@@ -237,7 +238,7 @@ class LLMClient:
         self,
         prompt: str,
         use_flash: bool = False,
-    ):
+    ) -> AsyncIterator[str]:
         """Stream generated text chunks with usage accounting on completion."""
         from src.core.llm.token_tracker import get_token_tracker
 
@@ -253,11 +254,12 @@ class LLMClient:
                     yield str(content)
         finally:
             # Record approximate usage even when streaming provider omits token counts
+            prompt_tokens = prompt_chars // 3
             tracker.record(
-                prompt_chars=prompt_chars,
-                completion_chars=0,
                 model=getattr(llm_instance, "model_name", "unknown"),
-                mode="stream",
+                prompt_tokens=prompt_tokens,
+                completion_tokens=0,
+                total_tokens=prompt_tokens,
             )
 
 

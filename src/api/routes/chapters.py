@@ -8,10 +8,12 @@ from pydantic import BaseModel, Field
 
 from src.api.models.responses import ChapterResponse, StatusResponse
 from src.api.services.chapter_service import get_chapter_service
+from src.api.services.novel_manager import get_novel_manager
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/projects", tags=["chapters"])
+
 
 
 class ChapterUpdateRequest(BaseModel):
@@ -65,8 +67,12 @@ class GenerateChaptersRequest(BaseModel):
 
 @router.get("/{novel_id}/chapters")
 async def list_chapters(novel_id: str):
+    novel = await get_novel_manager().get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
     service = get_chapter_service()
     return await service.list_chapters(novel_id)
+
 
 
 @router.get("/{novel_id}/chapters/{chapter_number}", response_model=ChapterResponse)

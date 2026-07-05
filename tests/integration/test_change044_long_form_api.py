@@ -15,15 +15,14 @@ Uses a real test database. Background tasks (LLM) are mocked.
 
 from __future__ import annotations
 
-import pytest
-from httpx import ASGITransport, AsyncClient
 from unittest.mock import AsyncMock, patch
 
+import pytest
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
 from src.api.main import app
-from src.core.database import Base, get_engine, get_db_session
-
+from src.core.database import Base, get_db_session, get_engine
 
 # ---------------------------------------------------------------------------
 # Fixtures

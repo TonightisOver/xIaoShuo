@@ -64,7 +64,7 @@ class QualityActionService:
         for dimension, score in quality_scores.items():
             if dimension == "overall":
                 continue
-            if not isinstance(score, (int, float)):
+            if not isinstance(score, int | float):
                 continue
             if score >= threshold:
                 continue

@@ -1,6 +1,7 @@
 """测试 API 连接"""
 
 import asyncio
+
 from src.core.config import get_settings
 from src.core.llm.client import get_llm_client
 
@@ -20,7 +21,7 @@ async def test_api():
 
     try:
         response = await client.generate("你好，请回复'OK'")
-        print(f"[OK] API 调用成功！")
+        print("[OK] API 调用成功！")
         print(f"响应: {response}")
     except Exception as e:
         print(f"[FAIL] API 调用失败: {e}")

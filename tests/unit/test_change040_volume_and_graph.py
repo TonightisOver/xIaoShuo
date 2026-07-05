@@ -1,10 +1,8 @@
 """Unit tests for CHANGE-040: volume_number fallback, chapter 404 resilience,
 and knowledge graph frequency filtering."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ===========================================================================
 # 1. _find_volume_number fallback logic
@@ -175,8 +173,9 @@ class TestMinFrequencyParam:
         assert Query is not None
 
     def test_route_signature(self):
-        from src.api.routes.knowledge_graph import get_three_layer_graph
         import inspect
+
+        from src.api.routes.knowledge_graph import get_three_layer_graph
         sig = inspect.signature(get_three_layer_graph)
         assert "min_frequency" in sig.parameters
         param = sig.parameters["min_frequency"]
@@ -191,8 +190,9 @@ class TestQualityScorePersistence:
     """Test that quality_check node persists scores to active version."""
 
     def test_persist_function_exists(self):
-        from src.api.services.novel_generator import _persist_quality_to_version
         import inspect
+
+        from src.api.services.novel_generator import _persist_quality_to_version
         assert inspect.iscoroutinefunction(_persist_quality_to_version)
 
     @pytest.mark.asyncio
@@ -207,6 +207,7 @@ class TestQualityScorePersistence:
         )
 
     def test_quality_check_node_is_async(self):
-        from src.core.langgraph.nodes.quality_check import node
         import inspect
+
+        from src.core.langgraph.nodes.quality_check import node
         assert inspect.iscoroutinefunction(node)

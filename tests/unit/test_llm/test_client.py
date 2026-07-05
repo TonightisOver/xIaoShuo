@@ -262,6 +262,7 @@ class TestLLMClientRetry:
     def test_is_retryable_http_error_429(self):
         """_is_retryable_http_error 对 429 返回 True"""
         import httpx
+
         from src.core.llm.client import _is_retryable_http_error
 
         response = MagicMock()
@@ -273,6 +274,7 @@ class TestLLMClientRetry:
     def test_is_retryable_http_error_500(self):
         """_is_retryable_http_error 对 5xx 返回 True"""
         import httpx
+
         from src.core.llm.client import _is_retryable_http_error
 
         for status in (500, 502, 503, 504):
@@ -284,6 +286,7 @@ class TestLLMClientRetry:
     def test_is_retryable_http_error_401(self):
         """_is_retryable_http_error 对 401 返回 False"""
         import httpx
+
         from src.core.llm.client import _is_retryable_http_error
 
         response = MagicMock()

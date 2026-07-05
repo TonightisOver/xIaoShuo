@@ -3,10 +3,9 @@ character upsert deduplication, chapter dedup (delete-before-insert),
 and volume_number assignment in generate_chapters_background."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ===========================================================================
 # 1. CHAPTER_TIMEOUT_SECONDS value

@@ -1,11 +1,9 @@
 """Unit tests for CHANGE-036: retry logic, per-chapter error isolation,
 timeout flag, progress callback fields, and health API key check."""
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ===========================================================================
 # 1. _should_retry — openai.APIConnectionError / openai.APITimeoutError
@@ -55,6 +53,7 @@ class TestShouldRetry:
     def test_retries_on_429_http_error(self):
         """httpx.HTTPStatusError with 429 should be retryable."""
         import httpx
+
         from src.core.llm.client import _should_retry
         resp = MagicMock()
         resp.status_code = 429
@@ -64,6 +63,7 @@ class TestShouldRetry:
     def test_does_not_retry_on_401_http_error(self):
         """httpx.HTTPStatusError with 401 should NOT be retryable."""
         import httpx
+
         from src.core.llm.client import _should_retry
         resp = MagicMock()
         resp.status_code = 401
@@ -106,6 +106,7 @@ class TestLLMClientRetriesOpenAIErrors:
         """APIConnectionError on first call → retry → success."""
         import openai
         from langchain_core.messages import AIMessage
+
         from src.core.llm.client import LLMClient
 
         mock_llm = AsyncMock()
@@ -129,6 +130,7 @@ class TestLLMClientRetriesOpenAIErrors:
         """APITimeoutError on first call → retry → success."""
         import openai
         from langchain_core.messages import AIMessage
+
         from src.core.llm.client import LLMClient
 
         mock_llm = AsyncMock()
@@ -151,6 +153,7 @@ class TestLLMClientRetriesOpenAIErrors:
     ):
         """Persistent APIConnectionError exhausts retries and raises."""
         import openai
+
         from src.core.llm.client import LLMClient
 
         mock_llm = AsyncMock()
@@ -184,7 +187,7 @@ class TestGenerateSingleChapterTimeout:
         chapter_outline = {"chapter": 3, "title": "第三章", "plot": "情节"}
 
         with patch("src.core.llm.chapter_generator.asyncio.wait_for",
-                   side_effect=asyncio.TimeoutError()):
+                   side_effect=TimeoutError()):
             result = await generate_single_chapter(
                 client=mock_client,
                 chapter_outline=chapter_outline,
@@ -207,7 +210,7 @@ class TestGenerateSingleChapterTimeout:
         chapter_outline = {"chapter": 7, "title": "第七章：决战", "plot": "决战"}
 
         with patch("src.core.llm.chapter_generator.asyncio.wait_for",
-                   side_effect=asyncio.TimeoutError()):
+                   side_effect=TimeoutError()):
             result = await generate_single_chapter(
                 client=mock_client,
                 chapter_outline=chapter_outline,
@@ -431,7 +434,6 @@ class TestChapterProgressCallbackFields:
     @pytest.mark.asyncio
     async def test_callback_propagates_successful_and_failed_chapters(self):
         """Progress callback data includes successful_chapters and failed_chapters."""
-        from src.api.services.novel_generator import _run_langgraph_pipeline
 
         captured_events = []
 
@@ -465,7 +467,6 @@ class TestChapterProgressCallbackFields:
                    return_value=mock_graph):
 
             # Manually invoke the callback to test its field propagation
-            from src.api.services.novel_generator import _full_generate_percentage
 
             # Simulate what _chapter_progress_callback does
             data = {

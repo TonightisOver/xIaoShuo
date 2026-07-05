@@ -3,8 +3,8 @@
 import asyncio
 import json
 
-from src.core.langgraph.state import NovelState
 from src.core.langgraph.nodes import idea_expansion, world_building
+from src.core.langgraph.state import NovelState
 
 
 async def test_idea_expansion():
@@ -50,7 +50,7 @@ async def test_world_building():
 
     result = await world_building.node(state)
 
-    print(f"\n世界观设定:")
+    print("\n世界观设定:")
     print(json.dumps(result["world_setting"], ensure_ascii=False, indent=2))
     print(f"\n当前阶段: {result['current_stage']}")
     print(f"错误列表: {result['errors']}")

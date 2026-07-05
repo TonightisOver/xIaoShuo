@@ -2,9 +2,8 @@
 
 import random
 
+from config import CHAPTER_NUMBERS, NOVEL_IDS
 from locust import TaskSet, task
-
-from config import NOVEL_IDS, CHAPTER_NUMBERS
 
 
 class ChapterReadTasks(TaskSet):

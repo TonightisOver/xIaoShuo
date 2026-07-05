@@ -1,9 +1,8 @@
 """User authentication security helper functions."""
 
 import hashlib
-import os
 import secrets
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 

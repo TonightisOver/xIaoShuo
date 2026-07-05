@@ -11,29 +11,28 @@
   locust -f loadtest/locustfile.py --headless -u 100 -r 20 --run-time 10m --html report.html
 """
 
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.dirname(__file__))
 
+from config import HOST
 from locust import HttpUser, between
-
 from tasks import (
-    ChapterReadTasks,
-    ChapterListTasks,
     ChapterEditTasks,
     ChapterGenerateTasks,
-    AIRewriteTasks,
-    TaskManagementTasks,
-    OutlineWorldTasks,
+    ChapterListTasks,
+    ChapterReadTasks,
     KnowledgeGraphTasks,
     LongFormCreateTasks,
-    LongFormProgressTasks,
-    LongFormQualityReportTasks,
     LongFormFillerDetectionTasks,
     LongFormForeshadowTrackerTasks,
+    LongFormProgressTasks,
+    LongFormQualityReportTasks,
     LongFormVolumeControlTasks,
+    OutlineWorldTasks,
+    TaskManagementTasks,
 )
-from config import HOST
 
 
 class ReaderUser(HttpUser):

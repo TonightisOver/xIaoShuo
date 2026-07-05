@@ -15,7 +15,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -198,7 +197,9 @@ class TestEvaluateChapterQuality:
     @pytest.mark.asyncio
     async def test_normal_parse(self):
         """Valid LLM JSON response is parsed into scores dict."""
-        from src.api.services.rewrite_loop_service import _evaluate_chapter_quality_for_novel
+        from src.api.services.rewrite_loop_service import (
+            _evaluate_chapter_quality_for_novel,
+        )
 
         valid_response = (
             '{"scores": {"advancement": 0.8, "conflict": 0.7, '

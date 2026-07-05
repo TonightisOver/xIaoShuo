@@ -14,10 +14,11 @@ LLM calls are mocked to avoid real DeepSeek API calls.
 
 import json
 import uuid
+from datetime import UTC
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from unittest.mock import AsyncMock, patch
 
 from src.api.main import app
 from src.core.database import Base, get_engine
@@ -345,7 +346,8 @@ class TestExtraction:
     @pytest.mark.asyncio
     async def test_extract_chapter_success(self, client, novel_id):
         """POST /extract/{chapter} triggers extraction with mocked LLM."""
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         from src.api.models.db_models import Chapter
         from src.core.database import get_db_session
 
@@ -358,7 +360,7 @@ class TestExtraction:
                 content="张三来到长安城，遇到了李四。两人决定结伴而行。",
                 word_count=20,
                 status="generated",
-                updated_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(UTC),
             )
             session.add(ch)
 
@@ -462,7 +464,8 @@ class TestConsistencyCheck:
     @pytest.mark.asyncio
     async def test_consistency_check_no_conflicts(self, client, novel_id):
         """Consistency check with no conflicts returns empty list."""
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         from src.api.models.db_models import Chapter
         from src.core.database import get_db_session
 
@@ -475,7 +478,7 @@ class TestConsistencyCheck:
                 content="平静的一天，什么都没发生。",
                 word_count=10,
                 status="generated",
-                updated_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(UTC),
             )
             session.add(ch)
 

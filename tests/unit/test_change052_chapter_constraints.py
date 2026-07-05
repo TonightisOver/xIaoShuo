@@ -9,7 +9,6 @@
 import math
 from unittest.mock import AsyncMock, MagicMock, patch
 
-
 # ===========================================================================
 # T3 — generate_volume_outline 章节数量验证与重试
 # ===========================================================================
@@ -65,7 +64,9 @@ class TestVolumeOutlineRetry:
 
     async def test_no_retry_when_chapters_sufficient(self):
         """章节数满足 80% 时不触发重试。"""
-        from src.api.services.long_form_generation_helpers import generate_volume_outline
+        from src.api.services.long_form_generation_helpers import (
+            generate_volume_outline,
+        )
 
         chapters_per_volume = 10
         sufficient_result = self._make_volume_result(10)
@@ -90,7 +91,9 @@ class TestVolumeOutlineRetry:
 
     async def test_retry_triggered_when_chapters_insufficient(self):
         """章节数 < 80% 时触发重试，重试后满足则停止。"""
-        from src.api.services.long_form_generation_helpers import generate_volume_outline
+        from src.api.services.long_form_generation_helpers import (
+            generate_volume_outline,
+        )
 
         chapters_per_volume = 10
         # 5 chapters < 80% of 10 (8), triggers retry
@@ -117,7 +120,9 @@ class TestVolumeOutlineRetry:
 
     async def test_fallback_used_after_retries_exhausted(self):
         """重试 2 次后仍不足，使用 fallback（chapters_per_volume 个章节）。"""
-        from src.api.services.long_form_generation_helpers import generate_volume_outline
+        from src.api.services.long_form_generation_helpers import (
+            generate_volume_outline,
+        )
 
         chapters_per_volume = 10
         # Always returns 3 chapters (< 80% = 8), exhausts all retries
@@ -145,7 +150,9 @@ class TestVolumeOutlineRetry:
 
     async def test_retry_prompt_contains_warning_text(self):
         """重试时 prompt 包含章节数不足的警告文本。"""
-        from src.api.services.long_form_generation_helpers import generate_volume_outline
+        from src.api.services.long_form_generation_helpers import (
+            generate_volume_outline,
+        )
 
         chapters_per_volume = 10
         insufficient_result = self._make_volume_result(5)

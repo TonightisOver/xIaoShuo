@@ -2,9 +2,8 @@
 
 import random
 
-from locust import TaskSet, task
-
 from config import NOVEL_IDS
+from locust import TaskSet, task
 
 
 class KnowledgeGraphTasks(TaskSet):

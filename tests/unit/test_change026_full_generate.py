@@ -13,7 +13,6 @@ import pytest
 
 from src.api.services.progress_event_bus import EventType
 
-
 # ============================================================
 #  generate_power_systems_ai  tests
 # ============================================================
@@ -626,8 +625,8 @@ class TestRunSubFeature:
     @pytest.mark.asyncio
     async def test_sub_feature_power_systems(self):
         """_run_sub_feature dispatches to generate_power_systems_ai correctly."""
-        from src.api.services.novel_generator import _run_sub_feature
         from src.api.models.requests import CreateNovelRequest
+        from src.api.services.novel_generator import _run_sub_feature
 
         event_bus_events = []
 
@@ -695,8 +694,8 @@ class TestRunSubFeature:
     async def test_sub_feature_skips_when_novel_id_is_none(self):
         """When novel_id is None, sub-feature should be skipped (only events
         emitted, no service methods called)."""
-        from src.api.services.novel_generator import _run_sub_feature
         from src.api.models.requests import CreateNovelRequest
+        from src.api.services.novel_generator import _run_sub_feature
 
         event_bus_events = []
 
@@ -744,8 +743,8 @@ class TestRunSubFeature:
     async def test_sub_feature_handles_error_gracefully(self):
         """When a sub-feature throws, it should emit an ERROR event with
         non_blocking=True and NOT re-raise."""
-        from src.api.services.novel_generator import _run_sub_feature
         from src.api.models.requests import CreateNovelRequest
+        from src.api.services.novel_generator import _run_sub_feature
 
         event_bus_events = []
 

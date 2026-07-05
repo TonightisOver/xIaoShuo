@@ -259,6 +259,28 @@ class NovelManager:
             novel_id=novel_id, ps_id=ps_id
         )
 
+    # --- Backward Compatibility Delegations ---
+
+    async def get_chapter(self, novel_id: str, chapter_number: int) -> dict | None:
+        """获取章节，代理到 ChapterService。"""
+        return await get_chapter_service().get_chapter(novel_id, chapter_number)
+
+    async def get_chapter_tail(self, novel_id: str, limit: int = 1) -> list[dict]:
+        """获取最后的章节，代理到 ChapterService。"""
+        return await get_chapter_service().get_chapter_tail(novel_id, limit)
+
+    async def list_chapters(self, novel_id: str) -> list[dict]:
+        """获取章节列表，代理到 ChapterService。"""
+        return await get_chapter_service().list_chapters(novel_id)
+
+    async def get_world_setting(self, novel_id: str) -> dict | None:
+        """获取世界设定，代理到 WorldService。"""
+        return await get_world_service().get_world_setting(novel_id)
+
+    async def upsert_world_setting(self, novel_id: str, **kwargs) -> None:
+        """更新/插入世界设定，代理到 WorldService。"""
+        await get_world_service().upsert_world_setting(novel_id, **kwargs)
+
     # --- Helpers ---
 
     def _novel_to_dict(self, novel: Novel) -> dict:
@@ -278,6 +300,7 @@ class NovelManager:
             "world_setting": bool(novel.world_setting),
             "characters_count": len(novel.characters),
             "power_systems_count": len(novel.power_systems),
+            "owner_id": novel.owner_id,
         }
 
     def _novel_summary(self, novel: Novel) -> dict:
@@ -290,6 +313,7 @@ class NovelManager:
             "writing_style": novel.writing_style,
             "created_at": novel.created_at,
             "updated_at": novel.updated_at,
+            "owner_id": novel.owner_id,
         }
 
 

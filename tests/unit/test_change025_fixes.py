@@ -1,7 +1,8 @@
 """Unit tests for CHANGE-025 fixes: outline multi-volume and arc generation."""
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 
 class TestOutlineVolumeNumberFix:

@@ -85,7 +85,7 @@ class TxtExporter:
 
     def export(self, chapters: list[ChapterData]) -> io.BytesIO:
         buf = io.BytesIO()
-        
+
         # Prepend Table of Contents (TOC)
         if len(chapters) > 1:
             buf.write("====== 目录 ======\n\n".encode())
@@ -99,10 +99,10 @@ class TxtExporter:
                     current_volume = ch.volume_number
                     vol_title = ch.volume_title or f"第{ch.volume_number}卷"
                     buf.write(f"【{vol_title}】\n".encode())
-                
+
                 ch_title = self.engine.format_title(ch)
                 buf.write(f"  {ch_title}\n".encode())
-            buf.write("\n==================\n\n\n".encode())
+            buf.write(b"\n==================\n\n\n")
 
         current_volume = None
         for ch in chapters:
@@ -275,8 +275,7 @@ class MobiExporter:
                 subprocess.run(
                     [ebook_convert, epub_path, mobi_path],
                     check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
+                    capture_output=True,
                     timeout=120,
                 )
 

@@ -4,6 +4,7 @@ import structlog
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from src.api.services.novel_manager import get_novel_manager
 from src.api.services.world_service import get_world_service
 
 logger = structlog.get_logger(__name__)
@@ -25,8 +26,16 @@ class PowerSystemRequest(BaseModel):
     levels: list[dict] = []
 
 
+async def _verify_novel_exists(novel_id: str) -> None:
+    manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
+
+
 @router.get("/{novel_id}/world")
 async def get_world_setting(novel_id: str):
+    await _verify_novel_exists(novel_id)
     service = get_world_service()
     ws = await service.get_world_setting(novel_id)
     if not ws:
@@ -37,6 +46,7 @@ async def get_world_setting(novel_id: str):
 
 @router.put("/{novel_id}/world")
 async def update_world_setting(novel_id: str, request: WorldSettingRequest):
+    await _verify_novel_exists(novel_id)
     service = get_world_service()
     await service.upsert_world_setting(novel_id, **request.model_dump(exclude_none=True))
     return {"status": "updated"}
@@ -44,12 +54,14 @@ async def update_world_setting(novel_id: str, request: WorldSettingRequest):
 
 @router.get("/{novel_id}/power-systems")
 async def list_power_systems(novel_id: str):
+    await _verify_novel_exists(novel_id)
     service = get_world_service()
     return await service.list_power_systems(novel_id)
 
 
 @router.post("/{novel_id}/power-systems", status_code=201)
 async def create_power_system(novel_id: str, request: PowerSystemRequest):
+    await _verify_novel_exists(novel_id)
     service = get_world_service()
     ps_id = await service.create_power_system(
         novel_id, name=request.name,
@@ -60,6 +72,7 @@ async def create_power_system(novel_id: str, request: PowerSystemRequest):
 
 @router.put("/{novel_id}/power-systems/{ps_id}")
 async def update_power_system(novel_id: str, ps_id: int, request: PowerSystemRequest):
+    await _verify_novel_exists(novel_id)
     service = get_world_service()
     updated = await service.update_power_system(
         novel_id, ps_id, name=request.name,
@@ -72,8 +85,10 @@ async def update_power_system(novel_id: str, ps_id: int, request: PowerSystemReq
 
 @router.delete("/{novel_id}/power-systems/{ps_id}")
 async def delete_power_system(novel_id: str, ps_id: int):
+    await _verify_novel_exists(novel_id)
     service = get_world_service()
     deleted = await service.delete_power_system(novel_id, ps_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Power system not found")
     return {"status": "deleted"}
+

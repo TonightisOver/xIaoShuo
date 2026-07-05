@@ -8,9 +8,11 @@ Uses a real database connection (configured in tests/conftest.py).
 Background generation tasks are mocked to avoid real LLM calls.
 """
 
+from datetime import UTC
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from httpx import ASGITransport, AsyncClient
-from unittest.mock import AsyncMock, patch
 
 from src.api.main import app
 from src.core.database import Base, get_engine
@@ -69,7 +71,8 @@ async def novel_with_chapters(client):
     novel_id = create_resp.json()["novel_id"]
 
     # Insert chapters directly via DB to control volume_number
-    from datetime import datetime, timezone
+    from datetime import datetime
+
     from src.api.models.db_models import Chapter
     from src.core.database import get_db_session
 
@@ -82,7 +85,7 @@ async def novel_with_chapters(client):
             content="主角初次来到都市。",
             word_count=100,
             status="generated",
-            updated_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(UTC),
         )
         ch2 = Chapter(
             novel_id=novel_id,
@@ -92,7 +95,7 @@ async def novel_with_chapters(client):
             content="主角突破境界。",
             word_count=150,
             status="generated",
-            updated_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(UTC),
         )
         ch3 = Chapter(
             novel_id=novel_id,
@@ -102,7 +105,7 @@ async def novel_with_chapters(client):
             content="独立章节。",
             word_count=80,
             status="generated",
-            updated_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(UTC),
         )
         session.add(ch1)
         session.add(ch2)
@@ -222,18 +225,18 @@ class TestGetChapterVolumeNumberAPI:
         novel_id, ch1_num, ch2_num, ch3_num = novel_with_chapters
 
         # Verify via service layer directly (bypassing the broken response_model)
-        from src.api.services.novel_manager import get_novel_manager
-        manager = get_novel_manager()
+        from src.api.services.chapter_service import get_chapter_service
+        service = get_chapter_service()
 
-        ch1 = await manager.get_chapter(novel_id, ch1_num)
+        ch1 = await service.get_chapter(novel_id, ch1_num)
         assert ch1 is not None
         assert ch1["volume_number"] == 1
 
-        ch2 = await manager.get_chapter(novel_id, ch2_num)
+        ch2 = await service.get_chapter(novel_id, ch2_num)
         assert ch2 is not None
         assert ch2["volume_number"] == 2
 
-        ch3 = await manager.get_chapter(novel_id, ch3_num)
+        ch3 = await service.get_chapter(novel_id, ch3_num)
         assert ch3 is not None
         assert ch3["volume_number"] is None
 
@@ -256,11 +259,11 @@ class TestGetChapterVolumeNumberAPI:
         """Service layer dict always contains volume_number key (even when None)."""
         novel_id, ch1_num, ch2_num, ch3_num = novel_with_chapters
 
-        from src.api.services.novel_manager import get_novel_manager
-        manager = get_novel_manager()
+        from src.api.services.chapter_service import get_chapter_service
+        service = get_chapter_service()
 
         for ch_num in (ch1_num, ch2_num, ch3_num):
-            ch = await manager.get_chapter(novel_id, ch_num)
+            ch = await service.get_chapter(novel_id, ch_num)
             assert ch is not None
             assert "volume_number" in ch, (
                 f"chapter {ch_num} missing volume_number key in service response"

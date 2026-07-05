@@ -18,7 +18,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -130,7 +129,6 @@ class TestLongFormProgressService:
     @pytest.mark.asyncio
     async def test_initialize_progress_creates_records(self):
         """initialize_progress should create one record per volume with correct chapter ranges."""
-        from src.api.models.db_models import LongFormProgress
 
         nid = _novel_id()
 
@@ -141,7 +139,9 @@ class TestLongFormProgressService:
             yield session
 
         with patch("src.api.services.long_form_progress_service.get_db_session", _ctx):
-            from src.api.services.long_form_progress_service import LongFormProgressService
+            from src.api.services.long_form_progress_service import (
+                LongFormProgressService,
+            )
             svc = LongFormProgressService()
             records = await svc.initialize_progress(nid, total_volumes=3, chapters_per_volume=20)
 
@@ -168,7 +168,9 @@ class TestLongFormProgressService:
             yield session
 
         with patch("src.api.services.long_form_progress_service.get_db_session", _ctx):
-            from src.api.services.long_form_progress_service import LongFormProgressService
+            from src.api.services.long_form_progress_service import (
+                LongFormProgressService,
+            )
             svc = LongFormProgressService()
             records = await svc.initialize_progress(nid, total_volumes=1, chapters_per_volume=50)
 
@@ -186,7 +188,9 @@ class TestLongFormProgressService:
         ctx_fn, session = _fake_session(record)
 
         with patch("src.api.services.long_form_progress_service.get_db_session", ctx_fn):
-            from src.api.services.long_form_progress_service import LongFormProgressService
+            from src.api.services.long_form_progress_service import (
+                LongFormProgressService,
+            )
             svc = LongFormProgressService()
             await svc.update_volume_status(
                 nid, 1, "generating", chapters_completed=5, current_chapter=10,
@@ -204,7 +208,9 @@ class TestLongFormProgressService:
         ctx_fn, session = _fake_session(None)
 
         with patch("src.api.services.long_form_progress_service.get_db_session", ctx_fn):
-            from src.api.services.long_form_progress_service import LongFormProgressService
+            from src.api.services.long_form_progress_service import (
+                LongFormProgressService,
+            )
             svc = LongFormProgressService()
             # Should not raise
             await svc.update_volume_status("nonexistent", 1, "completed")
@@ -217,7 +223,9 @@ class TestLongFormProgressService:
         ctx_fn, _ = _fake_session(record)
 
         with patch("src.api.services.long_form_progress_service.get_db_session", ctx_fn):
-            from src.api.services.long_form_progress_service import LongFormProgressService
+            from src.api.services.long_form_progress_service import (
+                LongFormProgressService,
+            )
             svc = LongFormProgressService()
             await svc.update_volume_status(nid, 1, "completed")
 
@@ -231,7 +239,9 @@ class TestLongFormProgressService:
         ctx_fn, _ = _fake_session(record)
 
         with patch("src.api.services.long_form_progress_service.get_db_session", ctx_fn):
-            from src.api.services.long_form_progress_service import LongFormProgressService
+            from src.api.services.long_form_progress_service import (
+                LongFormProgressService,
+            )
             svc = LongFormProgressService()
             await svc.update_volume_status(nid, 1, "generating", errors=["new error"])
 
@@ -248,7 +258,9 @@ class TestLongFormProgressService:
         fr = {"filler_ratio": 0.1}
 
         with patch("src.api.services.long_form_progress_service.get_db_session", ctx_fn):
-            from src.api.services.long_form_progress_service import LongFormProgressService
+            from src.api.services.long_form_progress_service import (
+                LongFormProgressService,
+            )
             svc = LongFormProgressService()
             await svc.update_volume_status(
                 nid, 1, "completed", quality_report=qr, filler_report=fr,
@@ -265,7 +277,9 @@ class TestLongFormProgressService:
         ctx_fn, _ = _fake_session(None)
 
         with patch("src.api.services.long_form_progress_service.get_db_session", ctx_fn):
-            from src.api.services.long_form_progress_service import LongFormProgressService
+            from src.api.services.long_form_progress_service import (
+                LongFormProgressService,
+            )
             svc = LongFormProgressService()
             result = await svc.get_progress("nonexistent")
 
@@ -299,7 +313,9 @@ class TestLongFormProgressService:
             yield session
 
         with patch("src.api.services.long_form_progress_service.get_db_session", _ctx):
-            from src.api.services.long_form_progress_service import LongFormProgressService
+            from src.api.services.long_form_progress_service import (
+                LongFormProgressService,
+            )
             svc = LongFormProgressService()
             result = await svc.get_progress(nid)
 
@@ -323,7 +339,9 @@ class TestLongFormProgressService:
         ctx_fn, _ = _fake_session(record)
 
         with patch("src.api.services.long_form_progress_service.get_db_session", ctx_fn):
-            from src.api.services.long_form_progress_service import LongFormProgressService
+            from src.api.services.long_form_progress_service import (
+                LongFormProgressService,
+            )
             svc = LongFormProgressService()
             result = await svc.get_volume_progress(nid, 1)
 
@@ -339,7 +357,9 @@ class TestLongFormProgressService:
         ctx_fn, _ = _fake_session(None)
 
         with patch("src.api.services.long_form_progress_service.get_db_session", ctx_fn):
-            from src.api.services.long_form_progress_service import LongFormProgressService
+            from src.api.services.long_form_progress_service import (
+                LongFormProgressService,
+            )
             svc = LongFormProgressService()
             result = await svc.get_volume_progress("nonexistent", 1)
 
@@ -759,7 +779,9 @@ class TestForeshadowTrackerService:
         ctx_fn, _ = _fake_session(None)
 
         with patch("src.api.services.foreshadow_tracker_service.get_db_session", ctx_fn):
-            from src.api.services.foreshadow_tracker_service import ForeshadowTrackerService
+            from src.api.services.foreshadow_tracker_service import (
+                ForeshadowTrackerService,
+            )
             svc = ForeshadowTrackerService()
             result = await svc.track_foreshadows("novel-123")
 
@@ -787,7 +809,9 @@ class TestForeshadowTrackerService:
         ctx_fn, _ = _fake_session(bible)
 
         with patch("src.api.services.foreshadow_tracker_service.get_db_session", ctx_fn):
-            from src.api.services.foreshadow_tracker_service import ForeshadowTrackerService
+            from src.api.services.foreshadow_tracker_service import (
+                ForeshadowTrackerService,
+            )
             svc = ForeshadowTrackerService()
             result = await svc.track_foreshadows(nid)
 
@@ -815,7 +839,9 @@ class TestForeshadowTrackerService:
         ctx_fn, _ = _fake_session(bible)
 
         with patch("src.api.services.foreshadow_tracker_service.get_db_session", ctx_fn):
-            from src.api.services.foreshadow_tracker_service import ForeshadowTrackerService
+            from src.api.services.foreshadow_tracker_service import (
+                ForeshadowTrackerService,
+            )
             svc = ForeshadowTrackerService()
             result = await svc.track_foreshadows(nid)
 
@@ -830,7 +856,9 @@ class TestForeshadowTrackerService:
         ctx_fn, _ = _fake_session(bible)
 
         with patch("src.api.services.foreshadow_tracker_service.get_db_session", ctx_fn):
-            from src.api.services.foreshadow_tracker_service import ForeshadowTrackerService
+            from src.api.services.foreshadow_tracker_service import (
+                ForeshadowTrackerService,
+            )
             svc = ForeshadowTrackerService()
             result = await svc.track_foreshadows(nid)
 
@@ -856,7 +884,9 @@ class TestForeshadowTrackerService:
         ctx_fn, _ = _fake_session(bible)
 
         with patch("src.api.services.foreshadow_tracker_service.get_db_session", ctx_fn):
-            from src.api.services.foreshadow_tracker_service import ForeshadowTrackerService
+            from src.api.services.foreshadow_tracker_service import (
+                ForeshadowTrackerService,
+            )
             svc = ForeshadowTrackerService()
             dangling = await svc.get_dangling_foreshadows(nid)
 
@@ -875,7 +905,9 @@ class TestForeshadowTrackerService:
         ctx_fn, _ = _fake_session(bible)
 
         with patch("src.api.services.foreshadow_tracker_service.get_db_session", ctx_fn):
-            from src.api.services.foreshadow_tracker_service import ForeshadowTrackerService
+            from src.api.services.foreshadow_tracker_service import (
+                ForeshadowTrackerService,
+            )
             svc = ForeshadowTrackerService()
             health = await svc.check_foreshadow_health(nid)
 
@@ -891,7 +923,9 @@ class TestForeshadowTrackerService:
         ctx_fn, _ = _fake_session(bible)
 
         with patch("src.api.services.foreshadow_tracker_service.get_db_session", ctx_fn):
-            from src.api.services.foreshadow_tracker_service import ForeshadowTrackerService
+            from src.api.services.foreshadow_tracker_service import (
+                ForeshadowTrackerService,
+            )
             svc = ForeshadowTrackerService()
             health = await svc.check_foreshadow_health(nid)
 
@@ -913,7 +947,9 @@ class TestForeshadowTrackerService:
         ctx_fn, _ = _fake_session(bible)
 
         with patch("src.api.services.foreshadow_tracker_service.get_db_session", ctx_fn):
-            from src.api.services.foreshadow_tracker_service import ForeshadowTrackerService
+            from src.api.services.foreshadow_tracker_service import (
+                ForeshadowTrackerService,
+            )
             svc = ForeshadowTrackerService()
             health = await svc.check_foreshadow_health(nid)
 
@@ -934,7 +970,9 @@ class TestForeshadowTrackerService:
         ctx_fn, _ = _fake_session(bible)
 
         with patch("src.api.services.foreshadow_tracker_service.get_db_session", ctx_fn):
-            from src.api.services.foreshadow_tracker_service import ForeshadowTrackerService
+            from src.api.services.foreshadow_tracker_service import (
+                ForeshadowTrackerService,
+            )
             svc = ForeshadowTrackerService()
             health = await svc.check_foreshadow_health(nid)
 

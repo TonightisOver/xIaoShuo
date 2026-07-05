@@ -139,8 +139,9 @@ class TestEpubExporter:
         assert data[:2] == b"PK"
 
     def test_export_chapter_count(self, sample_chapters):
-        import tempfile
         import os
+        import tempfile
+
         from ebooklib import epub
 
         engine = FormatEngine(ExportTemplate.default)

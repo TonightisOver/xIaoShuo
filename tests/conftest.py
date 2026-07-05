@@ -44,8 +44,31 @@ def pytest_configure(config):
     # Clear Fernet cache so new key takes effect
     crypto._get_fernet.cache_clear()
 
+    # Override authentication globally for integration tests
+    from src.api.main import app
+    from src.core.auth_models import User
+    from src.core.database import get_db_session
+    from src.core.security.auth import get_current_user
+
+    async def mock_get_current_user():
+        user = User(id=1, username="test_user", hashed_password="mocked_password")
+        try:
+            async with get_db_session() as session:
+                db_user = await session.get(User, 1)
+                if not db_user:
+                    session.add(User(id=1, username="test_user", hashed_password="mocked_password"))
+        except Exception:
+            pass
+        return user
+
+    app.dependency_overrides[get_current_user] = mock_get_current_user
+
 
 def pytest_unconfigure(config):
     """Cleanup after tests"""
     from src.core.security import crypto
     crypto._get_fernet.cache_clear()
+
+    from src.api.main import app
+    app.dependency_overrides.clear()
+

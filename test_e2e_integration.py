@@ -1,7 +1,6 @@
 """端到端集成测试 - 完整小说生成流程"""
 
 import asyncio
-import json
 from datetime import datetime
 
 from src.core.config import get_settings
@@ -110,20 +109,20 @@ async def test_end_to_end_novel_generation():
 
         # 显示生成的内容摘要
         print("\n生成内容摘要:")
-        print(f"\n扩展后的创意 (前 200 字):")
+        print("\n扩展后的创意 (前 200 字):")
         print(final_state.get("idea", "")[:200] + "...")
 
         if final_state.get("world_setting"):
-            print(f"\n世界观背景:")
+            print("\n世界观背景:")
             print(final_state["world_setting"].get("background", "")[:200] + "...")
 
         if final_state.get("characters"):
-            print(f"\n主要人物:")
+            print("\n主要人物:")
             for char in final_state["characters"][:3]:
                 print(f"  - {char.get('name', '未知')}: {char.get('role', '未知')}")
 
         if final_state.get("chapters"):
-            print(f"\n第一章内容 (前 200 字):")
+            print("\n第一章内容 (前 200 字):")
             first_chapter = final_state["chapters"][0]
             print(f"  标题: {first_chapter.get('title', '未知')}")
             print(f"  内容: {first_chapter.get('content', '')[:200]}...")

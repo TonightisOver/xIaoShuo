@@ -1,6 +1,6 @@
 """Service 层单元测试 — ChapterService (章节 CRUD + 版本管理)"""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -28,7 +28,7 @@ def _make_chapter_row(
     row.word_count = word_count
     row.status = status
     row.chapter_type = "normal"
-    row.updated_at = datetime(2026, 7, 4, tzinfo=timezone.utc)
+    row.updated_at = datetime(2026, 7, 4, tzinfo=UTC)
     return row
 
 
@@ -61,7 +61,7 @@ def _make_version_row(
     row.kg_conflicts = None
     row.user_notes = None
     row.is_active = is_active
-    row.created_at = datetime(2026, 7, 4, tzinfo=timezone.utc)
+    row.created_at = datetime(2026, 7, 4, tzinfo=UTC)
     return row
 
 
@@ -281,7 +281,7 @@ class TestListChaptersPreview:
         row1 = MagicMock(spec=Row)
         row1.id = 2; row1.chapter_number = 2; row1.volume_number = 1
         row1.title = "第二"; row1.word_count = 200; row1.status = "generated"
-        row1.chapter_type = "normal"; row1.updated_at = datetime(2026, 7, 4, tzinfo=timezone.utc)
+        row1.chapter_type = "normal"; row1.updated_at = datetime(2026, 7, 4, tzinfo=UTC)
 
         rows = [row1]
         session = _make_mock_session(all_result=rows)
@@ -500,8 +500,8 @@ class TestCompareChapterVersions:
         with patch.object(svc, "get_chapter_version") as mock_get:
             def side_effect(nid, cn, vn):
                 versions = {
-                    1: {"content": "abc", "word_count": 3, "source": "gen", "created_at": datetime(2026, 7, 4, tzinfo=timezone.utc)},
-                    2: {"content": "abcdef", "word_count": 6, "source": "edit", "created_at": datetime(2026, 7, 4, tzinfo=timezone.utc)},
+                    1: {"content": "abc", "word_count": 3, "source": "gen", "created_at": datetime(2026, 7, 4, tzinfo=UTC)},
+                    2: {"content": "abcdef", "word_count": 6, "source": "edit", "created_at": datetime(2026, 7, 4, tzinfo=UTC)},
                 }
                 return versions.get(vn)
             mock_get.side_effect = side_effect

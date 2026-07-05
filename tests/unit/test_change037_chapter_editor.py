@@ -2,7 +2,7 @@
 
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -214,7 +214,7 @@ class TestVersionQueries:
         version.word_count = 120
         version.source = "ai_rewrite"
         version.rewrite_instruction = "tighten prose"
-        version.created_at = datetime.now(timezone.utc)
+        version.created_at = datetime.now(UTC)
 
         result = MagicMock()
         result.scalars.return_value.all.return_value = [version]
@@ -239,7 +239,7 @@ class TestVersionQueries:
         version.word_count = 12
         version.source = "manual"
         version.rewrite_instruction = None
-        version.created_at = datetime.now(timezone.utc)
+        version.created_at = datetime.now(UTC)
 
         result = MagicMock()
         result.scalar_one_or_none.return_value = version
@@ -297,7 +297,7 @@ class TestChapterRewriter:
         from src.core.llm.chapter_rewriter import rewrite_chapter_segment
 
         client = MagicMock()
-        client.generate = AsyncMock(side_effect=asyncio.TimeoutError())
+        client.generate = AsyncMock(side_effect=TimeoutError())
 
         with patch(
             "src.core.llm.chapter_rewriter.get_llm_client", return_value=client
@@ -438,7 +438,7 @@ class TestChapterEditorEndpoints:
             return_value=mock_builder,
         ):
             mock_llm.return_value.generate = AsyncMock(
-                side_effect=asyncio.TimeoutError()
+                side_effect=TimeoutError()
             )
             response = client.post(
                 "/api/v1/projects/novel-001/chapters/1/rewrite",
@@ -455,7 +455,7 @@ class TestChapterEditorEndpoints:
 
     def test_version_endpoints_return_expected_shapes(self):
         client = _make_app()
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         mock_manager = AsyncMock()
         mock_manager.get_chapter = AsyncMock(return_value={"id": 1})
         mock_manager.list_chapter_versions = AsyncMock(

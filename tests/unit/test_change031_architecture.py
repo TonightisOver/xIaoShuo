@@ -12,7 +12,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-
 # ============================================================
 #  _build_initial_state tests
 # ============================================================
@@ -496,8 +495,9 @@ class TestStructlogImports:
 
     def test_task_manager_uses_structlog(self):
         """task_manager uses structlog.get_logger."""
-        from src.api.services import task_manager
         import structlog
+
+        from src.api.services import task_manager
         assert hasattr(task_manager, "logger")
         assert isinstance(task_manager.logger, structlog.types.FilteringBoundLogger) or \
                hasattr(task_manager.logger, "info")

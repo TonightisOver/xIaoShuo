@@ -3,8 +3,8 @@
 import asyncio
 
 from src.core.config import get_settings
-from src.core.logging_config import setup_logging
 from src.core.llm.client import get_llm_client
+from src.core.logging_config import setup_logging
 
 
 async def main():

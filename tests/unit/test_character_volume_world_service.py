@@ -1,6 +1,6 @@
 """Service 层单元测试 — CharacterService / VolumeService / WorldService"""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -29,7 +29,7 @@ def _make_character_row(
     row.abilities = abilities
     row.background_story = background_story
     row.extra = extra or {}
-    row.updated_at = datetime(2026, 7, 4, tzinfo=timezone.utc)
+    row.updated_at = datetime(2026, 7, 4, tzinfo=UTC)
     return row
 
 
@@ -56,7 +56,7 @@ def _make_volume_row(
     row.status = status
     row.chapter_start = chapter_start
     row.chapter_end = chapter_end
-    row.updated_at = datetime(2026, 7, 4, tzinfo=timezone.utc)
+    row.updated_at = datetime(2026, 7, 4, tzinfo=UTC)
     return row
 
 
@@ -76,7 +76,7 @@ def _make_world_setting_row(
     row.culture = culture
     row.rules = rules
     row.extra = extra or {}
-    row.updated_at = datetime(2026, 7, 4, tzinfo=timezone.utc)
+    row.updated_at = datetime(2026, 7, 4, tzinfo=UTC)
     return row
 
 
@@ -94,7 +94,7 @@ def _make_power_system_row(
     row.name = name
     row.description = description
     row.levels = levels or []
-    row.updated_at = datetime(2026, 7, 4, tzinfo=timezone.utc)
+    row.updated_at = datetime(2026, 7, 4, tzinfo=UTC)
     return row
 
 

@@ -1,10 +1,11 @@
 """小说生成平台使用示例"""
 
 import asyncio
+
+from src.core.config import get_settings
 from src.core.langgraph.graph import create_novel_graph
 from src.core.langgraph.state import NovelState
 from src.core.logging_config import setup_logging
-from src.core.config import get_settings
 
 
 async def generate_novel(
@@ -25,7 +26,6 @@ async def generate_novel(
         最终状态，包含生成的章节
     """
     # 清除配置缓存，重新加载环境变量
-    from src.core.config import get_settings
     get_settings.cache_clear()
 
     # 设置日志
@@ -82,7 +82,7 @@ async def generate_novel(
     # 显示世界观（如果有）
     if result.get("world"):
         world = result["world"]
-        print(f"\n世界观:")
+        print("\n世界观:")
         print(f"  名称: {world.get('name', 'N/A')}")
         print(f"  背景: {world.get('background', 'N/A')[:100]}...")
 

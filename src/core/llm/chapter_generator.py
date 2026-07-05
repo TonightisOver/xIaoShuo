@@ -179,7 +179,8 @@ async def _continuation_generation(
         return content
 
     continued = await client.generate(continuation_prompt, max_tokens=6000, use_flash=True)
-    return original_content + "\n\n" + continued
+    return str(original_content + "\n\n" + continued)
+
 
 
 async def generate_single_chapter(

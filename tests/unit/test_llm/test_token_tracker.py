@@ -1,8 +1,7 @@
 """TokenTracker 单元测试"""
 
-import pytest
 
-from src.core.llm.token_tracker import TokenRecord, TokenTracker, get_token_tracker
+from src.core.llm.token_tracker import TokenTracker, get_token_tracker
 
 
 class TestTokenTracker:
