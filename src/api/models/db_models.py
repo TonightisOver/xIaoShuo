@@ -71,6 +71,9 @@ class Novel(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     custom_style_description: Mapped[str | None] = mapped_column(Text)
     writing_style_prompt: Mapped[str | None] = mapped_column(Text)
+    owner_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     # Long-form novel fields
     is_long_form: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -80,6 +83,7 @@ class Novel(Base):
     master_outline: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     # Relationships
+    owner: Mapped["User | None"] = relationship(back_populates="novels")
     world_setting: Mapped["WorldSetting | None"] = relationship(
         back_populates="novel", uselist=False, cascade="all, delete-orphan"
     )
@@ -695,6 +699,7 @@ class ChapterVersion(Base):
     prompt_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     diff_from_previous: Mapped[str | None] = mapped_column(Text, nullable=True)
     kg_conflicts: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    quality_scores: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     user_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -830,3 +835,32 @@ class ChapterBlueprint(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(),
         onupdate=func.now()
     )
+
+
+class User(Base):
+    """用户"""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    hashed_password: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    novels: Mapped[list["Novel"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
+
+
+class UserSession(Base):
+    """用户会话"""
+
+    __tablename__ = "user_sessions"
+
+    session_token: Mapped[str] = mapped_column(String(100), primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+

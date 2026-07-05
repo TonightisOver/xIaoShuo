@@ -4,14 +4,14 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
       <div>
         <div class="flex items-center gap-3 mb-2 flex-wrap">
-          <h1 class="text-2xl font-bold tracking-tight text-[#1d1d1f] flex items-center gap-2">
+          <h1 class="text-2xl font-bold tracking-tight text-neutral-900 flex items-center gap-2">
             <span>全景故事与三层知识图谱</span>
             <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-purple-50 text-purple-600 border border-purple-200/50">
               双引擎分析
             </span>
           </h1>
         </div>
-        <p class="text-[#86868b] text-xs md:text-sm">提供故事脉络骨架测绘与智能抽取的深层因果关系网模型</p>
+        <p class="text-neutral-500 text-xs md:text-sm">提供故事脉络骨架测绘与智能抽取的深层因果关系网模型</p>
       </div>
       <div>
         <router-link :to="`/novels/${novelId}`" class="btn-secondary text-sm flex items-center gap-1">
@@ -24,17 +24,17 @@
     </div>
 
     <!-- Tab 切换 -->
-    <div class="flex gap-1 mb-6 border-b border-gray-200/80">
+    <div class="flex gap-1 mb-6 border-b border-neutral-200/80">
       <button
         class="px-5 py-3 text-sm font-semibold transition-all relative"
-        :class="activeTab === 'structure' ? 'text-purple-600 font-bold border-b-2 border-purple-600' : 'text-gray-500 hover:text-gray-800'"
+        :class="activeTab === 'structure' ? 'text-purple-600 font-bold border-b-2 border-purple-600' : 'text-neutral-500 hover:text-neutral-800'"
         @click="activeTab = 'structure'"
       >
         🎨 故事框架拓扑
       </button>
       <button
         class="px-5 py-3 text-sm font-semibold transition-all relative"
-        :class="activeTab === 'knowledge' ? 'text-purple-600 font-bold border-b-2 border-purple-600' : 'text-gray-500 hover:text-gray-800'"
+        :class="activeTab === 'knowledge' ? 'text-purple-600 font-bold border-b-2 border-purple-600' : 'text-neutral-500 hover:text-neutral-800'"
         @click="switchToKnowledge"
       >
         🧠 活态三层图谱
@@ -45,12 +45,12 @@
     <div v-show="activeTab === 'structure'" class="space-y-4">
       <div v-if="loading" class="flex flex-col items-center justify-center py-28 space-y-4">
         <div class="w-12 h-12 rounded-full border-4 border-purple-500/10 border-t-purple-600 animate-spin"></div>
-        <p class="text-gray-500 text-sm">正在测绘小说故事框架，请稍候...</p>
+        <p class="text-neutral-500 text-sm">正在测绘小说故事框架，请稍候...</p>
       </div>
-      <div v-else-if="!hasData" class="card text-center py-16 px-6 max-w-xl mx-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <div v-else-if="!hasData" class="card text-center py-16 px-6 max-w-xl mx-auto rounded-2xl border border-neutral-200 bg-white shadow-sm">
         <div class="w-16 h-16 bg-purple-50 text-purple-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">🎨</div>
-        <h3 class="text-base font-bold text-gray-800 mb-2">暂无故事大纲框架</h3>
-        <p class="text-gray-500 text-xs md:text-sm mb-6 max-w-sm mx-auto leading-relaxed">
+        <h3 class="text-base font-bold text-neutral-800 mb-2">暂无故事大纲框架</h3>
+        <p class="text-neutral-500 text-xs md:text-sm mb-6 max-w-sm mx-auto leading-relaxed">
           小说尚未生成核心故事主线或人物弧光。您可以一键让 AI 自动生成故事线结构。
         </p>
         <div class="flex flex-col items-center gap-3">
@@ -66,7 +66,7 @@
             <span>{{ generatingStorylines ? '正在生成故事线...' : '一键生成故事线' }}</span>
           </button>
           <p v-if="storylineGenError" class="text-xs text-red-500 mt-1">{{ storylineGenError }}</p>
-          <router-link :to="`/novels/${novelId}`" class="text-xs text-gray-400 hover:text-gray-600 mt-2">
+          <router-link :to="`/novels/${novelId}`" class="text-xs text-neutral-400 hover:text-neutral-600 mt-2">
             或返回小说详情手动配置
           </router-link>
         </div>
@@ -77,12 +77,12 @@
       </div>
 
       <!-- Legend -->
-      <div v-if="hasData" class="flex flex-wrap gap-4 px-5 py-3.5 rounded-xl bg-white border border-gray-200 text-xs text-gray-600 shadow-sm">
+      <div v-if="hasData" class="flex flex-wrap gap-4 px-5 py-3.5 rounded-xl bg-white border border-neutral-200 text-xs text-neutral-600 shadow-sm">
         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-blue-500 shadow-[0_1px_4px_rgba(59,130,246,0.3)]"></span> 故事主线</span>
         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-emerald-500 shadow-[0_1px_4px_rgba(16,185,129,0.3)]"></span> 角色卡</span>
         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-purple-500 shadow-[0_1px_4px_rgba(139,92,246,0.3)]"></span> 人物弧光</span>
         <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-amber-500 shadow-[0_1px_4px_rgba(245,158,11,0.3)]"></span> 剧情场景</span>
-        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-gray-500"></span> 情节事件</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-neutral-500"></span> 情节事件</span>
       </div>
     </div>
 
@@ -90,14 +90,14 @@
     <div v-show="activeTab === 'knowledge'" class="space-y-4">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <!-- 三层子 Tab 控制 -->
-        <div class="flex items-center p-1 rounded-xl bg-gray-100 border border-gray-200/60 max-w-md shadow-inner">
+        <div class="flex items-center p-1 rounded-xl bg-neutral-100 border border-neutral-200/60 max-w-md shadow-inner">
           <button
             v-for="sub in subLayers"
             :key="sub.id"
             class="flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all"
             :class="activeSubLayer === sub.id
               ? `${sub.activeBg} text-white shadow-sm`
-              : 'text-gray-500 hover:text-gray-800'"
+              : 'text-neutral-500 hover:text-neutral-800'"
             @click="changeSubLayer(sub.id)"
           >
             {{ sub.icon }} {{ sub.name }}
@@ -107,7 +107,7 @@
           @click="toggleShowAll"
           :disabled="kgLoading"
           class="text-xs font-medium px-3 py-1.5 rounded-lg border transition-all disabled:opacity-50"
-          :class="showAll ? 'bg-purple-50 text-purple-600 border-purple-200' : 'bg-gray-50 text-gray-500 border-gray-200 hover:text-gray-800'"
+          :class="showAll ? 'bg-purple-50 text-purple-600 border-purple-200' : 'bg-neutral-50 text-neutral-500 border-neutral-200 hover:text-neutral-800'"
         >
           {{ showAll ? '当前：显示全部' : '当前：只显示主要' }}
         </button>
@@ -115,14 +115,14 @@
 
       <div v-if="kgLoading" class="flex flex-col items-center justify-center py-28 space-y-4">
         <div class="w-12 h-12 rounded-full border-4 border-purple-500/10 border-t-purple-600 animate-spin"></div>
-        <p class="text-gray-500 text-sm">正在抽取并编译三层网络图谱中，请稍候...</p>
+        <p class="text-neutral-500 text-sm">正在抽取并编译三层网络图谱中，请稍候...</p>
       </div>
       
       <!-- Graph Empty state with One-Click Extraction -->
-      <div v-else-if="!kgHasData" class="card text-center py-16 px-6 max-w-xl mx-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <div v-else-if="!kgHasData" class="card text-center py-16 px-6 max-w-xl mx-auto rounded-2xl border border-neutral-200 bg-white shadow-sm">
         <div class="w-16 h-16 bg-purple-50 text-purple-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">🧠</div>
-        <h3 class="text-base font-bold text-gray-800 mb-2">暂无三层因果知识图谱</h3>
-        <p class="text-gray-500 text-xs md:text-sm mb-6 max-w-sm mx-auto leading-relaxed">
+        <h3 class="text-base font-bold text-neutral-800 mb-2">暂无三层因果知识图谱</h3>
+        <p class="text-neutral-500 text-xs md:text-sm mb-6 max-w-sm mx-auto leading-relaxed">
           章节正文尚未产生，或尚未触发知识图谱自动解析。如果此小说已经完成生成（或属于导入的已有章节数据），您可以一键重新全量提取图谱。
         </p>
         <div class="flex flex-col items-center justify-center gap-3">
@@ -151,7 +151,7 @@
           <button 
             @click="reExtractKG" 
             :disabled="extracting"
-            class="bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm inline-flex items-center gap-1.5 disabled:opacity-50 transition-all"
+            class="bg-white hover:bg-neutral-50 border border-neutral-200 text-neutral-700 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm inline-flex items-center gap-1.5 disabled:opacity-50 transition-all"
           >
             <svg v-if="extracting" class="w-3 h-3 animate-spin text-purple-600" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -169,7 +169,7 @@
       </div>
 
       <!-- KG Legends based on active sub tab -->
-      <div v-if="kgHasData" class="flex flex-wrap gap-4 px-5 py-3.5 rounded-xl bg-white border border-gray-200 text-xs text-gray-600 shadow-sm">
+      <div v-if="kgHasData" class="flex flex-wrap gap-4 px-5 py-3.5 rounded-xl bg-white border border-neutral-200 text-xs text-neutral-600 shadow-sm">
         <template v-if="activeSubLayer === 'character'">
           <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-blue-500 shadow-[0_1px_4px_rgba(59,130,246,0.3)]"></span> 角色实体</span>
           <span class="flex items-center gap-1.5"><span class="w-3.5 h-0.5 bg-blue-400"></span> 人际关系网络</span>

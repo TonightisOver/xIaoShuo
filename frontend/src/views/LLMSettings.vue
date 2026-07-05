@@ -223,7 +223,13 @@ async function fetchConfigs() {
   loadingConfigs.value = true
   try {
     const res = await fetch('/api/v1/llm/configs')
-    configs.value = await res.json()
+    if (res.ok) {
+      configs.value = await res.json()
+    } else {
+      configs.value = []
+    }
+  } catch {
+    configs.value = []
   } finally {
     loadingConfigs.value = false
   }
@@ -233,7 +239,13 @@ async function fetchStats() {
   loadingStats.value = true
   try {
     const res = await fetch('/api/v1/llm/token-stats')
-    stats.value = await res.json()
+    if (res.ok) {
+      stats.value = await res.json()
+    } else {
+      stats.value = null
+    }
+  } catch {
+    stats.value = null
   } finally {
     loadingStats.value = false
   }

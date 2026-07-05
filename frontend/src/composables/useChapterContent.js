@@ -33,17 +33,23 @@ export function useChapterContent(novelId, chapterNumber) {
     saving.value = true
     saved.value = false
     try {
-      await fetch(`/api/v1/projects/${toValue(novelId)}/chapters/${toValue(chapterNumber)}`, {
+      const res = await fetch(`/api/v1/projects/${toValue(novelId)}/chapters/${toValue(chapterNumber)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: content.value, title: chapter.value.title }),
       })
+      if (res.ok) {
+        saving.value = false
+        saved.value = true
+        setTimeout(() => { saved.value = false }, 2000)
+        return true
+      }
       saving.value = false
-      saved.value = true
-      setTimeout(() => { saved.value = false }, 2000)
+      return false
     } catch (e) {
-      if (e.name === 'AbortError') return
+      if (e.name === 'AbortError') return false
       saving.value = false
+      return false
     }
   }
 

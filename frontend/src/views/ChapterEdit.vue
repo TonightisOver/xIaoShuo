@@ -26,6 +26,7 @@
     <template v-else>
       <!-- ==================== 1. 阅读模式 (Immersive Read Mode) ==================== -->
       <ChapterReadMode
+        v-slot="{}"
         v-if="isReadMode"
         :chapter="chapter"
         :content="content"
@@ -47,6 +48,25 @@
 
       <!-- ==================== 3. 编辑模式 (Standard Edit Mode) ==================== -->
       <div v-else>
+        <!-- Restore Local Draft Banner -->
+        <div v-if="hasLocalDraft" class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-center justify-between shadow-sm">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+            </div>
+            <div>
+              <h4 class="text-xs font-bold text-amber-800">发现本地有更新的未保存草稿</h4>
+              <p class="text-[11px] text-amber-600 mt-0.5">您在 {{ localDraftTime }} 编辑了本章，是否还原为本地草稿？</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button @click="restoreLocalDraft" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors">还原草稿</button>
+            <button @click="discardLocalDraft" class="px-3 py-1.5 border border-amber-300 text-amber-700 hover:bg-amber-100 rounded-lg text-xs font-medium transition-colors">放弃</button>
+          </div>
+        </div>
+
         <!-- Top header layout -->
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
@@ -201,15 +221,22 @@
               </button>
             </div>
 
-            <div class="bg-white rounded-xl border border-neutral-200 shadow-sm overflow-hidden">
+            <div class="bg-white rounded-xl border border-neutral-200 shadow-sm overflow-hidden relative">
               <textarea
                 ref="textareaRef"
                 v-model="content"
                 @mouseup="onSelectionChange"
                 @keyup="onSelectionChange"
+                @keydown="handleKeyDown"
                 class="w-full min-h-[600px] p-6 md:p-8 text-base leading-relaxed font-sans bg-transparent text-neutral-900 resize-y border-0 focus:outline-none focus:ring-0 focus:border-0"
                 placeholder="开始书写或重新生成章节正文..."
               ></textarea>
+
+              <!-- Auto save status indicator at bottom right of the editor -->
+              <div v-if="autoSaveStatus" class="absolute bottom-4 right-4 bg-neutral-900/80 text-white text-[10px] px-2.5 py-1 rounded-full font-bold tracking-wide backdrop-blur border border-neutral-700 flex items-center gap-1.5 transition-opacity">
+                <span class="w-1.5 h-1.5 rounded-full bg-indigo-400" :class="{ 'animate-ping': autoSaveStatus === 'caching' || autoSaveStatus === 'saving' }"></span>
+                <span>{{ autoSaveStatusLabel }}</span>
+              </div>
             </div>
 
             <!-- Bottom Navigation -->
@@ -269,6 +296,7 @@
     :rewrite-error="rewriteError"
     :selection-text="selectionText"
     :preview-version-data="previewVersionData"
+    :active-content="content"
     @close-rewrite="closeRewriteModal"
     @do-rewrite="doRewrite"
     @accept-rewrite="acceptRewrite"
@@ -281,7 +309,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, defineAsyncComponent } from 'vue'
+import { ref, computed, watch, defineAsyncComponent, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ChapterModals from '../components/ChapterModals.vue'
 const ChapterReadMode = defineAsyncComponent(() => import('../components/ChapterReadMode.vue'))
@@ -310,6 +338,149 @@ const activeTheme = ref('parchment')
 const copied = ref(false)
 const showReaderSim = ref(false)
 const textareaRef = ref(null)
+
+// --- Double-track Auto-saving states ---
+const hasLocalDraft = ref(false)
+const localDraftTime = ref('')
+const autoSaveStatus = ref('') // '', 'caching', 'cached', 'saving', 'saved'
+const ignoreWatch = ref(false)
+
+const draftKey = computed(() => `draft_${novelId.value}_${chapterNum.value}`)
+const draftMetaKey = computed(() => `draft_meta_${novelId.value}_${chapterNum.value}`)
+
+let localSaveTimer = null
+let dbSaveTimer = null
+
+onBeforeUnmount(() => {
+  if (localSaveTimer) clearTimeout(localSaveTimer)
+  if (dbSaveTimer) clearTimeout(dbSaveTimer)
+})
+
+const autoSaveStatusLabel = computed(() => {
+  return {
+    caching: '正在保存到本地暂存...',
+    cached: '内容已暂存到本地',
+    saving: '正在同步到云端...',
+    saved: '内容已同步到云端'
+  }[autoSaveStatus.value] || ''
+})
+
+function checkForDraft() {
+  if (typeof localStorage === 'undefined') return
+  const cachedContent = localStorage.getItem(draftKey.value)
+  const cachedTime = localStorage.getItem(draftMetaKey.value)
+  if (cachedContent && cachedContent !== content.value) {
+    hasLocalDraft.value = true
+    localDraftTime.value = cachedTime ? new Date(parseInt(cachedTime)).toLocaleString() : '未知时间'
+  } else {
+    hasLocalDraft.value = false
+  }
+}
+
+function restoreLocalDraft() {
+  if (typeof localStorage === 'undefined') return
+  const cachedContent = localStorage.getItem(draftKey.value)
+  if (cachedContent) {
+    content.value = cachedContent
+    autoSaveStatus.value = 'cached'
+  }
+  hasLocalDraft.value = false
+}
+
+function discardLocalDraft() {
+  if (typeof localStorage === 'undefined') return
+  localStorage.removeItem(draftKey.value)
+  localStorage.removeItem(draftMetaKey.value)
+  hasLocalDraft.value = false
+}
+
+// Watch content to trigger auto-save
+watch(content, (newVal) => {
+  if (ignoreWatch.value) return
+  if (!newVal || !chapter.value) return
+  if (newVal === chapter.value.content) return
+
+  // 1. Save to local storage after 3s of inactivity
+  if (localSaveTimer) clearTimeout(localSaveTimer)
+  autoSaveStatus.value = 'caching'
+  localSaveTimer = setTimeout(() => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(draftKey.value, newVal)
+      localStorage.setItem(draftMetaKey.value, Date.now().toString())
+    }
+    autoSaveStatus.value = 'cached'
+  }, 3000)
+
+  // 2. Debounced save to Database after 15s of inactivity
+  if (dbSaveTimer) clearTimeout(dbSaveTimer)
+  dbSaveTimer = setTimeout(async () => {
+    autoSaveStatus.value = 'saving'
+    const success = await save()
+    if (success) {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(draftKey.value)
+        localStorage.removeItem(draftMetaKey.value)
+      }
+      autoSaveStatus.value = 'saved'
+    } else {
+      autoSaveStatus.value = 'cached' // Revert to cached if save failed
+    }
+    setTimeout(() => {
+      if (autoSaveStatus.value === 'saved') {
+        autoSaveStatus.value = ''
+      }
+    }, 3000)
+  }, 15000)
+})
+
+// --- Keyboard Shortcuts & Formatting ---
+function handleKeyDown(event) {
+  const isMeta = event.ctrlKey || event.metaKey
+  const textarea = textareaRef.value
+  if (!textarea) return
+
+  if (isMeta && event.key === 's') {
+    event.preventDefault()
+    saveAndRefresh()
+  } else if (isMeta && event.key === 'b') {
+    event.preventDefault()
+    applyFormatting('**')
+  } else if (isMeta && event.key === 'i') {
+    event.preventDefault()
+    applyFormatting('*')
+  } else if (isMeta && event.key === 'ArrowUp') {
+    if (prevChapter.value) {
+      event.preventDefault()
+      goToChapter(prevChapter.value.chapter_number)
+    }
+  } else if (isMeta && event.key === 'ArrowDown') {
+    if (nextChapter.value) {
+      event.preventDefault()
+      goToChapter(nextChapter.value.chapter_number)
+    }
+  }
+}
+
+function applyFormatting(decorator) {
+  const textarea = textareaRef.value
+  if (!textarea) return
+  const start = textarea.selectionStart
+  const end = textarea.selectionEnd
+  const selectedText = content.value.slice(start, end)
+
+  // Wrap selected text in the formatting tags
+  const formatted = `${decorator}${selectedText}${decorator}`
+  content.value = content.value.slice(0, start) + formatted + content.value.slice(end)
+
+  // Reset cursor selection range
+  setTimeout(() => {
+    textarea.focus()
+    textarea.setSelectionRange(
+      start + decorator.length,
+      start + decorator.length + selectedText.length
+    )
+  }, 50)
+}
 
 const themeClasses = { parchment: 'bg-[#f4ecd8] text-[#3c2f1f]', green: 'bg-[#dfedd6] text-[#2c3d27]', dark: 'bg-[#0d0f14] text-[#a8b0c2]', white: 'bg-[#ffffff] text-[#111111]' }
 const contentLength = computed(() => content.value.length)
@@ -349,7 +520,29 @@ async function doActivate(versionNumber) {
   if (res.ok) { previewVersionData.value = null; await load(); await loadVersions() }
 }
 
-async function saveAndRefresh() { await save(); loadAllChapters() }
+async function saveAndRefresh() { 
+  if (dbSaveTimer) clearTimeout(dbSaveTimer)
+  if (localSaveTimer) clearTimeout(localSaveTimer)
+  autoSaveStatus.value = 'saving'
+  const success = await save() 
+  if (success) {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(draftKey.value)
+      localStorage.removeItem(draftMetaKey.value)
+    }
+    autoSaveStatus.value = 'saved'
+  } else {
+    autoSaveStatus.value = 'cached'
+    alert('保存失败，当前修改已自动暂存在本地浏览器草稿中。请检查网络。')
+  }
+  setTimeout(() => {
+    if (autoSaveStatus.value === 'saved') {
+      autoSaveStatus.value = ''
+    }
+  }, 2000)
+  loadAllChapters() 
+}
+
 async function copyContent() {
   try { await navigator.clipboard.writeText(content.value); copied.value = true; setTimeout(() => { copied.value = false }, 2000) }
   catch { /* clipboard API not available */ }
@@ -363,7 +556,20 @@ function formatDate(dateStr) {
 }
 
 watch(novelId, (newId) => { if (newId) { loadAllChapters(); loadVolumes() } }, { immediate: true })
-watch([novelId, chapterNum], () => { load(); loadVersions() }, { immediate: true })
+watch([novelId, chapterNum], () => { 
+  if (localSaveTimer) clearTimeout(localSaveTimer)
+  if (dbSaveTimer) clearTimeout(dbSaveTimer)
+  autoSaveStatus.value = ''
+  
+  ignoreWatch.value = true
+  load().then(() => {
+    checkForDraft()
+    setTimeout(() => {
+      ignoreWatch.value = false
+    }, 100)
+  })
+  loadVersions() 
+}, { immediate: true })
 </script>
 
 <style scoped>

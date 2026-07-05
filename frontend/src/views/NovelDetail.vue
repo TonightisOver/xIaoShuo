@@ -332,6 +332,12 @@
         :storylines-data="storylinesData"
       />
 
+      <!-- Tab Content: Quality Report -->
+      <NovelQualityTab
+        v-if="activeTab === 'quality-report'"
+        :novel-id="novelId"
+      />
+
       <!-- Tab Content: Conversations -->
       <div v-if="activeTab === 'conversations'" class="space-y-4">
         <div class="flex justify-between items-center mb-2">
@@ -369,6 +375,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import NovelChaptersTab from '../components/NovelChaptersTab.vue'
 import NovelStorylinesTab from '../components/NovelStorylinesTab.vue'
+import NovelQualityTab from '../components/NovelQualityTab.vue'
 import { useNovelData } from '../composables/useNovelData.js'
 import { useNovelActions } from '../composables/useNovelActions.js'
 
@@ -392,6 +399,7 @@ const tabs = [
   { id: 'world', label: '世界观' }, { id: 'power-systems', label: '力量体系' },
   { id: 'characters', label: '人物' }, { id: 'chapters', label: '章节' },
   { id: 'storylines', label: '故事线' }, { id: 'conversations', label: '创作对话' },
+  { id: 'quality-report', label: '质量评估' },
 ]
 
 const statusLabel = computed(() => ({ draft: '草稿', generating: '生成中', completed: '已完成', failed: '失败' })[novel.value?.status] || novel.value?.status)

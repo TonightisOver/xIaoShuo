@@ -37,6 +37,7 @@ from src.api.services.progress_event_bus import (
     get_event_bus,
 )
 from src.api.services.task_manager import get_task_manager
+from src.api.services.volume_service import get_volume_service
 from src.core.langgraph.graph import create_novel_graph
 
 logger = structlog.get_logger(__name__)
@@ -155,8 +156,10 @@ async def _build_initial_state(
     initial_state["novel_id"] = novel_id
     if novel_id:
         novel_manager = get_novel_manager()
-        existing_world = await novel_manager.get_world_setting(novel_id)
-        existing_chars = await novel_manager.list_characters(novel_id)
+        from src.api.services.world_service import get_world_service
+        existing_world = await get_world_service().get_world_setting(novel_id)
+        from src.api.services.character_service import get_character_service
+        existing_chars = await get_character_service().list_characters(novel_id)
         ws_keys = ["background", "rules", "culture", "geography"]
         if existing_world and any(existing_world.get(k) for k in ws_keys):
             initial_state["world_setting"] = existing_world
@@ -672,11 +675,12 @@ async def generate_volume_background(
     """按卷生成章节内容"""
     task_manager = get_task_manager()
     novel_manager = get_novel_manager()
+    volume_service = get_volume_service()
 
     try:
         await task_manager.update_status(task_id, "running")
 
-        vol = await novel_manager.get_volume(novel_id, volume_number)
+        vol = await volume_service.get_volume(novel_id, volume_number)
         if not vol or not vol.get("outline"):
             # Fallback: try outlines table for volume/chapter data
             from src.api.services.outline_service import get_outline_service
@@ -702,11 +706,13 @@ async def generate_volume_background(
 
         # Fetch context: previous chapters from earlier volumes
         prev_context = ""
-        prev_chapters = await novel_manager.list_chapters_preview(novel_id)
+        from src.api.services.chapter_service import get_chapter_service
+        ch_service = get_chapter_service()
+        prev_chapters = await ch_service.list_chapters_preview(novel_id)
         prev_in_earlier_vols = [c for c in prev_chapters if (c.get("volume_number") or 0) < volume_number]
         if prev_in_earlier_vols:
             last_ch = prev_in_earlier_vols[-1]
-            last_tail = await novel_manager.get_chapter_tail(
+            last_tail = await ch_service.get_chapter_tail(
                 novel_id, last_ch["chapter_number"]
             )
             prev_context = f"前文最后一章《{last_ch.get('title', '')}》结尾：{last_tail}"
@@ -723,7 +729,7 @@ async def generate_volume_background(
         # Persist chapters to DB
         await persist_generated_chapters(novel_id, generated_chapters, volume_number)
 
-        await novel_manager.update_volume(novel_id, volume_number, status="completed")
+        await volume_service.update_volume(novel_id, volume_number, status="completed")
         await task_manager.complete_task(task_id, {"chapters": generated_chapters})
         await _emit_progress(
             task_id, EventType.COMPLETED,
@@ -739,7 +745,7 @@ async def generate_volume_background(
     except Exception as e:
         logger.exception("volume_generation_failed", error=str(e))
         await task_manager.fail_task(task_id, str(e))
-        await novel_manager.update_volume(novel_id, volume_number, status="failed")
+        await volume_service.update_volume(novel_id, volume_number, status="failed")
         await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
 
 
@@ -749,18 +755,20 @@ async def generate_chapters_background(
     """按章节范围生成"""
     task_manager = get_task_manager()
     novel_manager = get_novel_manager()
+    volume_service = get_volume_service()
 
     try:
         await task_manager.update_status(task_id, "running")
 
         prev_context = ""
         if chapter_start > 1:
-            prev_context = await novel_manager.get_chapter_tail(
+            from src.api.services.chapter_service import get_chapter_service
+            prev_context = await get_chapter_service().get_chapter_tail(
                 novel_id, chapter_start - 1
             )
 
         # Build ordered chapter outlines for the requested range
-        volumes = await novel_manager.list_volumes(novel_id)
+        volumes = await volume_service.list_volumes(novel_id)
         all_outlines = []
         for vol in volumes:
             outline = vol.get("outline") or {}

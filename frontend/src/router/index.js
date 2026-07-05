@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
+  { path: '/login', name: 'login', component: () => import('../views/Login.vue') },
   { path: '/', name: 'home', component: () => import('../views/Home.vue') },
   { path: '/tasks', name: 'tasks', component: () => import('../views/TaskList.vue') },
   { path: '/create', name: 'create', component: () => import('../views/Create.vue') },
@@ -19,8 +20,23 @@ const routes = [
   { path: '/inspiration', name: 'inspiration', component: () => import('../views/Inspiration.vue') },
 ]
 
-export default createRouter({
+const router = createRouter({
   history: createWebHistory(),
   routes,
 })
+
+// Route protection guard
+router.beforeEach((to, from, next) => {
+  const token = localStorage.getItem('session_token')
+  if (to.name !== 'login' && !token) {
+    next({ name: 'login' })
+  } else if (to.name === 'login' && token) {
+    next({ name: 'home' })
+  } else {
+    next()
+  }
+})
+
+export default router
+
 

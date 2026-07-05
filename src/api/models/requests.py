@@ -28,7 +28,7 @@ class CreateNovelRequest(BaseModel):
         default="现代白话",
         description="文风风格",
     )
-    writing_style_prompt: str = Field(
+    writing_style_prompt: str | None = Field(
         default="",
         description="自定义文风指令（writing_style=自定义时使用）",
     )
@@ -87,7 +87,7 @@ class LongFormNovelRequest(BaseModel):
         default="现代白话",
         description="写作风格",
     )
-    writing_style_prompt: str = Field(
+    writing_style_prompt: str | None = Field(
         default="",
         description="自定义风格提示",
     )

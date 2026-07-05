@@ -395,9 +395,9 @@ class TestNovelIdOwnership:
     @pytest.mark.asyncio
     async def test_update_character_wrong_novel_returns_false(self):
         """Updating a character with wrong novel_id returns False."""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.character_service import CharacterService
 
-        manager = NovelManager()
+        service = CharacterService()
 
         mock_result = AsyncMock()
         mock_result.scalar_one_or_none = lambda: None
@@ -407,8 +407,8 @@ class TestNovelIdOwnership:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("src.api.services.novel_manager.get_db_session", return_value=mock_session):
-            result = await manager.update_character(
+        with patch("src.api.services.character_service.get_db_session", return_value=mock_session):
+            result = await service.update_character(
                 "wrong-novel-id", 1, name="新名称"
             )
 
@@ -417,9 +417,9 @@ class TestNovelIdOwnership:
     @pytest.mark.asyncio
     async def test_delete_character_wrong_novel_returns_false(self):
         """Deleting a character with wrong novel_id returns False."""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.character_service import CharacterService
 
-        manager = NovelManager()
+        service = CharacterService()
 
         mock_result = AsyncMock()
         mock_result.scalar_one_or_none = lambda: None
@@ -429,8 +429,8 @@ class TestNovelIdOwnership:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("src.api.services.novel_manager.get_db_session", return_value=mock_session):
-            result = await manager.delete_character("wrong-novel-id", 1)
+        with patch("src.api.services.character_service.get_db_session", return_value=mock_session):
+            result = await service.delete_character("wrong-novel-id", 1)
 
         assert result is False
 

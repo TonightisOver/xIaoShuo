@@ -23,11 +23,27 @@ from src.core.llm.token_tracker import get_token_tracker
 logger = structlog.get_logger(__name__)
 
 
-def _is_retryable_http_error(exc: BaseException) -> bool:
-    """Return True if the HTTP status error should trigger a retry."""
-    if isinstance(exc, httpx.HTTPStatusError):
-        return exc.response.status_code in (429,) or exc.response.status_code >= 500
+def _is_retryable_status_error(exc: httpx.HTTPStatusError | openai.APIStatusError) -> bool:
+    """判断 HTTP 状态错误是否应该触发重试。"""
+    # 统一获取 status_code：httpx 和 openai 的 API 不同
+    if isinstance(exc, openai.APIStatusError):
+        status = exc.status_code
+        body = str(getattr(exc, 'body', '') or '')
+    else:
+        status = exc.response.status_code
+        body = (exc.response.text or "")
+
+    # 429 rate limit / 500+ server errors — always retry
+    if status in (429,) or status >= 500:
+        return True
+    # 400 "Upstream request failed" — 上游模型服务临时故障，应重试
+    if status == 400 and "upstream" in body.lower():
+        return True
     return False
+
+
+# 兼容旧测试代码
+_is_retryable_http_error = _is_retryable_status_error
 
 
 def _should_retry(exc: BaseException) -> bool:
@@ -37,8 +53,8 @@ def _should_retry(exc: BaseException) -> bool:
         return True
     if isinstance(exc, TimeoutError | ConnectionError):
         return True
-    if isinstance(exc, httpx.HTTPStatusError):
-        return _is_retryable_http_error(exc)
+    if isinstance(exc, httpx.HTTPStatusError | openai.APIStatusError):
+        return _is_retryable_status_error(exc)
     return False
 
 
@@ -173,11 +189,27 @@ class LLMClient:
                                 status_code=e.response.status_code,
                             )
                             raise
-                        if not _is_retryable_http_error(e):
+                        if not _is_retryable_status_error(e):
                             raise
                         logger.warning(
                             "llm_http_error_retrying",
                             status_code=e.response.status_code,
+                            attempt=attempt.retry_state.attempt_number,
+                        )
+                        raise
+
+                    except openai.APIStatusError as e:
+                        if e.status_code == 401:
+                            logger.error(
+                                "llm_auth_error",
+                                status_code=e.status_code,
+                            )
+                            raise
+                        if not _is_retryable_status_error(e):
+                            raise
+                        logger.warning(
+                            "llm_api_status_retrying",
+                            status_code=e.status_code,
                             attempt=attempt.retry_state.attempt_number,
                         )
                         raise

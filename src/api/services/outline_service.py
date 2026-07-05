@@ -223,7 +223,8 @@ class OutlineService:
         from src.api.services.novel_manager import get_novel_manager
         manager = get_novel_manager()
         world = await manager.get_world_setting(novel_id)
-        characters = await manager.list_characters(novel_id)
+        from src.api.services.character_service import get_character_service
+        characters = await get_character_service().list_characters(novel_id)
 
         client = get_llm_client()
         prompt = GENERATE_CHAPTERS_PROMPT.format(
@@ -302,7 +303,8 @@ class OutlineService:
 
         manager = get_novel_manager()
         world = await manager.get_world_setting(novel_id)
-        characters = await manager.list_characters(novel_id)
+        from src.api.services.character_service import get_character_service
+        characters = await get_character_service().list_characters(novel_id)
 
         context = ""
         if world and world.get("background"):
@@ -339,7 +341,8 @@ class OutlineService:
             raise ValueError("小说不存在")
 
         world = await manager.get_world_setting(novel_id)
-        characters = await manager.list_characters(novel_id)
+        from src.api.services.character_service import get_character_service
+        characters = await get_character_service().list_characters(novel_id)
 
         context_parts = [f"小说类型：{novel.get('novel_type', '')}", f"创意：{novel.get('idea', '')[:500]}"]
         if world and world.get("background"):

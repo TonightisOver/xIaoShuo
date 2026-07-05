@@ -1,9 +1,9 @@
 <template>
   <div class="max-w-4xl mx-auto px-6 py-10 font-sans" :class="{ 'pb-20': isStreaming || isPaused }">
-    <div v-if="loading" class="text-center py-20 text-[#86868b] text-sm">正在努力加载创作详情...</div>
+    <div v-if="loading" class="text-center py-20 text-neutral-500 text-sm">正在努力加载创作详情...</div>
 
     <div v-else-if="!task" class="text-center py-20">
-      <p class="text-gray-400 text-lg mb-4">创作任务不存在</p>
+      <p class="text-neutral-400 text-lg mb-4">创作任务不存在</p>
       <router-link to="/" class="btn-secondary">返回首页</router-link>
     </div>
 
@@ -12,15 +12,15 @@
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
           <div class="flex items-center gap-3 mb-2 flex-wrap">
-            <h1 class="text-2xl font-bold tracking-tight text-[#1d1d1f] flex items-center gap-2">
+            <h1 class="text-2xl font-bold tracking-tight text-neutral-900 flex items-center gap-2">
               <span>创作生成任务</span>
-              <span class="text-xs font-mono text-gray-400 bg-gray-100 px-2 py-0.5 rounded border border-gray-200/50 font-normal">
+              <span class="text-xs font-mono text-neutral-400 bg-neutral-100 px-2 py-0.5 rounded border border-neutral-200/50 font-normal">
                 {{ task.task_id.slice(0, 8) }}...
               </span>
             </h1>
             <span :class="'badge-' + task.status">{{ statusLabel }}</span>
           </div>
-          <p class="text-[#86868b] text-xs md:text-sm">任务创建于 {{ formatTime(task.created_at) }}</p>
+          <p class="text-neutral-500 text-xs md:text-sm">任务创建于 {{ formatTime(task.created_at) }}</p>
         </div>
         <div class="flex gap-2">
           <router-link v-if="task.novel_id" :to="`/novels/${task.novel_id}`" class="btn-primary text-sm flex items-center gap-1.5 shadow-sm">
@@ -42,13 +42,13 @@
 
       <!-- Streaming Content Area -->
       <div v-if="streamingText || isStreaming" class="card p-6 mb-6">
-        <h2 class="text-sm font-bold text-[#1d1d1f] dark:text-gray-100 mb-1 flex items-center gap-2">
+        <h2 class="text-sm font-bold text-neutral-900 dark:text-neutral-100 mb-1 flex items-center gap-2">
           <svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
           </svg>
           <span>
             正在生成：第{{ currentChapter }}章
-            <span v-if="currentChapterTitle" class="text-gray-400 dark:text-gray-500 font-normal ml-1">「{{ currentChapterTitle }}」</span>
+            <span v-if="currentChapterTitle" class="text-neutral-400 dark:text-neutral-500 font-normal ml-1">「{{ currentChapterTitle }}」</span>
           </span>
           <span v-if="isStreaming" class="inline-block w-2 h-2 rounded-full bg-purple-500 animate-pulse"></span>
         </h2>
@@ -72,7 +72,7 @@
 
       <!-- Progress Section -->
       <div v-if="task.status" class="card p-6 mb-6">
-        <h2 class="text-sm font-bold text-[#1d1d1f] mb-4 flex items-center gap-2">
+        <h2 class="text-sm font-bold text-neutral-900 mb-4 flex items-center gap-2">
           <svg v-if="task.status === 'running' || task.status === 'pending'" class="w-4 h-4 text-purple-600 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -99,14 +99,14 @@
             </p>
           </div>
         </template>
-        <p v-else class="text-sm text-gray-500">正在与大模型进行深度设定握手，请耐心稍候...</p>
+        <p v-else class="text-sm text-neutral-500">正在与大模型进行深度设定握手，请耐心稍候...</p>
       </div>
 
       <!-- Completed Summary -->
       <div v-if="task.status === 'completed'" class="card p-6 mb-6 border-emerald-200 bg-emerald-50/20">
         <div class="flex items-center gap-2 mb-2 flex-wrap">
           <span class="badge-completed">已完成</span>
-          <span v-if="task.completed_at" class="text-xs text-gray-400">{{ formatTime(task.completed_at) }}</span>
+          <span v-if="task.completed_at" class="text-xs text-neutral-400">{{ formatTime(task.completed_at) }}</span>
         </div>
         <p class="text-sm font-medium text-emerald-800 leading-relaxed">
           恭喜！AI 创作任务已顺利收尾。世界观、主配角设定、分卷大纲、三层因果图谱以及全本章节正文已完美入库，您可以进入小说详情页面预览、下载与深度精修。
@@ -115,7 +115,7 @@
 
       <!-- Result Section -->
       <div v-if="task.status === 'completed' && task.result" class="card p-6 mb-6">
-        <h2 class="text-sm font-bold text-[#1d1d1f] mb-4 flex items-center gap-2">
+        <h2 class="text-sm font-bold text-neutral-900 mb-4 flex items-center gap-2">
           <svg class="w-4.5 h-4.5 text-purple-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.375M9 18h3.375m1.5-16.125H8.25c-1.102 0-2 .898-2 2v14.25c0 1.102.898 2 2 2h8.25c1.102 0 2-.898 2-2V9m-3-7.125v3a1.5 1.5 0 001.5 1.5h3m-6-1.5v3a1.5 1.5 0 001.5 1.5h3" />
           </svg>
@@ -125,15 +125,15 @@
           <details
             v-for="chapter in task.result.chapters"
             :key="chapter.chapter"
-            class="border border-[#e5e5ea] rounded-xl hover:bg-[#f5f5f7] transition-all duration-200"
+            class="border border-neutral-200 rounded-xl hover:bg-neutral-50 transition-all duration-200"
           >
-            <summary class="px-5 py-3.5 cursor-pointer font-semibold text-xs md:text-sm text-[#1d1d1f] flex items-center justify-between flex-wrap gap-2 select-none">
+            <summary class="px-5 py-3.5 cursor-pointer font-semibold text-xs md:text-sm text-neutral-900 flex items-center justify-between flex-wrap gap-2 select-none">
               <span>第{{ chapter.chapter }}章：{{ chapter.title }}</span>
-              <span class="text-xs text-gray-400 font-mono font-normal bg-white border border-[#e5e5ea] px-2 py-0.5 rounded shadow-sm">
+              <span class="text-xs text-neutral-400 font-mono font-normal bg-white border border-neutral-200 px-2 py-0.5 rounded shadow-sm">
                 {{ chapter.word_count }} 字
               </span>
             </summary>
-            <div class="px-5 py-5 border-t border-[#e5e5ea] text-sm text-gray-700 leading-relaxed font-serif bg-white rounded-b-xl whitespace-pre-wrap">
+            <div class="px-5 py-5 border-t border-neutral-200 text-sm text-neutral-700 leading-relaxed font-serif bg-white rounded-b-xl whitespace-pre-wrap">
               {{ chapter.content }}
             </div>
           </details>
@@ -155,7 +155,7 @@
 
       <!-- WebSocket Events Log / Premium Terminal Console -->
       <div v-if="events.length" class="card p-6">
-        <h2 class="text-sm font-bold text-[#1d1d1f] mb-3 flex items-center gap-2">
+        <h2 class="text-sm font-bold text-neutral-900 mb-3 flex items-center gap-2">
           <svg class="w-4.5 h-4.5 text-purple-600" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z" />
           </svg>
@@ -168,12 +168,12 @@
           class="max-h-60 overflow-y-auto space-y-1.5 text-xs md:text-[13px] font-mono bg-[#111] border border-black/80 rounded-xl p-4 shadow-inner text-[#f8f8f2] scroll-smooth"
         >
           <div v-for="(ev, i) in events" :key="i" class="flex items-start gap-3 border-b border-white/[0.03] pb-1 hover:bg-white/[0.02] px-1 transition-colors">
-            <span class="text-gray-500 shrink-0 select-none font-light">{{ ev.time }}</span>
+            <span class="text-neutral-500 shrink-0 select-none font-light">{{ ev.time }}</span>
             <span :class="logColor(ev.message)">{{ ev.message }}</span>
           </div>
         </div>
         
-        <p class="text-[10px] text-gray-400 mt-2 text-right">
+        <p class="text-[10px] text-neutral-400 mt-2 text-right">
           控制台接收 WebSocket 双向数据流 · 自动探底滚动开启
         </p>
       </div>
@@ -239,8 +239,8 @@ function logColor(msg) {
   if (msg.includes('子功能: ') && msg.includes('开始')) return 'text-amber-300'
   if (msg.includes('子功能: ') && msg.includes('完成')) return 'text-teal-400'
   if (msg.includes('生成完成')) return 'text-emerald-500 font-bold'
-  if (msg.includes('心跳')) return 'text-gray-600 font-light'
-  return 'text-gray-300'
+  if (msg.includes('心跳')) return 'text-neutral-600 font-light'
+  return 'text-neutral-300'
 }
 
 function addEvent(type, data) {

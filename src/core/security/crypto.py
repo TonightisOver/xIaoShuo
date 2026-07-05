@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -13,9 +12,15 @@ def validate_encryption_key() -> None:
     _get_fernet()
 
 
+def _get_key() -> str:
+    """Get encryption key from Settings (reads from .env)."""
+    from src.core.config import get_settings
+    return get_settings().LLM_ENCRYPTION_KEY
+
+
 @lru_cache(maxsize=1)
 def _get_fernet() -> Fernet:
-    key = os.getenv("LLM_ENCRYPTION_KEY", "").strip()
+    key = _get_key()
     if not key:
         raise RuntimeError("LLM_ENCRYPTION_KEY must be set")
     try:

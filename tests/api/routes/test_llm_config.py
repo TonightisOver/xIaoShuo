@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-os.environ.setdefault("ADMIN_TOKEN", "secret")
+os.environ["ADMIN_TOKEN"] = "secret"
 os.environ.setdefault(
     "LLM_ENCRYPTION_KEY",
     "8bj5PGK84njNhOHlIV64dHHMh7QGgdrNKm5eozsXDKY=",

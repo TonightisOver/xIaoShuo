@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     # Knowledge Graph
     KNOWLEDGE_GRAPH_ENABLED: bool = True
 
+    # Encryption
+    LLM_ENCRYPTION_KEY: str = ""
+    ADMIN_TOKEN: str = "change-this-admin-token"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from src.api.services.character_service import get_character_service
 from src.api.services.novel_manager import get_novel_manager
 from src.core.llm.helpers import generate_and_parse_json
 
@@ -143,7 +144,7 @@ class BookImportService:
         for character in analysis_data.get("characters", []):
             if not isinstance(character, dict) or not character.get("name"):
                 continue
-            char_id = await manager.create_character(
+            char_id = await get_character_service().create_character(
                 created_novel_id,
                 name=character.get("name", ""),
                 role=character.get("role", "主要角色"),
