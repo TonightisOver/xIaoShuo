@@ -9,6 +9,8 @@ class ExportFormat(StrEnum):
     txt = "txt"
     epub = "epub"
     docx = "docx"
+    mobi = "mobi"
+
 
 
 class ExportScope(StrEnum):

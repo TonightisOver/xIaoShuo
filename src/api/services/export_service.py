@@ -85,8 +85,26 @@ class TxtExporter:
 
     def export(self, chapters: list[ChapterData]) -> io.BytesIO:
         buf = io.BytesIO()
-        current_volume: int | None = None
+        
+        # Prepend Table of Contents (TOC)
+        if len(chapters) > 1:
+            buf.write("====== 目录 ======\n\n".encode())
+            current_volume: int | None = None
+            for ch in chapters:
+                if (
+                    self.engine.options.include_volume_page
+                    and ch.volume_number is not None
+                    and ch.volume_number != current_volume
+                ):
+                    current_volume = ch.volume_number
+                    vol_title = ch.volume_title or f"第{ch.volume_number}卷"
+                    buf.write(f"【{vol_title}】\n".encode())
+                
+                ch_title = self.engine.format_title(ch)
+                buf.write(f"  {ch_title}\n".encode())
+            buf.write("\n==================\n\n\n".encode())
 
+        current_volume = None
         for ch in chapters:
             if (
                 self.engine.options.include_volume_page
@@ -221,3 +239,50 @@ class DocxExporter:
         doc.save(buf)
         buf.seek(0)
         return buf
+
+
+class MobiExporter:
+
+    def __init__(self, engine: FormatEngine):
+        self.engine = engine
+
+    def export(self, chapters: list[ChapterData], title: str) -> io.BytesIO:
+        import os
+        import subprocess
+        import tempfile
+        from shutil import which
+
+        # Check for Calibre's ebook-convert tool
+        ebook_convert = which("ebook-convert")
+        if not ebook_convert:
+            raise RuntimeError(
+                "Calibre's 'ebook-convert' command-line tool was not found on this server. "
+                "Please install Calibre to support MOBI output, or choose EPUB format instead."
+            )
+
+        # 1. Export to EPUB in memory first
+        epub_buf = EpubExporter(self.engine).export(chapters, title)
+
+        # 2. Convert to MOBI via temp files
+        with tempfile.TemporaryDirectory() as tmpdir:
+            epub_path = os.path.join(tmpdir, "book.epub")
+            mobi_path = os.path.join(tmpdir, "book.mobi")
+
+            with open(epub_path, "wb") as f:
+                f.write(epub_buf.getvalue())
+
+            try:
+                subprocess.run(
+                    [ebook_convert, epub_path, mobi_path],
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=120,
+                )
+
+                with open(mobi_path, "rb") as f:
+                    mobi_buf = io.BytesIO(f.read())
+                return mobi_buf
+            except Exception as e:
+                raise RuntimeError(f"Failed to convert book to MOBI: {str(e)}")
+

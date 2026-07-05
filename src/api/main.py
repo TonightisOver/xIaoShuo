@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.api.routes import (
+    auth_router,
     book_import_router,
     careers_router,
     chapter_analysis_router,
@@ -144,6 +145,7 @@ app.add_middleware(
 )
 
 # 注册路由
+app.include_router(auth_router)
 app.include_router(health_router)
 app.include_router(inspiration_router)
 app.include_router(novels_router)

@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { setActiveTaskId } from '../utils/taskState.js'
 
 export function useNovelActions(novelId, chapters) {
   const router = useRouter()
@@ -14,6 +15,7 @@ export function useNovelActions(novelId, chapters) {
       const res = await fetch(`/api/v1/projects/${id}/generate`, { method: 'POST' })
       if (res.ok) {
         const data = await res.json()
+        setActiveTaskId(data.task_id)
         router.push(`/task/${data.task_id}`)
       }
     } finally {
@@ -28,6 +30,7 @@ export function useNovelActions(novelId, chapters) {
       const res = await fetch(`/api/v1/projects/${id}/generate-full`, { method: 'POST' })
       if (res.ok) {
         const data = await res.json()
+        setActiveTaskId(data.task_id)
         router.push(`/task/${data.task_id}`)
       } else if (res.status === 409) {
         const err = await res.json()
@@ -40,6 +43,7 @@ export function useNovelActions(novelId, chapters) {
             const forceRes = await fetch(`/api/v1/projects/${id}/generate-full?force=true`, { method: 'POST' })
             if (forceRes.ok) {
               const data = await forceRes.json()
+              setActiveTaskId(data.task_id)
               router.push(`/task/${data.task_id}`)
             } else {
               const forceErr = await forceRes.json()
@@ -79,6 +83,7 @@ export function useNovelActions(novelId, chapters) {
     })
     if (res.ok) {
       const data = await res.json()
+      setActiveTaskId(data.task_id)
       router.push(`/task/${data.task_id}`)
     }
   }
@@ -92,6 +97,7 @@ export function useNovelActions(novelId, chapters) {
     })
     if (res.ok) {
       const data = await res.json()
+      setActiveTaskId(data.task_id)
       router.push(`/task/${data.task_id}`)
     }
   }

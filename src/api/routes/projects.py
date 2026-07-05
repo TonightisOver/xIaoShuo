@@ -1,9 +1,10 @@
 """小说项目管理 API 路由"""
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from src.api.models.db_models import User
 from src.api.models.requests import CreateNovelRequest
 from src.api.models.responses import (
     CreateResponse,
@@ -19,6 +20,7 @@ from src.api.services.novel_generator import (
 from src.api.services.novel_manager import get_novel_manager
 from src.api.services.task_manager import get_task_manager
 from src.api.services.volume_service import get_volume_service
+from src.core.security.auth import get_current_user
 from src.core.validation import ValidationError, validate_idea, validate_novel_type
 
 logger = structlog.get_logger(__name__)
@@ -48,10 +50,24 @@ class UpdateProjectRequest(BaseModel):
     writing_style_prompt: str | None = None
 
 
+async def _get_project_and_verify_owner(novel_id: str, current_user: User) -> dict:
+    """Helper to verify ownership of a novel."""
+    manager = get_novel_manager()
+    novel = await manager.get_novel(novel_id)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found")
+    if novel.get("owner_id") != current_user.id:
+        raise HTTPException(status_code=403, detail="Permission denied")
+    return novel
+
+
 # --- Novel Project CRUD ---
 
 @router.post("", status_code=201, response_model=CreateResponse)
-async def create_project(request: CreateProjectRequest):
+async def create_project(
+    request: CreateProjectRequest,
+    current_user: User = Depends(get_current_user),
+):
     try:
         validate_idea(request.idea)
         validate_novel_type(request.novel_type)
@@ -67,6 +83,7 @@ async def create_project(request: CreateProjectRequest):
         writing_style=request.writing_style,
         custom_style_description=request.custom_style_description,
         writing_style_prompt=request.writing_style_prompt,
+        owner_id=current_user.id,
     )
     return {"novel_id": novel_id, "status": "draft"}
 
@@ -76,23 +93,34 @@ async def list_projects(
     novel_type: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user),
 ):
     manager = get_novel_manager()
-    novels, total = await manager.list_novels(novel_type=novel_type, limit=limit, offset=offset)
+    novels, total = await manager.list_novels(
+        novel_type=novel_type,
+        limit=limit,
+        offset=offset,
+        owner_id=current_user.id,
+    )
     return {"novels": novels, "total": total, "limit": limit, "offset": offset}
 
 
 @router.get("/{novel_id}", response_model=NovelDetailResponse)
-async def get_project(novel_id: str):
-    manager = get_novel_manager()
-    novel = await manager.get_novel(novel_id)
-    if not novel:
-        raise HTTPException(status_code=404, detail="Novel not found")
+async def get_project(
+    novel_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    novel = await _get_project_and_verify_owner(novel_id, current_user)
     return novel
 
 
 @router.put("/{novel_id}", response_model=StatusResponse)
-async def update_project(novel_id: str, request: UpdateProjectRequest):
+async def update_project(
+    novel_id: str,
+    request: UpdateProjectRequest,
+    current_user: User = Depends(get_current_user),
+):
+    await _get_project_and_verify_owner(novel_id, current_user)
     manager = get_novel_manager()
     updated = await manager.update_novel(novel_id, **request.model_dump(exclude_none=True))
     if not updated:
@@ -101,7 +129,11 @@ async def update_project(novel_id: str, request: UpdateProjectRequest):
 
 
 @router.delete("/{novel_id}", response_model=StatusResponse)
-async def delete_project(novel_id: str):
+async def delete_project(
+    novel_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    await _get_project_and_verify_owner(novel_id, current_user)
     manager = get_novel_manager()
     deleted = await manager.delete_novel(novel_id)
     if not deleted:
@@ -112,11 +144,12 @@ async def delete_project(novel_id: str):
 # --- Generate ---
 
 @router.post("/{novel_id}/generate", status_code=202)
-async def generate_novel(novel_id: str, background_tasks: BackgroundTasks):
-    manager = get_novel_manager()
-    novel = await manager.get_novel(novel_id)
-    if not novel:
-        raise HTTPException(status_code=404, detail="Novel not found")
+async def generate_novel(
+    novel_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    novel = await _get_project_and_verify_owner(novel_id, current_user)
 
     task_manager = get_task_manager()
     task_id = await task_manager.create_task(
@@ -135,6 +168,7 @@ async def generate_novel(novel_id: str, background_tasks: BackgroundTasks):
     )
     background_tasks.add_task(generate_novel_background, task_id, request)
 
+    manager = get_novel_manager()
     await manager.update_novel(novel_id, status="generating")
 
     return {"task_id": task_id, "novel_id": novel_id, "status": "generating"}
@@ -155,7 +189,9 @@ class FullGenerateRequest(BaseModel):
 
 @router.post("/full-generate", status_code=202)
 async def full_generate_project(
-    request: FullGenerateRequest, background_tasks: BackgroundTasks,
+    request: FullGenerateRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
 ):
     """创建项目并启动 13 阶段全功能生成"""
     try:
@@ -173,6 +209,7 @@ async def full_generate_project(
         writing_style=request.writing_style,
         custom_style_description=request.custom_style_description,
         writing_style_prompt=request.writing_style_prompt,
+        owner_id=current_user.id,
     )
 
     task_manager = get_task_manager()
@@ -195,43 +232,49 @@ async def full_generate_project(
     await manager.update_novel(novel_id, status="generating")
 
     return {
-        "task_id": task_id, "novel_id": novel_id,
-        "status": "full_generating", "pipeline": "full_13_stage",
+        "task_id": task_id,
+        "novel_id": novel_id,
+        "status": "full_generating",
+        "pipeline": "full_13_stage",
     }
 
 
 @router.post("/{novel_id}/generate-full", status_code=202)
-async def full_generate_existing(novel_id: str, background_tasks: BackgroundTasks, force: bool = False):
+async def full_generate_existing(
+    novel_id: str,
+    background_tasks: BackgroundTasks,
+    force: bool = False,
+    current_user: User = Depends(get_current_user),
+):
     """对已有项目启动 13 阶段全功能生成。"""
-    manager = get_novel_manager()
-    novel = await manager.get_novel(novel_id)
-    if not novel:
-        raise HTTPException(status_code=404, detail="Novel not found")
+    novel = await _get_project_and_verify_owner(novel_id, current_user)
 
     # 防止重复触发：检查是否有正在运行的任务
     task_manager = get_task_manager()
     await task_manager.expire_stale_tasks(hours=1)
     all_tasks, _ = await task_manager.list_tasks()
     running_tasks = [
-        t for t in all_tasks
-        if t.get("novel_id") == novel_id
-        and t.get("status") in ("pending", "running")
+        t
+        for t in all_tasks
+        if t.get("novel_id") == novel_id and t.get("status") in ("pending", "running")
     ]
     if running_tasks:
         raise HTTPException(
             status_code=409,
-            detail=f"该小说已有正在运行的生成任务 (task_id={running_tasks[0].get('task_id')}), 请等待完成或取消后再试"
+            detail=f"该小说已有正在运行的生成任务 (task_id={running_tasks[0].get('task_id')}), 请等待完成或取消后再试",
         )
 
     # 防止盖已有章节：检查是否已有有效章节
     if not force:
         chapter_service = get_chapter_service()
         existing_chapters = await chapter_service.list_chapters(novel_id)
-        valid_chapters = [ch for ch in existing_chapters if ch.get("word_count", 0) > 100]
+        valid_chapters = [
+            ch for ch in existing_chapters if ch.get("word_count", 0) > 100
+        ]
         if valid_chapters:
             raise HTTPException(
                 status_code=409,
-                detail=f"该小说已有 {len(valid_chapters)} 个有效章节，全流程生成会覆盖所有内容。如确认要重新生成，请传入 force=true 参数"
+                detail=f"该小说已有 {len(valid_chapters)} 个有效章节，全流程生成会覆盖所有内容。如确认要重新生成，请传入 force=true 参数",
             )
 
     task_id = await task_manager.create_task(
@@ -250,11 +293,14 @@ async def full_generate_existing(novel_id: str, background_tasks: BackgroundTask
     )
     background_tasks.add_task(generate_novel_full_background, task_id, gen_request)
 
+    manager = get_novel_manager()
     await manager.update_novel(novel_id, status="generating")
 
     return {
-        "task_id": task_id, "novel_id": novel_id,
-        "status": "full_generating", "pipeline": "full_13_stage",
+        "task_id": task_id,
+        "novel_id": novel_id,
+        "status": "full_generating",
+        "pipeline": "full_13_stage",
     }
 
 
@@ -263,25 +309,27 @@ class GenerateVolumeRequest(BaseModel):
 
 
 @router.post("/{novel_id}/generate-volume", status_code=202)
-async def generate_volume(novel_id: str, request: GenerateVolumeRequest, background_tasks: BackgroundTasks):
-    manager = get_novel_manager()
-    novel = await manager.get_novel(novel_id)
-    if not novel:
-        raise HTTPException(status_code=404, detail="Novel not found")
+async def generate_volume(
+    novel_id: str,
+    request: GenerateVolumeRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    novel = await _get_project_and_verify_owner(novel_id, current_user)
 
     # 防止重复触发；先清理超时任务
     task_manager = get_task_manager()
     await task_manager.expire_stale_tasks(hours=1)
     all_tasks, _ = await task_manager.list_tasks()
     running_tasks = [
-        t for t in all_tasks
-        if t.get("novel_id") == novel_id
-        and t.get("status") in ("pending", "running")
+        t
+        for t in all_tasks
+        if t.get("novel_id") == novel_id and t.get("status") in ("pending", "running")
     ]
     if running_tasks:
         raise HTTPException(
             status_code=409,
-            detail=f"该小说已有正在运行的生成任务 (task_id={running_tasks[0].get('task_id')}), 请等待完成或取消后再试"
+            detail=f"该小说已有正在运行的生成任务 (task_id={running_tasks[0].get('task_id')}), 请等待完成或取消后再试",
         )
 
     volume_service = get_volume_service()
@@ -289,9 +337,13 @@ async def generate_volume(novel_id: str, request: GenerateVolumeRequest, backgro
     if not vol:
         # Fallback: check outlines table for volume data
         from src.api.services.outline_service import get_outline_service
+
         outline_svc = get_outline_service()
         vol_outlines = await outline_svc.get_volume_outlines(novel_id)
-        outline_vol = next((v for v in vol_outlines if v["volume_number"] == request.volume_number), None)
+        outline_vol = next(
+            (v for v in vol_outlines if v["volume_number"] == request.volume_number),
+            None,
+        )
         if not outline_vol:
             raise HTTPException(status_code=404, detail="Volume not found")
 
@@ -304,10 +356,19 @@ async def generate_volume(novel_id: str, request: GenerateVolumeRequest, backgro
         novel_id=novel_id,
     )
 
-    background_tasks.add_task(generate_volume_background, task_id, novel_id, request.volume_number)
-    await volume_service.update_volume(novel_id, request.volume_number, status="generating")
+    background_tasks.add_task(
+        generate_volume_background, task_id, novel_id, request.volume_number
+    )
+    await volume_service.update_volume(
+        novel_id, request.volume_number, status="generating"
+    )
 
-    return {"task_id": task_id, "novel_id": novel_id, "volume_number": request.volume_number, "status": "generating"}
+    return {
+        "task_id": task_id,
+        "novel_id": novel_id,
+        "volume_number": request.volume_number,
+        "status": "generating",
+    }
 
 
 class GenerateChaptersRequest(BaseModel):
@@ -316,28 +377,32 @@ class GenerateChaptersRequest(BaseModel):
 
 
 @router.post("/{novel_id}/generate-chapters", status_code=202)
-async def generate_chapters(novel_id: str, request: GenerateChaptersRequest, background_tasks: BackgroundTasks):
-    manager = get_novel_manager()
-    novel = await manager.get_novel(novel_id)
-    if not novel:
-        raise HTTPException(status_code=404, detail="Novel not found")
+async def generate_chapters(
+    novel_id: str,
+    request: GenerateChaptersRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    novel = await _get_project_and_verify_owner(novel_id, current_user)
 
     if request.chapter_end < request.chapter_start:
-        raise HTTPException(status_code=400, detail="chapter_end must be >= chapter_start")
+        raise HTTPException(
+            status_code=400, detail="chapter_end must be >= chapter_start"
+        )
 
     # 防止重复触发；先清理超时任务
     task_manager = get_task_manager()
     await task_manager.expire_stale_tasks(hours=1)
     all_tasks, _ = await task_manager.list_tasks()
     running_tasks = [
-        t for t in all_tasks
-        if t.get("novel_id") == novel_id
-        and t.get("status") in ("pending", "running")
+        t
+        for t in all_tasks
+        if t.get("novel_id") == novel_id and t.get("status") in ("pending", "running")
     ]
     if running_tasks:
         raise HTTPException(
             status_code=409,
-            detail=f"该小说已有正在运行的生成任务 (task_id={running_tasks[0].get('task_id')}), 请等待完成或取消后再试"
+            detail=f"该小说已有正在运行的生成任务 (task_id={running_tasks[0].get('task_id')}), 请等待完成或取消后再试",
         )
 
     from src.api.services.novel_generator import generate_chapters_background
@@ -350,8 +415,11 @@ async def generate_chapters(novel_id: str, request: GenerateChaptersRequest, bac
     )
 
     background_tasks.add_task(
-        generate_chapters_background, task_id, novel_id,
-        request.chapter_start, request.chapter_end
+        generate_chapters_background,
+        task_id,
+        novel_id,
+        request.chapter_start,
+        request.chapter_end,
     )
 
     return {
@@ -361,3 +429,18 @@ async def generate_chapters(novel_id: str, request: GenerateChaptersRequest, bac
         "chapter_end": request.chapter_end,
         "status": "generating",
     }
+
+
+@router.get("/{novel_id}/quality-report")
+async def get_project_quality_report(
+    novel_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Retrieve the multi-dimensional quality report of a novel."""
+    await _get_project_and_verify_owner(novel_id, current_user)
+    from src.api.services.quality_report_service import get_quality_report_service
+
+    report_service = get_quality_report_service()
+    report = await report_service.generate_novel_quality_report(novel_id)
+    return report
+

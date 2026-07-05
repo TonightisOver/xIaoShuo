@@ -22,7 +22,8 @@ class NovelManager:
                            title: str | None = None,
                            writing_style: str = "现代白话",
                            custom_style_description: str | None = None,
-                           writing_style_prompt: str | None = None) -> str:
+                           writing_style_prompt: str | None = None,
+                           owner_id: int | None = None) -> str:
         novel_id = f"novel-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}"
         async with get_db_session() as session:
             novel = Novel(
@@ -37,6 +38,7 @@ class NovelManager:
                 status="draft",
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
+                owner_id=owner_id,
             )
             session.add(novel)
         logger.info(f"Created novel {novel_id}")
@@ -72,7 +74,8 @@ class NovelManager:
             return data
 
     async def list_novels(self, novel_type: str | None = None,
-                           limit: int = 20, offset: int = 0):
+                           limit: int = 20, offset: int = 0,
+                           owner_id: int | None = None):
         async with get_db_session() as session:
             latest_task = (
                 select(
@@ -90,6 +93,8 @@ class NovelManager:
             query = select(Novel)
             if novel_type:
                 query = query.where(Novel.novel_type == novel_type)
+            if owner_id is not None:
+                query = query.where(Novel.owner_id == owner_id)
 
             count_q = select(func.count()).select_from(query.subquery())
             total = (await session.execute(count_q)).scalar_one()
@@ -104,6 +109,8 @@ class NovelManager:
             )
             if novel_type:
                 query = query.where(Novel.novel_type == novel_type)
+            if owner_id is not None:
+                query = query.where(Novel.owner_id == owner_id)
             query = query.order_by(Novel.updated_at.desc()).limit(limit).offset(offset)
             rows = (await session.execute(query)).all()
 

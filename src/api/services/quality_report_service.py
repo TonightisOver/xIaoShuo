@@ -57,25 +57,61 @@ class QualityReportService:
             total_volumes = len(volumes)
             completed_volumes = sum(1 for v in volumes if v.status == "completed")
 
-            # Get all chapters with quality scores
+            # Get all chapters
             ch_stmt = select(Chapter).where(
                 Chapter.novel_id == novel_id
             ).order_by(Chapter.chapter_number)
             ch_result = await session.execute(ch_stmt)
             chapters = ch_result.scalars().all()
 
+            # Get active version quality scores
+            from src.api.models.db_models import ChapterVersion
+            ver_stmt = select(ChapterVersion).where(
+                ChapterVersion.novel_id == novel_id,
+                ChapterVersion.is_active.is_(True)
+            )
+            ver_result = await session.execute(ver_stmt)
+            versions = ver_result.scalars().all()
+
+            version_map = {
+                v.chapter_number: v.quality_scores
+                for v in versions
+                if v.quality_scores
+            }
+            overall_score_map = {
+                v.chapter_number: v.quality_score
+                for v in versions
+                if v.quality_score is not None
+            }
+
             # Build volume reports
             volume_reports = []
             all_scores: dict[str, list[float]] = {dim: [] for dim in QUALITY_DIMENSIONS}
 
+            defined_vol_nums = {v.volume_number for v in volumes}
+            unassigned_chapters = [
+                c for c in chapters
+                if c.volume_number is None or c.volume_number not in defined_vol_nums
+            ]
+
             for vol in volumes:
                 vol_chapters = [c for c in chapters if c.volume_number == vol.volume_number]
-                vol_report = self._build_volume_report(vol.volume_number, vol_chapters)
+                vol_report = self._build_volume_report(vol.volume_number, vol_chapters, version_map, overall_score_map)
                 volume_reports.append(vol_report)
 
                 # Accumulate global scores
                 for dim in QUALITY_DIMENSIONS:
                     scores = vol_report["avg_scores"].get(dim, 0)
+                    if scores > 0:
+                        all_scores[dim].append(scores)
+
+            # Append virtual volume 0 for unassigned chapters if they exist
+            if unassigned_chapters:
+                unassigned_report = self._build_volume_report(0, unassigned_chapters, version_map, overall_score_map)
+                volume_reports.append(unassigned_report)
+
+                for dim in QUALITY_DIMENSIONS:
+                    scores = unassigned_report["avg_scores"].get(dim, 0)
                     if scores > 0:
                         all_scores[dim].append(scores)
 
@@ -102,7 +138,11 @@ class QualityReportService:
             }
 
     def _build_volume_report(
-        self, volume_number: int, chapters: list[Chapter]
+        self,
+        volume_number: int,
+        chapters: list[Chapter],
+        version_map: dict[int, dict],
+        overall_score_map: dict[int, float]
     ) -> dict[str, Any]:
         """Build quality report for a single volume.
 
@@ -132,8 +172,7 @@ class QualityReportService:
         chapter_scores: list[dict[str, float]] = []
 
         for ch in chapters:
-            # Try to get quality score from chapter version
-            ch_score = self._extract_chapter_scores(ch)
+            ch_score = self._extract_chapter_scores(ch.chapter_number, version_map, overall_score_map)
             chapter_scores.append(ch_score)
             for dim in QUALITY_DIMENSIONS:
                 score_trends[dim].append(ch_score.get(dim, 0.0))
@@ -166,14 +205,35 @@ class QualityReportService:
             "stalled_chapters": stalled_chapters,
         }
 
-    def _extract_chapter_scores(self, chapter: Chapter) -> dict[str, float]:
-        """Extract quality scores from a chapter.
+    def _extract_chapter_scores(
+        self,
+        chapter_number: int,
+        version_map: dict[int, dict],
+        overall_score_map: dict[int, float]
+    ) -> dict[str, float]:
+        """Extract quality scores from a chapter version."""
+        scores = version_map.get(chapter_number) or {}
+        overall = overall_score_map.get(chapter_number)
 
-        For now, returns default scores. In production, would query ChapterVersion
-        for quality_score and kg_conflicts.
-        """
-        # Default scores - in production would parse from ChapterVersion
-        return {dim: 0.7 for dim in QUALITY_DIMENSIONS}
+        # If overall score is available but no breakdown, default dimensions to overall
+        if overall is not None and not scores:
+            return {dim: overall for dim in QUALITY_DIMENSIONS}
+
+        res = {}
+        for dim in QUALITY_DIMENSIONS:
+            val = scores.get(dim)
+            if val is None:
+                # Map synonym dims
+                if dim == "dialogue_quality":
+                    val = scores.get("readability")
+                elif dim == "emotional_impact":
+                    val = scores.get("conflict")
+
+                if val is None:
+                    val = scores.get("overall") or overall or 0.7
+            res[dim] = float(val)
+        return res
+
 
     def _detect_warnings(
         self,

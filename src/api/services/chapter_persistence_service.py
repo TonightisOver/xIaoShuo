@@ -300,6 +300,7 @@ async def persist_quality_to_version(
             version = result.scalar_one_or_none()
             if version:
                 version.quality_score = quality_scores.get("overall")
+                version.quality_scores = quality_scores
                 version.kg_conflicts = consistency_warnings or None
                 await session.commit()
                 logger.info(

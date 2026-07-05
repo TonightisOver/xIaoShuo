@@ -3,11 +3,11 @@
 from urllib.parse import quote
 
 import structlog
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
-from src.api.models.db_models import Chapter, Novel, Volume
+from src.api.models.db_models import Chapter, Novel, User, Volume
 from src.api.models.export_models import (
     ExportFormat,
     ExportRequest,
@@ -22,9 +22,11 @@ from src.api.services.export_service import (
     DocxExporter,
     EpubExporter,
     FormatEngine,
+    MobiExporter,
     TxtExporter,
 )
 from src.core.database import get_db_session
+from src.core.security.auth import get_current_user
 
 logger = structlog.get_logger(__name__)
 
@@ -34,20 +36,25 @@ MIME_TYPES = {
     ExportFormat.txt: "text/plain; charset=utf-8",
     ExportFormat.epub: "application/epub+zip",
     ExportFormat.docx: (
-        "application/vnd.openxmlformats-officedocument"
-        ".wordprocessingml.document"
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     ),
+    ExportFormat.mobi: "application/x-mobipocket-ebook",
 }
 
 FILE_EXTENSIONS = {
     ExportFormat.txt: "txt",
     ExportFormat.epub: "epub",
     ExportFormat.docx: "docx",
+    ExportFormat.mobi: "mobi",
 }
 
 
 @router.post("/novels/{novel_id}/export")
-async def export_novel(novel_id: str, req: ExportRequest) -> StreamingResponse:
+async def export_novel(
+    novel_id: str,
+    req: ExportRequest,
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
     async with get_db_session() as session:
         novel_result = await session.execute(
             select(Novel).where(Novel.novel_id == novel_id)
@@ -55,6 +62,8 @@ async def export_novel(novel_id: str, req: ExportRequest) -> StreamingResponse:
         novel = novel_result.scalar_one_or_none()
         if not novel:
             raise HTTPException(status_code=404, detail="Novel not found")
+        if novel.owner_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Permission denied")
 
         query = (
             select(Chapter)
@@ -111,15 +120,25 @@ async def export_novel(novel_id: str, req: ExportRequest) -> StreamingResponse:
         for ch in chapters_db
     ]
 
+    import asyncio
+
     engine = FormatEngine(req.template, req.template_options)
     book_title = novel.title or "未命名小说"
 
-    if req.format == ExportFormat.txt:
-        buf = TxtExporter(engine).export(chapters)
-    elif req.format == ExportFormat.epub:
-        buf = EpubExporter(engine).export(chapters, title=book_title)
-    else:
-        buf = DocxExporter(engine).export(chapters, title=book_title)
+    try:
+        if req.format == ExportFormat.txt:
+            buf = await asyncio.to_thread(TxtExporter(engine).export, chapters)
+        elif req.format == ExportFormat.epub:
+            buf = await asyncio.to_thread(EpubExporter(engine).export, chapters, title=book_title)
+        elif req.format == ExportFormat.mobi:
+            buf = await asyncio.to_thread(MobiExporter(engine).export, chapters, title=book_title)
+        else:
+            buf = await asyncio.to_thread(DocxExporter(engine).export, chapters, title=book_title)
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
 
     ext = FILE_EXTENSIONS[req.format]
     filename = f"{book_title}.{ext}"
@@ -134,6 +153,69 @@ async def export_novel(novel_id: str, req: ExportRequest) -> StreamingResponse:
             ),
         },
     )
+
+
+@router.post("/novels/{novel_id}/export-preview")
+async def export_preview(
+    novel_id: str,
+    req: ExportRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Generate a quick formatted text preview of the first chapter."""
+    async with get_db_session() as session:
+        novel_result = await session.execute(
+            select(Novel).where(Novel.novel_id == novel_id)
+        )
+        novel = novel_result.scalar_one_or_none()
+        if not novel:
+            raise HTTPException(status_code=404, detail="Novel not found")
+        if novel.owner_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Permission denied")
+
+        # Get first chapter for preview
+        query = (
+            select(Chapter)
+            .where(Chapter.novel_id == novel_id)
+            .where(Chapter.status != "deleted")
+            .order_by(Chapter.chapter_number)
+            .limit(1)
+        )
+        result = await session.execute(query)
+        chapter_db = result.scalar_one_or_none()
+
+        if not chapter_db:
+            return {
+                "title": novel.title or "未命名小说",
+                "preview_title": "目录与第一章预览",
+                "preview_content": "暂无章节内容可以进行排版预览。",
+            }
+
+        # Build FormatEngine
+        engine = FormatEngine(req.template, req.template_options)
+        preview_data = ChapterData(
+            number=chapter_db.chapter_number,
+            title=chapter_db.title or "",
+            content=chapter_db.content or "",
+        )
+        preview_text = engine.format_chapter_text(preview_data)
+
+        # Get brief TOC preview (up to 5 chapters)
+        toc_query = (
+            select(Chapter.chapter_number, Chapter.title)
+            .where(Chapter.novel_id == novel_id)
+            .where(Chapter.status != "deleted")
+            .order_by(Chapter.chapter_number)
+            .limit(5)
+        )
+        toc_result = await session.execute(toc_query)
+        toc = [f"第{ch_num}章 {ch_title}" for ch_num, ch_title in toc_result.all()]
+
+        return {
+            "title": novel.title or "未命名小说",
+            "preview_title": f"第{chapter_db.chapter_number}章：{chapter_db.title}",
+            "preview_content": preview_text[:3000],
+            "toc": toc,
+        }
 
 
 @router.get("/export/templates", response_model=list[TemplateInfo])
