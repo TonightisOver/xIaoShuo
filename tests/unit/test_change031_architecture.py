@@ -367,16 +367,13 @@ class TestNovelIdOwnership:
 
         manager = NovelManager()
 
-        # Mock the DB session to return None (no match for compound WHERE)
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none = lambda: None
+        mock_world_svc = AsyncMock()
+        mock_world_svc.update_power_system = AsyncMock(return_value=False)
 
-        mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(return_value=mock_result)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-
-        with patch("src.api.services.novel_manager.get_db_session", return_value=mock_session):
+        with patch(
+            "src.api.services.novel_manager.get_world_service",
+            return_value=mock_world_svc,
+        ):
             result = await manager.update_power_system(
                 "wrong-novel-id", 1, name="新名称"
             )
@@ -390,15 +387,13 @@ class TestNovelIdOwnership:
 
         manager = NovelManager()
 
-        mock_result = AsyncMock()
-        mock_result.scalar_one_or_none = lambda: None
+        mock_world_svc = AsyncMock()
+        mock_world_svc.delete_power_system = AsyncMock(return_value=False)
 
-        mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(return_value=mock_result)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-
-        with patch("src.api.services.novel_manager.get_db_session", return_value=mock_session):
+        with patch(
+            "src.api.services.novel_manager.get_world_service",
+            return_value=mock_world_svc,
+        ):
             result = await manager.delete_power_system("wrong-novel-id", 1)
 
         assert result is False

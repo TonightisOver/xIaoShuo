@@ -605,12 +605,22 @@ class TestAIGenerationService:
             "src.core.llm.helpers.safe_json_parse", return_value=llm_response
         ), patch(
             "src.core.llm.client.get_llm_client"
-        ) as mock_llm_fn:
+        ) as mock_llm_fn, patch(
+            "src.api.services.world_service.get_world_service"
+        ) as mock_world_svc_fn, patch(
+            "src.api.services.character_service.get_character_service"
+        ) as mock_char_svc_fn:
             mock_mgr = AsyncMock()
             mock_mgr.get_novel = AsyncMock(return_value=mock_novel)
-            mock_mgr.get_world_setting = AsyncMock(return_value=mock_world)
-            mock_mgr.list_characters = AsyncMock(return_value=mock_characters)
             mock_mgr_fn.return_value = mock_mgr
+
+            mock_world_svc = AsyncMock()
+            mock_world_svc.get_world_setting = AsyncMock(return_value=mock_world)
+            mock_world_svc_fn.return_value = mock_world_svc
+
+            mock_char_svc = AsyncMock()
+            mock_char_svc.list_characters = AsyncMock(return_value=mock_characters)
+            mock_char_svc_fn.return_value = mock_char_svc
 
             mock_sl_svc = AsyncMock()
             mock_sl_svc.create_storyline = AsyncMock(side_effect=["sl-1", "sl-2"])

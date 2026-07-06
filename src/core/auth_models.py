@@ -18,9 +18,6 @@ class AuthBase(DeclarativeBase):
     pass
 
 
-UTC = UTC
-
-
 class User(AuthBase):
     """用户"""
 

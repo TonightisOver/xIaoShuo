@@ -156,6 +156,7 @@ class TestGeneratePowerSystemsAI:
         }
 
         with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
+             patch("src.api.services.world_service.get_world_service") as mock_ws, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
              patch("src.core.llm.helpers.safe_json_parse", return_value=[]) as mock_parse:
 
@@ -165,8 +166,11 @@ class TestGeneratePowerSystemsAI:
 
             mock_manager = AsyncMock()
             mock_manager.get_novel = AsyncMock(return_value=novel_data)
-            mock_manager.get_world_setting = AsyncMock(return_value={})
             mock_mgr.return_value = mock_manager
+
+            mock_ws_instance = AsyncMock()
+            mock_ws_instance.get_world_setting = AsyncMock(return_value=None)
+            mock_ws.return_value = mock_ws_instance
 
             result = await service.generate_power_systems_ai("novel-test-3")
 
@@ -187,6 +191,7 @@ class TestGeneratePowerSystemsAI:
         }
 
         with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
+             patch("src.api.services.world_service.get_world_service") as mock_ws, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
              patch("src.core.llm.helpers.safe_json_parse", return_value={"name": "单一体系"}):
 
@@ -196,8 +201,11 @@ class TestGeneratePowerSystemsAI:
 
             mock_manager = AsyncMock()
             mock_manager.get_novel = AsyncMock(return_value=novel_data)
-            mock_manager.get_world_setting = AsyncMock(return_value={})
             mock_mgr.return_value = mock_manager
+
+            mock_ws_instance = AsyncMock()
+            mock_ws_instance.get_world_setting = AsyncMock(return_value=None)
+            mock_ws.return_value = mock_ws_instance
 
             result = await service.generate_power_systems_ai("novel-test-3b")
 
@@ -516,6 +524,7 @@ class TestGenerateAutoConversation:
             return len(messages_added)
 
         with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
+             patch("src.api.services.character_service.get_character_service") as mock_cs, \
              patch("src.api.services.conversation_service.get_llm_client") as mock_llm, \
              patch.object(service, "create_conversation") as mock_create_conv:
 
@@ -530,6 +539,10 @@ class TestGenerateAutoConversation:
             mock_manager.get_world_setting = AsyncMock(return_value=world_data)
             mock_manager.list_characters = AsyncMock(return_value=characters)
             mock_mgr.return_value = mock_manager
+
+            mock_cs_instance = AsyncMock()
+            mock_cs_instance.list_characters = AsyncMock(return_value=characters)
+            mock_cs.return_value = mock_cs_instance
 
             mock_create_conv.return_value = 42  # conv_id
 
@@ -582,6 +595,7 @@ class TestGenerateAutoConversation:
         }
 
         with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
+             patch("src.api.services.character_service.get_character_service") as mock_cs, \
              patch("src.api.services.conversation_service.get_llm_client") as mock_llm, \
              patch.object(service, "create_conversation") as mock_create_conv, \
              patch("src.api.services.conversation_service.Message") as mock_msg_cls, \
@@ -596,6 +610,10 @@ class TestGenerateAutoConversation:
             mock_manager.get_world_setting = AsyncMock(return_value={})
             mock_manager.list_characters = AsyncMock(return_value=[])
             mock_mgr.return_value = mock_manager
+
+            mock_cs_instance = AsyncMock()
+            mock_cs_instance.list_characters = AsyncMock(return_value=[])
+            mock_cs.return_value = mock_cs_instance
 
             mock_create_conv.return_value = 10
 

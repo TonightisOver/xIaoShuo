@@ -116,6 +116,8 @@ class TestArcGenerationFix:
 
         with patch("src.api.services.character_service.get_character_service") as mock_char_svc, \
              patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
+             patch("src.api.services.world_service.get_world_service") as mock_world_svc, \
+             patch("src.api.services.outline_service.get_outline_service") as mock_outline_svc, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
              patch("src.core.llm.helpers.safe_json_parse", return_value=llm_arcs), \
              patch("src.api.services.storyline_service.get_storyline_service") as mock_sl:
@@ -130,7 +132,16 @@ class TestArcGenerationFix:
             mock_char_svc.return_value = mock_char_instance
 
             mock_manager = AsyncMock()
+            mock_manager.get_novel = AsyncMock(return_value={"id": "novel1", "novel_type": "玄幻", "idea": "test"})
             mock_mgr.return_value = mock_manager
+
+            mock_world_instance = AsyncMock()
+            mock_world_instance.get_world_setting = AsyncMock(return_value=None)
+            mock_world_svc.return_value = mock_world_instance
+
+            mock_outline_instance = AsyncMock()
+            mock_outline_instance.get_master_outline = AsyncMock(return_value=None)
+            mock_outline_svc.return_value = mock_outline_instance
 
             mock_client = AsyncMock()
             mock_client.generate = AsyncMock(return_value="[]")
@@ -166,6 +177,8 @@ class TestArcGenerationFix:
 
         with patch("src.api.services.character_service.get_character_service") as mock_char_svc, \
              patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
+             patch("src.api.services.world_service.get_world_service") as mock_world_svc, \
+             patch("src.api.services.outline_service.get_outline_service") as mock_outline_svc, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
              patch("src.core.llm.helpers.safe_json_parse", return_value=llm_arcs), \
              patch("src.api.services.storyline_service.get_storyline_service") as mock_sl:
@@ -180,7 +193,16 @@ class TestArcGenerationFix:
             mock_char_svc.return_value = mock_char_instance
 
             mock_manager = AsyncMock()
+            mock_manager.get_novel = AsyncMock(return_value={"id": "novel1", "novel_type": "玄幻", "idea": "test"})
             mock_mgr.return_value = mock_manager
+
+            mock_world_instance = AsyncMock()
+            mock_world_instance.get_world_setting = AsyncMock(return_value=None)
+            mock_world_svc.return_value = mock_world_instance
+
+            mock_outline_instance = AsyncMock()
+            mock_outline_instance.get_master_outline = AsyncMock(return_value=None)
+            mock_outline_svc.return_value = mock_outline_instance
 
             mock_client = AsyncMock()
             mock_client.generate = AsyncMock(return_value="[]")
@@ -199,9 +221,13 @@ class TestArcGenerationFix:
 
         service = AIGenerationService()
 
-        with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr:
+        with patch("src.api.services.character_service.get_character_service") as mock_char_svc, \
+             patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr:
+            mock_char_instance = AsyncMock()
+            mock_char_instance.list_characters = AsyncMock(return_value=[])
+            mock_char_svc.return_value = mock_char_instance
+
             mock_manager = AsyncMock()
-            mock_manager.list_characters = AsyncMock(return_value=[])
             mock_mgr.return_value = mock_manager
 
             result = await service.generate_arcs_ai("novel1")
