@@ -61,6 +61,7 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
             **state,
             "quality_scores": default_scores,
             "current_stage": "quality_check_completed",
+            "kg_continuity_report": None,
         }
 
     chapter_content = last_chapter.get("content", "")
@@ -71,25 +72,62 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
     consistency_score = 1.0
     settings = get_settings()
     consistency_warnings = []
+    kg_continuity_report = None
+    novel_id = state.get("novel_id") or state.get("project_id")
 
     if settings.KNOWLEDGE_GRAPH_ENABLED:
         kg_service = configurable.get("kg_service")
         if kg_service:
             try:
-                conflicts = await kg_service.check_consistency(
-                    novel_id=state.get("novel_id") or state["project_id"],
-                    chapter_number=chapter_number,
-                    chapter_text=chapter_content,
-                )
-                consistency_warnings = conflicts
-                error_count = sum(1 for c in conflicts if c.get("severity") == "error")
-                if error_count > 0:
-                    consistency_score = max(0.3, 1.0 - error_count * 0.2)
+                if settings.KG_SUBAGENT_ENABLED:
+                    kg_summary = await kg_service.retrieve_context(
+                        novel_id=novel_id,
+                        chapter_outline={"chapter": chapter_number},
+                        raw_format=True,
+                    )
+                    from src.core.agents.continuity_editor import ContinuityEditorAgent
+                    editor = ContinuityEditorAgent()
+                    kg_continuity_report = await editor.review(
+                        chapter_content=chapter_content,
+                        kg_summary=kg_summary,
+                    )
+                    issues = kg_continuity_report.get("issues", [])
+                    for issue in issues:
+                        severity_map = {
+                            "critical": "error",
+                            "minor": "warning",
+                            "info": "warning"
+                        }
+                        consistency_warnings.append({
+                            "severity": severity_map.get(issue.get("severity"), "warning"),
+                            "type": issue.get("type"),
+                            "message": issue.get("description") or issue.get("message", ""),
+                            "entity": issue.get("entity"),
+                            "suggestion": issue.get("suggestion"),
+                            "kg_update_needed": issue.get("kg_update_needed"),
+                            "kg_update_detail": issue.get("kg_update_detail"),
+                        })
+                    verdict = kg_continuity_report.get("verdict", "pass")
+                    if verdict == "block":
+                        consistency_score = 0.3
+                    elif verdict == "warn":
+                        consistency_score = 0.8
+                    else:
+                        consistency_score = 1.0
+                else:
+                    conflicts = await kg_service.check_consistency(
+                        novel_id=novel_id,
+                        chapter_number=chapter_number,
+                        chapter_text=chapter_content,
+                    )
+                    consistency_warnings = conflicts
+                    error_count = sum(1 for c in conflicts if c.get("severity") == "error")
+                    if error_count > 0:
+                        consistency_score = max(0.3, 1.0 - error_count * 0.2)
             except Exception as e:
                 logger.warning(f"Consistency check failed: {e}")
 
     # 2.5 StoryBible 冲突检测 (via injected callback)
-    novel_id = state.get("novel_id") or state.get("project_id")
     detect_bible_conflicts_fn = configurable.get("detect_bible_conflicts")
     if novel_id and detect_bible_conflicts_fn:
         try:
@@ -108,6 +146,20 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
                     consistency_score = max(0.3, consistency_score - bible_errors * 0.1)
         except Exception as e:
             logger.warning(f"StoryBible conflict detection failed: {e}")
+
+    # 2.6 知识抽取与图谱协调 (moved from chapter_generator)
+    if settings.KNOWLEDGE_GRAPH_ENABLED:
+        kg_service = configurable.get("kg_service")
+        if kg_service and novel_id:
+            try:
+                await kg_service.extract_from_chapter(
+                    novel_id=novel_id,
+                    chapter_number=chapter_number,
+                    chapter_text=chapter_content,
+                    continuity_report=kg_continuity_report,
+                )
+            except Exception as e:
+                logger.warning(f"Knowledge graph extraction failed: {e}")
 
     # 3. 调用公共质量评估模块进行 8 大硬度指标自适应评分
     persist_quality_fn = configurable.get("persist_quality")
@@ -179,6 +231,7 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
             "consistency_warnings": consistency_warnings,
             "revision_requests": revision_requests,
             "current_stage": "quality_check_completed",
+            "kg_continuity_report": kg_continuity_report,
         }
 
     except Exception as e:
@@ -205,4 +258,5 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
         "quality_scores": default_scores,
         "consistency_warnings": consistency_warnings,
         "current_stage": "quality_check_completed",
+        "kg_continuity_report": kg_continuity_report,
     }

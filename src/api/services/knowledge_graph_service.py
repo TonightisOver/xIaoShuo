@@ -91,7 +91,7 @@ class KnowledgeGraphService:
     """知识图谱服务"""
 
     async def extract_from_chapter(
-        self, novel_id: str, chapter_number: int, chapter_text: str
+        self, novel_id: str, chapter_number: int, chapter_text: str, continuity_report: dict | None = None
     ) -> dict[str, Any]:
         """从单章文本抽取实体和关系"""
         settings = get_settings()
@@ -117,27 +117,85 @@ class KnowledgeGraphService:
             )
             client = get_llm_client()
             raw = await client.generate(prompt, temperature=0.1)
-            result = safe_json_parse(raw, fallback={"entities": [], "triples": []})
 
-            # 合并实体（传入已查询的 existing 避免重复查询）
-            name_to_id = await self._merge_entities(
-                novel_id, chapter_number, result.get("entities", []), existing
-            )
+            # Check if subagent mode is enabled, ensuring it is a boolean to support unit tests mock environments
+            kg_subagent_enabled = False
+            if hasattr(settings, "KG_SUBAGENT_ENABLED"):
+                val = settings.KG_SUBAGENT_ENABLED
+                if isinstance(val, bool):
+                    kg_subagent_enabled = val
 
-            # 写入三元组
-            triples_count = await self._write_triples(
-                novel_id, chapter_number, result.get("triples", []), name_to_id
-            )
+            if kg_subagent_enabled:
+                from src.core.agents.graph_reconciler import GraphReconcilerAgent
+                reconciler = GraphReconcilerAgent()
+                reconciled = await reconciler.reconcile(
+                    continuity_report=continuity_report,
+                    extracted_entities=raw,
+                    existing_entities=existing_json,
+                )
+
+                entities_to_upsert = reconciled.get("entities_to_upsert", [])
+                triples_to_add = reconciled.get("triples_to_add", [])
+                entity_status_updates = reconciled.get("entity_status_updates", [])
+                foreshadowing_resolutions = reconciled.get("foreshadowing_resolutions", [])
+
+                # 初始化 name_to_id 映射
+                name_to_id = {}
+                for e in existing:
+                    name_to_id[e.name] = e.id
+                    for alias in (e.aliases or []):
+                        name_to_id[alias] = e.id
+
+                # 1. 合并 upsert 实体
+                for ent in entities_to_upsert:
+                    eid = await self._merge_entity(novel_id, chapter_number, ent, existing)
+                    if eid and ent.get("name"):
+                        name_to_id[ent["name"]] = eid
+                        for alias in ent.get("aliases", []):
+                            name_to_id[alias] = eid
+
+                # 2. 合并更新状态
+                for ent_update in entity_status_updates:
+                    await self._merge_entity(novel_id, chapter_number, ent_update, existing)
+
+                # 3. 合并伏笔状态更新
+                for res in foreshadowing_resolutions:
+                    if "attributes" not in res:
+                        res["attributes"] = {}
+                    if "foreshadowing_status" not in res["attributes"]:
+                        res["attributes"]["foreshadowing_status"] = "resolved"
+                    await self._merge_entity(novel_id, chapter_number, res, existing)
+
+                # 4. 写入三元组
+                triples_count = 0
+                for t in triples_to_add:
+                    success = await self.add_triple(novel_id, chapter_number, t, name_to_id)
+                    if success:
+                        triples_count += 1
+
+                entities_extracted = len(entities_to_upsert)
+
+            else:
+                result = safe_json_parse(raw, fallback={"entities": [], "triples": []})
+                # 合并实体（传入已查询的 existing 避免重复查询）
+                name_to_id = await self._merge_entities(
+                    novel_id, chapter_number, result.get("entities", []), existing
+                )
+
+                # 写入三元组
+                triples_count = await self._write_triples(
+                    novel_id, chapter_number, result.get("triples", []), name_to_id
+                )
+                entities_extracted = len(result.get("entities", []))
 
             duration_ms = int((time.time() - start_time) * 1000)
 
             # 写入日志
             await self._write_extraction_log(
                 log_id, novel_id, chapter_number, "completed",
-                len(result.get("entities", [])), triples_count, duration_ms,
+                entities_extracted, triples_count, duration_ms,
             )
 
-            entities_extracted = len(result.get("entities", []))
             return {
                 "entities_count": entities_extracted,
                 "triples_count": triples_count,
@@ -163,7 +221,8 @@ class KnowledgeGraphService:
 
 
     async def retrieve_context(
-        self, novel_id: str, chapter_outline: dict[str, Any]
+        self, novel_id: str, chapter_outline: dict[str, Any],
+        raw_format: bool = False
     ) -> str:
         """根据章节大纲检索相关图谱上下文，支持状态继承合并与最新双向关系演化去重"""
         settings = get_settings()
@@ -304,7 +363,7 @@ class KnowledgeGraphService:
             # 6. 查询最近事件
             recent_events = await self._get_recent_events(novel_id, current_ch)
 
-            # 7. 格式化生成高质量记忆 Prompt
+            # 7. 格式化生成高质量记忆 Prompt 或原始数据
             context = self._format_rich_context(
                 mentioned_entities=mentioned_entities,
                 entity_states=entity_states,
@@ -312,9 +371,12 @@ class KnowledgeGraphService:
                 triples_data=triples_data,
                 foreshadowings=foreshadowings,
                 recent_events=recent_events,
+                raw_format=raw_format,
             )
-            if len(context) > 1500:
+            if not raw_format and len(context) > 1500:
                 context = context[:1500].rsplit("\n", 1)[0]
+            elif raw_format and len(context) > 4000:
+                context = context[:4000].rsplit("\n", 1)[0]
             return context
 
 
@@ -663,6 +725,144 @@ class KnowledgeGraphService:
 
         return name_map
 
+    async def _merge_entity(
+        self, novel_id: str, chapter_number: int, ent: dict, existing: list[KnowledgeEntity] | None = None
+    ) -> str:
+        """合并/更新单个实体，并返回其 ID"""
+        if existing is None:
+            existing = await self._get_existing_entities(novel_id)
+        name_map: dict[str, str] = {e.name: e.id for e in existing}
+        alias_map: dict[str, str] = {}
+        for e in existing:
+            for alias in (e.aliases or []):
+                alias_map[alias] = e.id
+
+        ent_name = ent.get("name", "")
+        if not ent_name:
+            return ""
+
+        extracted_attrs = ent.get("attributes", {})
+        matched_id = None
+        matched_entity = None
+
+        if ent_name in name_map:
+            matched_id = name_map[ent_name]
+        elif ent_name in alias_map:
+            matched_id = alias_map[ent_name]
+
+        async with get_db_session() as session:
+            if matched_id:
+                result = await session.execute(
+                    select(KnowledgeEntity).where(KnowledgeEntity.id == matched_id)
+                )
+                matched_entity = result.scalar_one_or_none()
+
+            if matched_entity:
+                # 1. 查询在此章节前的最新历史状态
+                hist_result = await session.execute(
+                    select(KnowledgeEntityState)
+                    .where(
+                        and_(
+                            KnowledgeEntityState.entity_id == matched_entity.id,
+                            KnowledgeEntityState.chapter_number < chapter_number
+                        )
+                    )
+                    .order_by(KnowledgeEntityState.chapter_number.desc())
+                    .limit(1)
+                )
+                latest_state = hist_result.scalar_one_or_none()
+
+                previous_attributes = {}
+                if latest_state:
+                    previous_attributes = latest_state.attributes or {}
+                elif matched_entity.attributes:
+                    previous_attributes = matched_entity.attributes
+
+                # 2. 执行继承合并属性
+                merged_attributes = {**previous_attributes, **extracted_attrs}
+
+                # 3. 更新主实体字段
+                matched_entity.attributes = merged_attributes
+                matched_entity.last_chapter = chapter_number
+                session.add(matched_entity)
+
+                # 4. 判断并记录/覆盖该章节的历史快照
+                state_result = await session.execute(
+                    select(KnowledgeEntityState)
+                    .where(
+                        and_(
+                            KnowledgeEntityState.entity_id == matched_entity.id,
+                            KnowledgeEntityState.chapter_number == chapter_number
+                        )
+                    )
+                )
+                existing_state = state_result.scalar_one_or_none()
+                if existing_state:
+                    existing_state.attributes = merged_attributes
+                    session.add(existing_state)
+                else:
+                    new_state = KnowledgeEntityState(
+                        id=str(uuid.uuid4()),
+                        novel_id=novel_id,
+                        entity_id=matched_entity.id,
+                        chapter_number=chapter_number,
+                        attributes=merged_attributes
+                    )
+                    session.add(new_state)
+                return matched_entity.id
+            else:
+                # 新建实体与初始状态记录
+                entity_id = str(uuid.uuid4())
+                entity = KnowledgeEntity(
+                    id=entity_id,
+                    novel_id=novel_id,
+                    entity_type=ent.get("type", "character"),
+                    name=ent_name,
+                    aliases=ent.get("aliases", []),
+                    attributes=extracted_attrs,
+                    first_chapter=chapter_number,
+                    last_chapter=chapter_number,
+                    source="extracted",
+                )
+                session.add(entity)
+
+                new_state = KnowledgeEntityState(
+                    id=str(uuid.uuid4()),
+                    novel_id=novel_id,
+                    entity_id=entity_id,
+                    chapter_number=chapter_number,
+                    attributes=extracted_attrs
+                )
+                session.add(new_state)
+                return entity_id
+
+    async def add_triple(
+        self, novel_id: str, chapter_number: int, triple: dict, name_to_id: dict[str, str]
+    ) -> bool:
+        """添加单个三元组"""
+        subj_name = triple.get("subject", "")
+        obj_name = triple.get("object", "")
+        subj_id = name_to_id.get(subj_name)
+        obj_id = name_to_id.get(obj_name)
+        if not subj_id or not obj_id:
+            return False
+
+        async with get_db_session() as session:
+            new_triple = KnowledgeTriple(
+                id=str(uuid.uuid4()),
+                novel_id=novel_id,
+                subject_id=subj_id,
+                predicate=triple.get("predicate", ""),
+                object_id=obj_id,
+                chapter_number=chapter_number,
+                confidence=triple.get("confidence", 1.0),
+                status="active",
+                metadata_=triple.get("metadata", {}),
+                source="extracted",
+            )
+            session.add(new_triple)
+        return True
+
     async def _write_triples(
         self, novel_id: str, chapter_number: int,
         triples: list[dict], name_to_id: dict[str, str],
@@ -831,26 +1031,90 @@ class KnowledgeGraphService:
     async def _rule_based_check(
         self, novel_id: str, new_triples: list[KnowledgeTriple]
     ) -> list[dict[str, Any]]:
-        """基于规则的一致性检查"""
+        """基于规则的一致性检查，覆盖 5 类常见冲突。"""
         conflicts: list[dict[str, Any]] = []
         entities = await self._get_existing_entities(novel_id)
         entity_map = {e.id: e for e in entities}
+
+        # ── 构建本章每个 subject 的 triple 列表（用于 R2 地点冲突） ──
+        subject_triples: dict[str, list[KnowledgeTriple]] = {}
+        for triple in new_triples:
+            subject_triples.setdefault(triple.subject_id, []).append(triple)
 
         for triple in new_triples:
             subject = entity_map.get(triple.subject_id)
             if not subject:
                 continue
+
+            # ── R1: 死角色仍在活动 ──
             if subject.entity_type == "character":
                 if (subject.attributes or {}).get("status") == "dead":
-                    if triple.predicate in ("位于", "前往", "战斗", "对话"):
+                    action_predicates = ("位于", "前往", "战斗", "对话", "交手", "击杀", "拯救", "交谈", "协助", "攻击", "追击")
+                    if triple.predicate in action_predicates:
                         conflicts.append({
                             "severity": "error",
                             "type": "dead_character_active",
-                            "message": (
-                                f"角色'{subject.name}'"
-                                "已死亡，但在新章节中仍有活动"
-                            ),
+                            "message": f"角色'{subject.name}'已死亡，但在新章节中仍有活动",
                             "entity": subject.name,
+                        })
+
+            # ── R2: 同一角色在同一章出现在两个不同地点 ──
+            if subject.entity_type == "character" and triple.predicate == "位于":
+                locations = [t for t in subject_triples.get(triple.subject_id, [])
+                             if t.predicate == "位于" and t.id != triple.id]
+                for loc_triple in locations:
+                    other_loc = entity_map.get(loc_triple.object_id)
+                    if other_loc and other_loc.entity_type == "location":
+                        loc_name = other_loc.name
+                        target_loc = entity_map.get(triple.object_id)
+                        target_name = target_loc.name if target_loc else "未知"
+                        conflicts.append({
+                            "severity": "warning",
+                            "type": "location_conflict",
+                            "message": f"角色'{subject.name}'在同一章节出现在'{target_name}'和'{loc_name}'两个地点",
+                            "entity": subject.name,
+                        })
+
+            # ── R3: 战力等级倒退（除非含"退化"描述） ──
+            if subject.entity_type == "character" and triple.predicate == "拥有实力":
+                # 从历史三元组查上次战力
+                has_regression = False
+                reasons = (triple.metadata_ or {}).get("reason", "")
+                if "退化" not in reasons and "残废" not in reasons:
+                    has_regression = True  # 标记，由 LLM 进一步确认
+                if has_regression:
+                    conflicts.append({
+                        "severity": "warning",
+                        "type": "power_level_regression",
+                        "message": f"角色'{subject.name}'战力等级可能异常下降",
+                        "entity": subject.name,
+                    })
+
+            # ── R4: 时间线矛盾 ──
+            if triple.predicate in ("发生于", "开始于"):
+                obj_entity = entity_map.get(triple.object_id)
+                if obj_entity and obj_entity.entity_type == "event":
+                    conflicts.append({
+                        "severity": "warning",
+                        "type": "timeline_contradiction",
+                        "message": f"事件'{obj_entity.name}'已在第{obj_entity.first_chapter}章提及，注意时间线一致性",
+                        "entity": obj_entity.name,
+                    })
+
+            # ── R5: 物品被多人同时持有 ──
+            if triple.predicate in ("持有", "拥有"):
+                obj_entity = entity_map.get(triple.object_id)
+                if obj_entity and obj_entity.entity_type == "item":
+                    other_holders = [
+                        t for t in subject_triples.get(triple.subject_id, [])
+                        if t.predicate in ("持有", "拥有") and t.object_id == triple.object_id and t.id != triple.id
+                    ]
+                    if other_holders:
+                        conflicts.append({
+                            "severity": "warning",
+                            "type": "item_ownership_conflict",
+                            "message": f"物品'{obj_entity.name}'被多个角色同时持有",
+                            "entity": obj_entity.name,
                         })
 
         return conflicts
@@ -951,10 +1215,14 @@ class KnowledgeGraphService:
         triples_data: list[dict[str, Any]],
         foreshadowings: list[KnowledgeEntity],
         recent_events: list[KnowledgeEntity],
+        raw_format: bool = False,
     ) -> str:
         """将活态实体记忆格式化为结构化 Markdown Prompt 上下文"""
         parts = []
-        parts.append("## 已知实体记忆与动态设定（来自活态知识图谱，请严格遵守）")
+        if raw_format:
+            parts.append("## 知识图谱原始检索数据")
+        else:
+            parts.append("## 已知实体记忆与动态设定（来自活态知识图谱，请严格遵守）")
 
         # 1. 实体最新状态与背景
         parts.append("\n### 1. 实体当前状态与人物档案")

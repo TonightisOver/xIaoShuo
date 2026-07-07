@@ -41,6 +41,7 @@ class Settings(BaseSettings):
 
     # Knowledge Graph
     KNOWLEDGE_GRAPH_ENABLED: bool = True
+    KG_SUBAGENT_ENABLED: bool = True
 
     # Encryption
     LLM_ENCRYPTION_KEY: str = ""

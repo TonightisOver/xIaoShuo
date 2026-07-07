@@ -322,10 +322,29 @@ async def _generate_single_chapter_inner(
     kg_context = ""
     if kg_service and novel_id:
         try:
-            kg_context = await kg_service.retrieve_context(
+            from src.core.config import get_settings
+            settings = get_settings()
+            use_subagent = settings.KG_SUBAGENT_ENABLED
+            
+            raw_kg_context = await kg_service.retrieve_context(
                 novel_id=novel_id,
                 chapter_outline=chapter_outline,
+                raw_format=use_subagent
             )
+            
+            if use_subagent:
+                from src.core.agents.memory_curator import MemoryCuratorAgent
+                curator = MemoryCuratorAgent()
+                kg_context = await curator.curate(
+                    chapter_outline=chapter_outline,
+                    raw_kg_context=raw_kg_context,
+                    story_bible_context=story_bible_context
+                )
+                # 已经合并到 kg_context 备忘录中，避免重复
+                story_bible_context = "（已整合进活态知识图谱上下文中）"
+            else:
+                kg_context = raw_kg_context
+                
         except Exception as e:
             logger.warning("kg_context_retrieval_failed", error=str(e))
 
@@ -410,15 +429,7 @@ async def _generate_single_chapter_inner(
         content = await client.generate(prompt, max_tokens=gen_max_tokens, use_flash=True)
 
     # 6. 章节知识抽取（可选）
-    if kg_service and novel_id:
-        try:
-            await kg_service.extract_from_chapter(
-                novel_id=novel_id,
-                chapter_number=chapter_outline.get("chapter", 0),
-                chapter_text=content,
-            )
-        except Exception as e:
-            logger.warning("kg_extraction_failed", error=str(e))
+    # 注：已将提取流程移动到 quality_check.py 节点，以等待连续性编辑报告完成
 
     # 7. Word count check and continuation for long-form mode
     word_count = len(content)
