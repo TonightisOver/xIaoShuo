@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # Knowledge Graph
     KNOWLEDGE_GRAPH_ENABLED: bool = True
     KG_SUBAGENT_ENABLED: bool = True
+    EMBEDDING_MODEL: str = "text-embedding-ada-002"
+    EMBEDDING_DIM: int = 1536
+    EMBEDDING_BASE_URL: str | None = None  # 默认 None 时使用 DEEPSEEK_BASE_URL
 
     # Encryption
     LLM_ENCRYPTION_KEY: str = ""

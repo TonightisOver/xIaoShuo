@@ -277,3 +277,61 @@ def get_llm_client() -> LLMClient:
     if _client is None:
         _client = LLMClient()
     return _client
+
+
+# ---------------------------------------------------------------------------
+# Embedding helpers
+# ---------------------------------------------------------------------------
+
+_embedding_client: httpx.AsyncClient | None = None
+
+
+def get_embedding_client() -> httpx.AsyncClient:
+    """获取 embedding 专用的 httpx 客户端单例。
+
+    使用 DEEPSEEK_BASE_URL（或 EMBEDDING_BASE_URL 若配置），
+    方便复用连接。
+
+    Returns:
+        httpx.AsyncClient 实例
+    """
+    global _embedding_client
+    if _embedding_client is None:
+        settings = get_settings()
+        base_url = settings.EMBEDDING_BASE_URL or settings.DEEPSEEK_BASE_URL
+        _embedding_client = httpx.AsyncClient(
+            base_url=base_url,
+            headers={
+                "Authorization": f"Bearer {settings.DEEPSEEK_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            timeout=settings.DEEPSEEK_TIMEOUT,
+        )
+    return _embedding_client
+
+
+async def embed_texts(texts: list[str]) -> list[list[float]]:
+    """调用 DeepSeek 兼容的 embedding 接口批量生成向量。
+
+    Args:
+        texts: 需要生成向量的文本列表
+
+    Returns:
+        与 texts 一一对应的向量列表；若 API 失败则返回全零向量。
+    """
+    settings = get_settings()
+    dim = settings.EMBEDDING_DIM
+
+    try:
+        client = get_embedding_client()
+        payload = {
+            "model": settings.EMBEDDING_MODEL,
+            "input": texts,
+        }
+        resp = await client.post("/embeddings", json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+        return [item["embedding"] for item in data.get("data", [])]
+    except Exception as exc:
+        logger.warning("embedding_api_failed_fallback", error=str(exc))
+        return [[0.0] * dim for _ in texts]

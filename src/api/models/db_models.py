@@ -547,6 +547,7 @@ class KnowledgeEntity(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     aliases: Mapped[list] = mapped_column(JSON, default=list)
     attributes: Mapped[dict] = mapped_column(JSON, default=dict)
+    embedding: Mapped[list[float] | None] = mapped_column(JSON, nullable=True)
     first_chapter: Mapped[int] = mapped_column(Integer, nullable=False)
     last_chapter: Mapped[int | None] = mapped_column(Integer)
     source: Mapped[str] = mapped_column(String(20), default="extracted")

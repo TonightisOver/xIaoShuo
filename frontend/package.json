@@ -11,6 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "cytoscape": "^3.34.0",
     "d3-drag": "^3.0.0",
     "d3-force": "^3.0.0",
     "d3-hierarchy": "^3.1.0",

@@ -8,7 +8,7 @@ Tests cover:
 5. structlog replacement — services import correctly
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -308,7 +308,10 @@ class TestGenerateSingleChapter:
 
         chapter_outline = {"chapter": 2, "title": "测试"}
 
-        await generate_single_chapter(
+        # 关闭 Sub-Agent 模式避免 MemoryCurator 改写 story_bible_context
+        with patch("src.core.config.get_settings") as mock_settings:
+            mock_settings.return_value = MagicMock(KG_SUBAGENT_ENABLED=False)
+            await generate_single_chapter(
             client=mock_client,
             chapter_outline=chapter_outline,
             previous_chapter="前文",
@@ -321,8 +324,10 @@ class TestGenerateSingleChapter:
         mock_kg.retrieve_context.assert_awaited_once_with(
             novel_id="novel-kg-1",
             chapter_outline=chapter_outline,
+            raw_format=False,
         )
-        mock_kg.extract_from_chapter.assert_awaited_once()
+        # 知识抽取已移至 quality_check 节点（KG_SUBAGENT_ENABLED/Triple Agent 架构），
+        # generate_single_chapter 不再负责 extract_from_chapter 调用
         prompt = mock_client.generate.call_args[0][0]
         assert "知识图谱上下文信息" in prompt
 

@@ -252,7 +252,11 @@ class TestChapterPlanningCheckCascade:
         kg_mock.retrieve_context = AsyncMock(return_value="【图谱记忆】林动与林琅天有仇怨")
         kg_mock.extract_from_chapter = AsyncMock()
 
-        result = await generate_single_chapter(
+        # Mock KG_SUBAGENT_ENABLED=False to prevent MemoryCurator from
+        # replacing story_bible_context with a curator-generated memo
+        with patch("src.core.config.get_settings") as mock_settings:
+            mock_settings.return_value = MagicMock(KG_SUBAGENT_ENABLED=False, SPEC="Settings")
+            result = await generate_single_chapter(
             client=client,
             chapter_outline=chapter_outline,
             previous_chapter=previous_chapter,
@@ -284,5 +288,5 @@ class TestChapterPlanningCheckCascade:
         assert result["content"] == mock_chapter_text
         assert result["word_count"] > 0
 
-        # 5. Verify knowledge graph auto extraction called on completion
-        assert kg_mock.extract_from_chapter.called
+        # 5. 知识抽取已移至 quality_check 节点，本章节生成不负责抽取
+        assert kg_mock.retrieve_context.called

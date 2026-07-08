@@ -4,6 +4,7 @@
 """
 
 import json
+import math
 import time
 import uuid
 from typing import Any
@@ -21,7 +22,7 @@ from src.api.models.db_models import (
 from src.core.config import get_settings
 from src.core.database import get_db_session
 from src.core.json_utils import safe_json_parse
-from src.core.llm.client import get_llm_client
+from src.core.llm.client import get_llm_client, embed_texts as _embed_texts
 
 logger = structlog.get_logger(__name__)
 
@@ -233,9 +234,11 @@ class KnowledgeGraphService:
             current_ch = chapter_outline.get("chapter", 1)
             outline_text = json.dumps(chapter_outline, ensure_ascii=False)
 
-            # 1. 精准匹配大纲中提到的实体名称（包含别名）
+            # 1. 获取所有实体
             entities = await self._get_existing_entities(novel_id)
-            mentioned_entities = []
+
+            # 2. 精确匹配大纲中提到的实体名称（包含别名）
+            exact_match_entities = []
             for e in entities:
                 mentioned = False
                 if e.name and e.name in outline_text:
@@ -246,7 +249,55 @@ class KnowledgeGraphService:
                             mentioned = True
                             break
                 if mentioned:
-                    mentioned_entities.append(e)
+                    exact_match_entities.append(e)
+
+            mentioned_entities = exact_match_entities
+
+            # 3. 当子代理模式启用且 outline 文本足够长时，使用 embedding 语义相似度补充
+            if (
+                len(outline_text) > 50
+                and hasattr(settings, "KG_SUBAGENT_ENABLED")
+                and isinstance(settings.KG_SUBAGENT_ENABLED, bool)
+                and settings.KG_SUBAGENT_ENABLED
+            ):
+                try:
+                    # 筛选出有 embedding 向量的实体
+                    entities_with_embedding = [
+                        e for e in entities
+                        if e.embedding is not None and isinstance(e.embedding, list) and len(e.embedding) > 0
+                    ]
+                    if entities_with_embedding:
+                        # 为 outline 生成 embedding
+                        outline_embeddings = await _embed_texts([outline_text])
+                        if outline_embeddings and outline_embeddings[0]:
+                            outline_vec = outline_embeddings[0]
+
+                            def cosine_similarity(a: list[float], b: list[float]) -> float:
+                                dot = sum(av * bv for av, bv in zip(a, b))
+                                norm_a = math.sqrt(sum(av * av for av in a))
+                                norm_b = math.sqrt(sum(bv * bv for bv in b))
+                                if norm_a == 0 or norm_b == 0:
+                                    return 0.0
+                                return dot / (norm_a * norm_b)
+
+                            SIMILARITY_THRESHOLD = 0.5
+                            scored = []
+                            for e in entities_with_embedding:
+                                sim = cosine_similarity(outline_vec, e.embedding)
+                                if sim >= SIMILARITY_THRESHOLD:
+                                    scored.append((sim, e))
+                            scored.sort(key=lambda x: x[0], reverse=True)
+                            top_k = scored[:20]
+
+                            embedding_matched_ids = {e.id for _, e in top_k}
+                            exact_matched_ids = {e.id for e in exact_match_entities}
+                            all_entity_ids = exact_matched_ids | embedding_matched_ids
+                            mentioned_entities = [
+                                e for e in entities if e.id in all_entity_ids
+                            ]
+                except Exception as embed_err:
+                    logger.warning("embedding_similarity_fallback", error=str(embed_err))
+                    mentioned_entities = exact_match_entities
 
             if not mentioned_entities:
                 return ""

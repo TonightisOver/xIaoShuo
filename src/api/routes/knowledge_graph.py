@@ -437,6 +437,58 @@ async def list_extraction_logs(novel_id: str):
         ]
 
 
+@router.get("/logs")
+async def list_knowledge_graph_logs(novel_id: str):
+    """获取知识图谱抽取日志列表（最新优先，最多 100 条）"""
+    async with get_db_session() as session:
+        result = await session.execute(
+            select(KnowledgeExtractionLog)
+            .where(KnowledgeExtractionLog.novel_id == novel_id)
+            .order_by(KnowledgeExtractionLog.created_at.desc())
+            .limit(100)
+        )
+        logs = result.scalars().all()
+        return [
+            {
+                "chapter_number": log.chapter_number,
+                "status": log.status,
+                "entities_count": log.entities_count,
+                "triples_count": log.triples_count,
+                "duration_ms": log.duration_ms,
+                "error_message": log.error_message,
+                "created_at": log.created_at.isoformat(),
+            }
+            for log in logs
+        ]
+
+
+@router.get("/conflicts")
+async def list_kg_conflicts(novel_id: str):
+    """获取一致性检查冲突记录（从 ChapterVersion.kg_conflicts 字段查询）"""
+    from src.api.models.db_models import ChapterVersion
+
+    async with get_db_session() as session:
+        result = await session.execute(
+            select(ChapterVersion)
+            .where(and_(
+                ChapterVersion.novel_id == novel_id,
+                ChapterVersion.kg_conflicts.isnot(None),
+            ))
+            .order_by(ChapterVersion.created_at.desc())
+            .limit(100)
+        )
+        versions = result.scalars().all()
+        return [
+            {
+                "chapter_number": v.chapter_number,
+                "version_number": v.version_number,
+                "conflicts": v.kg_conflicts,
+                "created_at": v.created_at.isoformat(),
+            }
+            for v in versions
+        ]
+
+
 @router.get("/visualization", response_model=VisualizationResponse)
 async def get_visualization(novel_id: str):
     """获取可视化数据（nodes + edges 格式）"""
@@ -451,6 +503,8 @@ async def get_visualization(novel_id: str):
                 "id": e.id, "name": e.name,
                 "type": e.entity_type,
                 "attributes": e.attributes or {},
+                "first_chapter": e.first_chapter,
+                "last_chapter": e.last_chapter,
             }
             for e in entities
         ]
@@ -465,10 +519,12 @@ async def get_visualization(novel_id: str):
         triples = list(triple_result.scalars().all())
         edges = [
             {
+                "id": t.id,
                 "source": t.subject_id,
                 "target": t.object_id,
                 "predicate": t.predicate,
                 "chapter": t.chapter_number,
+                "confidence": t.confidence,
             }
             for t in triples
         ]

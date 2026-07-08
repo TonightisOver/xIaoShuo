@@ -16,6 +16,7 @@ const routes = [
   { path: '/novels/:id/storylines', name: 'storylines', component: () => import('../views/StorylineManager.vue') },
   { path: '/novels/:id/graph', name: 'graph', component: () => import('../views/RelationGraph.vue') },
   { path: '/novels/:id/foreshadows', name: 'foreshadows', component: () => import('../views/ForeshadowTracker.vue') },
+  { path: '/novels/:id/knowledge-graph', name: 'knowledge-graph', component: () => import('../views/KnowledgeGraphView.vue') },
   { path: '/settings/llm', name: 'LLMSettings', component: () => import('../views/LLMSettings.vue') },
   { path: '/inspiration', name: 'inspiration', component: () => import('../views/Inspiration.vue') },
 ]

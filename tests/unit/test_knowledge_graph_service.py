@@ -644,6 +644,135 @@ class TestCheckConsistency:
             # "被提及" is not in the action predicates list
             assert result == []
 
+    @pytest.mark.asyncio
+    async def test_location_conflict_detected(self):
+        """R2: same character in two different locations within the same chapter."""
+        character = _make_entity("张三")
+        location_a = _make_entity("长安城", entity_type="location")
+        location_b = _make_entity("洛阳城", entity_type="location")
+
+        triple_a = _make_triple(
+            subject_id=character.id,
+            predicate="位于",
+            object_id=location_a.id,
+            chapter_number=3,
+        )
+        triple_b = _make_triple(
+            subject_id=character.id,
+            predicate="位于",
+            object_id=location_b.id,
+            chapter_number=3,
+        )
+
+        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+            mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
+
+            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            service = KnowledgeGraphService()
+            service._get_chapter_triples = AsyncMock(return_value=[triple_a, triple_b])
+            service._get_existing_entities = AsyncMock(
+                return_value=[character, location_a, location_b]
+            )
+            service._build_history_context = AsyncMock(return_value="history")
+            service._llm_consistency_check = AsyncMock(return_value=[])
+
+            result = await service.check_consistency("novel-030", 3, "张三出现在两地")
+
+            assert len(result) >= 1
+            assert "location_conflict" in [c["type"] for c in result]
+
+    @pytest.mark.asyncio
+    async def test_power_level_regression_not_flagged_with_degradation_reason(self):
+        """R3: power-level regression with metadata reason='退化' is not flagged."""
+        character = _make_entity("王五")
+
+        triple = _make_triple(
+            subject_id=character.id,
+            predicate="拥有实力",
+            object_id=character.id,
+            chapter_number=4,
+        )
+        triple.metadata_ = {"reason": "退化"}
+
+        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+            mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
+
+            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            service = KnowledgeGraphService()
+            service._get_chapter_triples = AsyncMock(return_value=[triple])
+            service._get_existing_entities = AsyncMock(return_value=[character])
+            service._llm_consistency_check = AsyncMock(return_value=[])
+
+            result = await service.check_consistency("novel-030", 4, "王五功力退化")
+
+            assert "power_level_regression" not in [c["type"] for c in result]
+            # LLM check should not be triggered either
+            service._llm_consistency_check.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_timeline_contradiction_detected(self):
+        """R4: triple with '发生于' predicate and event object triggers timeline contradiction."""
+        character = _make_entity("张三")
+        event = _make_entity("大婚", entity_type="event", first_chapter=2)
+
+        triple = _make_triple(
+            subject_id=character.id,
+            predicate="发生于",
+            object_id=event.id,
+            chapter_number=5,
+        )
+
+        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+            mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
+
+            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            service = KnowledgeGraphService()
+            service._get_chapter_triples = AsyncMock(return_value=[triple])
+            service._get_existing_entities = AsyncMock(return_value=[character, event])
+            service._build_history_context = AsyncMock(return_value="history")
+            service._llm_consistency_check = AsyncMock(return_value=[])
+
+            result = await service.check_consistency("novel-030", 5, "大婚发生于此时")
+
+            assert len(result) >= 1
+            assert "timeline_contradiction" in [c["type"] for c in result]
+            assert "大婚" in result[0]["entity"]
+
+    @pytest.mark.asyncio
+    async def test_item_ownership_conflict_detected(self):
+        """R5: same item held twice by the same subject triggers ownership conflict."""
+        character = _make_entity("张三")
+        item = _make_entity("青锋剑", entity_type="item")
+
+        triple_a = _make_triple(
+            subject_id=character.id,
+            predicate="持有",
+            object_id=item.id,
+            chapter_number=5,
+        )
+        triple_b = _make_triple(
+            subject_id=character.id,
+            predicate="拥有",
+            object_id=item.id,
+            chapter_number=5,
+        )
+
+        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+            mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
+
+            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            service = KnowledgeGraphService()
+            service._get_chapter_triples = AsyncMock(return_value=[triple_a, triple_b])
+            service._get_existing_entities = AsyncMock(return_value=[character, item])
+            service._build_history_context = AsyncMock(return_value="history")
+            service._llm_consistency_check = AsyncMock(return_value=[])
+
+            result = await service.check_consistency("novel-030", 5, "张三持有青锋剑")
+
+            assert len(result) >= 1
+            assert "item_ownership_conflict" in [c["type"] for c in result]
+            assert "青锋剑" in result[0]["entity"]
+
 
 # ---------------------------------------------------------------------------
 # _format_context

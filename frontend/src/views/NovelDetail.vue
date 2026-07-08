@@ -68,6 +68,16 @@
             <span>伏笔追踪</span>
           </router-link>
 
+          <router-link
+            :to="`/novels/${novelId}/knowledge-graph`"
+            class="btn-secondary text-sm flex items-center gap-1.5"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-purple-600">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m14.559 0A8.965 8.965 0 0012 3.5a8.965 8.965 0 00-7.716 4.082m14.559 0A8.973 8.973 0 0112 20.5a8.973 8.973 0 01-7.716-4.082" />
+            </svg>
+            <span>知识图谱</span>
+          </router-link>
+
           <button
             @click="showExportDialog = true"
             class="btn-secondary text-sm flex items-center gap-1.5"
