@@ -194,6 +194,80 @@ class TaskManager:
             await session.commit()
             logger.error(f"Task {task_id} failed: {error}")
 
+    async def set_review_decision(
+        self, task_id: str, status: str, instructions: str = "",
+    ) -> None:
+        """设置人工审核决策
+
+        将审核决策写入 task progress，供后续流水线读取。
+
+        Args:
+            task_id: 任务 ID
+            status: 审核结果 (approved/rejected/revision)
+            instructions: 修改意见
+        """
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(Task).where(Task.task_id == task_id)
+            )
+            task = result.scalar_one_or_none()
+
+            if not task:
+                logger.warning(f"Task {task_id} not found")
+                return
+
+            # Merge decision into progress
+            current_progress = task.progress or {}
+            current_progress.update({
+                "review_decision": status,
+                "review_instructions": instructions,
+                "reviewed_at": datetime.now().isoformat(),
+            })
+            task.progress = current_progress
+
+            # If rejected, mark task as failed
+            if status == "rejected":
+                task.status = "failed"
+
+            await session.commit()
+            logger.info(f"Review decision set for task {task_id}: {status}")
+
+    async def get_review_data(self, task_id: str) -> dict[str, str | bool | None]:
+        """获取待审核数据
+
+        Returns:
+            dict with:
+                current_stage: 当前阶段
+                approval_status: 审核状态
+                waiting_for_review: 是否在等待审核
+                progress: 进度信息
+                result: 任务结果
+        """
+        task = await self.get_task(task_id)
+        if not task:
+            return {
+                "current_stage": "",
+                "approval_status": "none",
+                "waiting_for_review": False,
+                "progress": None,
+                "result": None,
+            }
+
+        progress = task.get("progress") or {}
+        current_stage = progress.get("current_stage", "")
+        approval_status = progress.get("review_decision", "pending")
+        waiting_for_review = (
+            current_stage == "human_review" and approval_status == "pending"
+        )
+
+        return {
+            "current_stage": current_stage,
+            "approval_status": approval_status,
+            "waiting_for_review": waiting_for_review,
+            "progress": progress,
+            "result": task.get("result"),
+        }
+
     async def expire_stale_tasks(self, hours: int = 2) -> int:
         """将超时未完成的任务标记为失败"""
         cutoff = datetime.now() - timedelta(hours=hours)

@@ -1,9 +1,12 @@
-"""add_embedding_to_knowledge_entities
+"""add_embedding_to_knowledge_entities (renamed to fix duplicate revision id)
 
-Revision ID: e1f2a3b4c5d6
-Revises: b0018a838516
-Create Date: 2026-07-07 10:00:00.000000
+Revision ID: a1f3e7c2d9b8
+Revises: 20c40220fe09
+Create Date: 2026-07-09 01:00:00.000000
 
+NOTE: This file was previously 0dbde18317da which collided with an existing
+migration id 0dbde18317da_add_knowledge_entity_states.py. Renamed revision
+to a fresh unique id to avoid "Multiple head revisions" error.
 """
 from collections.abc import Sequence
 
@@ -12,8 +15,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = 'e1f2a3b4c5d6'
-down_revision: str | Sequence[str] | None = 'b0018a838516'
+revision: str = "a1f3e7c2d9b8"
+down_revision: str | Sequence[str] | None = "20c40220fe09"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

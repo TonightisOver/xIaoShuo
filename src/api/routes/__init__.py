@@ -18,6 +18,7 @@ from .outline_sync import router as outline_sync_router
 from .outlines import router as outlines_router
 from .projects import router as projects_router
 from .reader_simulation import router as reader_simulation_router
+from .review import router as review_router
 from .story_bible import router as story_bible_router
 from .storylines import router as storylines_router
 from .style import router as style_router
@@ -33,6 +34,7 @@ __all__ = [
     "storylines_router", "knowledge_graph_router", "story_bible_router",
     "export_router", "outline_sync_router", "reader_simulation_router",
     "llm_config_router", "inspiration_router",
+    "review_router",
 ]
 
 

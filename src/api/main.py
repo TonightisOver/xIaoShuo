@@ -27,6 +27,7 @@ from src.api.routes import (
     outlines_router,
     projects_router,
     reader_simulation_router,
+    review_router,
     story_bible_router,
     storylines_router,
     style_router,
@@ -166,6 +167,7 @@ app.include_router(story_bible_router)
 app.include_router(export_router)
 app.include_router(outline_sync_router)
 app.include_router(reader_simulation_router)
+app.include_router(review_router)
 app.include_router(llm_config_router)
 app.include_router(volumes_router)
 app.include_router(world_router)
