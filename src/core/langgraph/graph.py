@@ -1,6 +1,6 @@
 """LangGraph 流程图定义"""
 
-from langgraph.checkpoint.memory import MemorySaver
+from src.core.langgraph.checkpointer import get_checkpointer
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
@@ -76,7 +76,7 @@ def create_novel_graph() -> CompiledStateGraph:
     graph.add_edge("human_review", END)
 
     # 配置 checkpointer
-    checkpointer = MemorySaver()
+    checkpointer = get_checkpointer()
 
     return graph.compile(checkpointer=checkpointer)
 
@@ -141,7 +141,7 @@ def create_volume_generation_graph() -> CompiledStateGraph:
 
     graph.add_edge("human_review", END)
 
-    checkpointer = MemorySaver()
+    checkpointer = get_checkpointer()
     return graph.compile(checkpointer=checkpointer)
 
 
@@ -172,5 +172,5 @@ def create_long_form_graph() -> CompiledStateGraph:
     # 单节点直接结束
     graph.add_edge("master_outline_generation", END)
 
-    checkpointer = MemorySaver()
+    checkpointer = get_checkpointer()
     return graph.compile(checkpointer=checkpointer)

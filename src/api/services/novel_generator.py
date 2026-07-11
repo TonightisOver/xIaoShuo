@@ -4,7 +4,6 @@
 """
 
 import asyncio
-import math
 from typing import Any
 
 import structlog
@@ -95,38 +94,13 @@ async def _persist_quality_to_version(
         novel_id, chapter_number, quality_scores, consistency_warnings,
     )
 
-STAGE_ORDER = [
-    "idea_expansion",
-    "world_building",
-    "character_design",
-    "outline_generation",
-    "chapter_generation",
-    "quality_check",
-    "human_review",
-]
-
-
-def calculate_long_form_chapter_plan(request: Any) -> dict[str, int]:
-    """Calculate actual long-form chapter counts used by generation."""
-    if request.auto_calc_chapters:
-        estimated_total_chapters = math.ceil(
-            request.target_words / request.words_per_chapter
-        )
-        computed_chapters_per_volume = math.ceil(
-            estimated_total_chapters / request.volumes
-        )
-        chapters_per_volume = max(20, min(60, computed_chapters_per_volume))
-    else:
-        estimated_total_chapters = request.volumes * request.chapters_per_volume
-        computed_chapters_per_volume = request.chapters_per_volume
-        chapters_per_volume = request.chapters_per_volume
-
-    return {
-        "estimated_total_chapters": estimated_total_chapters,
-        "computed_chapters_per_volume": computed_chapters_per_volume,
-        "chapters_per_volume": chapters_per_volume,
-        "total_chapters": request.volumes * chapters_per_volume,
-    }
+# 规划常量与纯函数提取到独立模块（向后兼容 re-export）
+from src.api.services.novel_generator_planning import (
+    FULL_GENERATE_STAGES,
+    STAGE_ORDER,
+    _full_generate_percentage,
+    calculate_long_form_chapter_plan,
+)
 
 
 async def _build_initial_state(
@@ -183,6 +157,9 @@ async def generate_novel_background(
     task_id: str, request: CreateNovelRequest
 ) -> None:
     """后台执行小说生成"""
+    from src.core.trace_context import _bind_trace, _clear_trace
+
+    _trace_token = _bind_trace(task_id)
     task_manager = get_task_manager()
     novel_id: str | None = None
 
@@ -227,34 +204,12 @@ async def generate_novel_background(
                 await get_novel_manager().update_novel(novel_id, status="failed")
             except Exception as ne:
                 logger.error("failed_to_update_novel_status", novel_id=novel_id, error=str(ne))
+    finally:
+        _clear_trace(_trace_token)
 
 
-FULL_GENERATE_STAGES = [
-    "idea_expansion",
-    "world_building",
-    "character_design",
-    "outline_generation",
-    "chapter_generation",
-    "quality_check",
-    "human_review",
-    "power_systems",
-    "outline_persist",
-    "storylines",
-    "character_arcs",
-    "scenes",
-    "auto_conversation",
-]
-
-
-def _full_generate_percentage(stage_index: int, total_stages: int | None = None) -> int:
-    """Calculate percentage for a stage index (0-based).
-
-    Args:
-        stage_index: 0-based index of the current stage.
-        total_stages: Override total stage count (defaults to len(FULL_GENERATE_STAGES)).
-    """
-    total = total_stages if total_stages is not None else len(FULL_GENERATE_STAGES)
-    return int(((stage_index + 1) / total) * 100)
+# FULL_GENERATE_STAGES 与 _full_generate_percentage 已提取到 novel_generator_planning
+# （上方 import 已 re-export，保持向后兼容）
 
 
 async def _run_langgraph_pipeline(

@@ -65,6 +65,18 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("Database initialized")
 
+    # 恢复服务重启时被中断的任务（孤儿 running 任务标记为 failed）
+    from src.api.services.task_manager import get_task_manager
+    recovered = await get_task_manager().recover_interrupted_tasks()
+    if recovered:
+        logger.info("interrupted_tasks_recovered", count=recovered)
+
+    # 注入 AgentJournal 服务到 core 层记录器端口（依赖反转）
+    # Sub-Agent 通过 get_journal_recorder() 访问日志记录器，无需直接依赖 api 层
+    from src.api.services.agent_journal_service import get_journal_service
+    get_journal_service()
+    logger.info("agent_journal_recorder_registered")
+
     # 初始化 LLMClient 全局单例 — 优先使用数据库激活配置
     from sqlalchemy import select as _sa_select
 

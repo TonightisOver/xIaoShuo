@@ -342,6 +342,16 @@
         :storylines-data="storylinesData"
       />
 
+      <!-- Review Dialog (HITL) -->
+      <ReviewDialog
+        v-if="reviewDialogVisible"
+        :task-id="novel.active_task_id"
+        :visible="reviewDialogVisible"
+        :auto-close="true"
+        @decision="onReviewDecision"
+        @cancel="reviewDialogVisible = false"
+      />
+
       <!-- Tab Content: Quality Report -->
       <NovelQualityTab
         v-if="activeTab === 'quality-report'"
@@ -381,11 +391,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import NovelChaptersTab from '../components/NovelChaptersTab.vue'
 import NovelStorylinesTab from '../components/NovelStorylinesTab.vue'
 import NovelQualityTab from '../components/NovelQualityTab.vue'
+import ReviewDialog from '../components/ReviewDialog.vue'
 import { useNovelData } from '../composables/useNovelData.js'
 import { useNovelActions } from '../composables/useNovelActions.js'
 
@@ -396,6 +407,17 @@ const { novel, world, characters, chapters, volumes, conversations, powerSystems
 const { generating, fullGenerating, deleteTargetUnassigned, generate, fullGenerate, startConversation, handleGenerateVolume, handleGenerateChapters, confirmDeleteUnassigned, doDeleteUnassigned, cleanupFailedChapters } = useNovelActions(novelId, chapters)
 
 const activeTab = ref('overview')
+const tabs = computed(() => [
+  { id: 'overview', label: '概览' },
+  { id: 'outlines', label: '大纲' },
+  { id: 'world', label: '世界观' },
+  { id: 'power-systems', label: '力量体系' },
+  { id: 'characters', label: '人物' },
+  { id: 'chapters', label: '章节' },
+  { id: 'storylines', label: '故事线' },
+  { id: 'quality-report', label: '质量报告' },
+  { id: 'conversations', label: '对话' },
+])
 const showRangeDialog = ref(false)
 const showExportDialog = ref(false)
 const editingOverview = ref(false)
@@ -404,13 +426,44 @@ const overviewSaved = ref(false)
 const overviewError = ref('')
 const overviewForm = ref({ title: '', idea: '' })
 
-const tabs = [
-  { id: 'overview', label: '概览' }, { id: 'outlines', label: '大纲' },
-  { id: 'world', label: '世界观' }, { id: 'power-systems', label: '力量体系' },
-  { id: 'characters', label: '人物' }, { id: 'chapters', label: '章节' },
-  { id: 'storylines', label: '故事线' }, { id: 'conversations', label: '创作对话' },
-  { id: 'quality-report', label: '质量评估' },
-]
+// HITL 审核对话框
+const reviewDialogVisible = ref(false)
+const reviewPollingTimer = ref(null)
+
+// 轮询任务审核状态，如有 pending review 自动弹出对话框
+async function checkReviewStatus() {
+  const taskId = novel.value?.active_task_id
+  if (!taskId) return
+  try {
+    const res = await fetch(`/api/v1/tasks/${taskId}/review`)
+    if (!res.ok) return
+    const data = await res.json()
+    if (data.waiting_for_review) {
+      reviewDialogVisible.value = true
+      stopReviewPolling()
+    }
+  } catch { /* 静默忽略 */ }
+}
+
+function startReviewPolling() {
+  if (reviewPollingTimer.value) return
+  checkReviewStatus()
+  reviewPollingTimer.value = setInterval(checkReviewStatus, 5000)
+}
+
+function stopReviewPolling() {
+  if (reviewPollingTimer.value) {
+    clearInterval(reviewPollingTimer.value)
+    reviewPollingTimer.value = null
+  }
+}
+
+function onReviewDecision() {
+  reviewDialogVisible.value = false
+  stopReviewPolling()
+  // 延迟刷新，等后端状态更新
+  setTimeout(() => { fetchAll() }, 1500)
+}
 
 const statusLabel = computed(() => ({ draft: '草稿', generating: '生成中', completed: '已完成', failed: '失败' })[novel.value?.status] || novel.value?.status)
 const unassignedChapters = computed(() => chapters.value.filter(c => !c.volume_number))
@@ -440,5 +493,12 @@ async function saveOverview() {
 function handleDeleteChapter(chapterNumber) { chapters.value = chapters.value.filter(c => c.chapter_number !== chapterNumber) }
 function onGenerateChapters(range) { showRangeDialog.value = false; handleGenerateChapters(range) }
 
-onMounted(fetchAll)
+onMounted(() => {
+  fetchAll()
+  if (novel.value?.status === 'generating') {
+    startReviewPolling()
+  }
+})
+
+onUnmounted(stopReviewPolling)
 </script>

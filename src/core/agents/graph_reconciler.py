@@ -1,9 +1,12 @@
 """图谱协调者 Sub-Agent"""
 
 import json
+import time
+
 import structlog
 from src.core.json_utils import safe_json_parse
 from src.core.llm.client import get_llm_client
+from src.core.agents.journal_recorder import get_journal_recorder
 
 logger = structlog.get_logger(__name__)
 
@@ -27,15 +30,35 @@ GRAPH_RECONCILER_PROMPT = """你是一个小说知识图谱协调专家（Graph 
 ### 3. 已有的实体与关系上下文 (Existing Entities)
 {existing_entities}
 
-## 你的任务
-请输出以下更新列表（必须是严格 JSON 格式）：
+## 三阶段分级原则
+
+你需要对每个待写入实体进行分级判定：
+
+### Stage 1 — block（严格拦截）
+- 被 Continuity Report 标记为 `verdict=block` 的严重矛盾实体
+- 违背核心世界观设定的实体（例如角色死亡后复活无剧情说明）
+- 将这些实体放入 `blocked_entities` 列表，并给出 `reason`
+
+### Stage 2 — pass（自动合并）
+- 无任何矛盾的常规实体/关系
+- `_needs_review=False`，可直接写入图谱
+- 放入 `entities_to_upsert` / `triples_to_add` / `entity_status_updates`
+
+### Stage 3 — escalate（需要人工确认）
+- 被 Continuity Report 标记为 `verdict=warn` 的潜在问题实体
+- 非严重但有不确定性，建议标注 `_needs_review=True`
+- 放入 `entities_to_upsert` 但附带 `_needs_review=True` 标记
+- 不立即写入实体状态（status 保持 pending_review）
+
+## 你的输出（严格 JSON 格式）
 {{
   "entities_to_upsert": [
     {{
       "name": "实体名称",
       "type": "character|location|organization|item|event|foreshadowing",
       "aliases": ["别名"],
-      "attributes": {{ "status": "alive", ... }}
+      "attributes": {{ "status": "alive", ... }},
+      "_needs_review": false
     }}
   ],
   "triples_to_add": [
@@ -58,20 +81,31 @@ GRAPH_RECONCILER_PROMPT = """你是一个小说知识图谱协调专家（Graph 
       "name": "伏笔实体名称",
       "attributes": {{ "foreshadowing_status": "resolved" }}
     }}
+  ],
+  "blocked_entities": [
+    {{
+      "name": "被拦截实体名称",
+      "reason": "被拦截原因描述"
+    }}
   ]
 }}
 
 ## 规则限制
-1. 仅输出合法的 JSON，不要包含 explanations，不要有 markdown 语法块（除了标准的 json 以外），不要有任何前导或后随的文字。
-2. 每一个被允许写入的实体，必须出现在 `entities_to_upsert` 中。如果有实体状态改变，可以在 `entity_status_updates` 或 `entities_to_upsert` 中提供。
-3. 任何在 Continuity Report 中被明确判定为「严重矛盾（block/critical contradiction）」的新实体或关系，应当被**丢弃/过滤**（不要放入输出的任何列表中）。
-4. any 被判定为「合理转折」或「设定扩展」的信息（如角色死亡、关系改变），应当体现在 `entity_status_updates` 或 `triples_to_add` 中，确保图谱能演化。
-5. 伏笔回收的实体应当在 `foreshadowing_resolutions` 中指定。
+1. 仅输出合法的 JSON，不要包含 explanations，不要有 markdown 语法块，不要有任何前导或后随的文字。
+2. `blocked_entities` 必须列出所有因 block/warn 被拦截的实体名称和原因。
+3. `_needs_review=true` 的实体在 `entity_status_updates` 中不立即写入状态，等待人工确认。
+4. `_needs_review=false` 的实体在 `entity_status_updates` 中正常写入最新状态。
+5. 任何被明确判定为「严重矛盾（block/critical contradiction）」的实体，只入 `blocked_entities`，不写入任何 merge 列表。
+6. 伏笔回收的实体应当在 `foreshadowing_resolutions` 中指定。
 """
 
 
 class GraphReconcilerAgent:
     """图谱协调 Sub-Agent：智能解决冲突并更新知识图谱"""
+
+    def __init__(self, task_id: str | None = None, novel_id: int | None = None):
+        self.task_id = task_id
+        self.novel_id = novel_id
 
     async def reconcile(
         self,
@@ -81,6 +115,22 @@ class GraphReconcilerAgent:
     ) -> dict:
         """根据审查报告、抽取结果和已有上下文，智能产出图谱更新决策"""
         logger.info("graph_reconciler_reconciling")
+
+        # 创建日志条目（依赖注入的记录器；未注入时跳过日志）
+        journal = None
+        recorder = get_journal_recorder()
+        if self.task_id and recorder is not None:
+            journal = await recorder.create_entry(
+                task_id=self.task_id,
+                agent_name="graph_reconciler",
+                novel_id=self.novel_id,
+                input_summary={
+                    "continuity_verdict": continuity_report.get("verdict")
+                        if isinstance(continuity_report, dict) else None,
+                    "extracted_length": len(extracted_entities or ""),
+                },
+            )
+        start_time = time.monotonic()
 
         # 格式化报告以安全渲染 JSON 或字典
         if isinstance(continuity_report, dict):
@@ -107,22 +157,59 @@ class GraphReconcilerAgent:
                     "triples_to_add": [],
                     "entity_status_updates": [],
                     "foreshadowing_resolutions": [],
+                    "blocked_entities": [],
                 },
             )
+            # 确保 blocked_entities 字段存在
+            if "blocked_entities" not in result:
+                result["blocked_entities"] = []
+
+            # 统计
+            upsert_count = len(result.get("entities_to_upsert", []))
+            blocked_count = len(result.get("blocked_entities", []))
+            triples_count = len(result.get("triples_to_add", []))
+            updates_count = len(result.get("entity_status_updates", []))
+            resolutions_count = len(result.get("foreshadowing_resolutions", []))
+
             logger.info(
                 "graph_reconciler_completed",
-                upsert_count=len(result.get("entities_to_upsert", [])),
-                triples_count=len(result.get("triples_to_add", [])),
-                updates_count=len(result.get("entity_status_updates", [])),
-                resolutions_count=len(result.get("foreshadowing_resolutions", [])),
+                upsert_count=upsert_count,
+                triples_count=triples_count,
+                updates_count=updates_count,
+                resolutions_count=resolutions_count,
+                blocked_count=blocked_count,
             )
+
+            # 更新日志
+            if journal:
+                await recorder.complete_entry(
+                    entry_id=journal.id,
+                    status="success",
+                    output_summary={
+                        "upsert_count": upsert_count,
+                        "triples_count": triples_count,
+                        "updates_count": updates_count,
+                        "resolutions_count": resolutions_count,
+                        "blocked_count": blocked_count,
+                    },
+                    duration_ms=int((time.monotonic() - start_time) * 1000),
+                    conflict_count=blocked_count,
+                    blocked_entity_count=blocked_count,
+                )
             return result
         except Exception as e:
             logger.warning("graph_reconciler_failed", error=str(e))
+            if journal:
+                await recorder.complete_entry(
+                    entry_id=journal.id, status="failed",
+                    error_message=str(e),
+                    duration_ms=int((time.monotonic() - start_time) * 1000),
+                )
             # 发生异常时，默认不进行任何更新
             return {
                 "entities_to_upsert": [],
                 "triples_to_add": [],
                 "entity_status_updates": [],
                 "foreshadowing_resolutions": [],
+                "blocked_entities": [],
             }

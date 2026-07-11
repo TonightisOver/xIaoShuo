@@ -3,9 +3,13 @@
 import json
 import logging
 import re
-from typing import Any
+from typing import Any, TypeVar
+
+from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T", bound=BaseModel)
 
 
 def safe_json_parse(
@@ -127,3 +131,42 @@ def validate_json_structure(
         return False
 
     return True
+
+
+def validate_typed(
+    data: Any,
+    model: type[T],
+    data_name: str = "LLM output",
+    fallback: T | None = None,
+) -> T | None:
+    """用 Pydantic 模型校验 LLM 返回的结构化数据。
+
+    相比 ``validate_json_structure``（仅检查顶层 key 存在），本函数对字段类型、
+    嵌套结构与可空性做严格校验，拦截 LLM 常见的「结构漂移」（如把 list 写成
+    str、字段缺失、类型错误）。校验失败时记录结构化日志并返回 ``fallback``，
+    避免畸形数据顺着 LangGraph state 流到下游节点引发晦涩的 KeyError。
+
+    Args:
+        data: 待校验的对象（通常是 ``safe_json_parse`` 的结果）。
+        model: Pydantic 模型类。
+        data_name: 数据名称（用于日志）。
+        fallback: 校验失败时返回的降级值。
+
+    Returns:
+        校验通过的模型实例；失败时返回 ``fallback``。
+    """
+    try:
+        return model.model_validate(data)
+    except ValidationError as e:
+        logger.warning(
+            "typed_validation_failed",
+            extra={
+                "data_name": data_name,
+                "model": model.__name__,
+                "error_count": e.error_count(),
+                "errors": e.errors()[:5],  # 截断，避免日志过长
+            },
+        )
+        logger.warning(f"{data_name} failed Pydantic validation ({model.__name__}): {e}")
+        return fallback
+
