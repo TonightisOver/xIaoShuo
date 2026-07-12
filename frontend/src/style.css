@@ -4,8 +4,15 @@
 
 @layer base {
   body {
-    @apply min-h-screen bg-neutral-50 text-neutral-900 antialiased selection:bg-accent-100 selection:text-accent-900;
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+    /* 米色纸张背景 + 墨色正文，营造书卷气 */
+    @apply min-h-screen bg-paper-100 text-ink-700 antialiased
+           selection:bg-vermilion-100 selection:text-vermilion-700;
+    font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", -apple-system, sans-serif;
+  }
+
+  /* 标题统一用宋体衬线（文学气质） */
+  h1, h2, h3 {
+    @apply font-serif text-ink-800;
   }
 
   ::-webkit-scrollbar {
@@ -16,68 +23,70 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.1);
+    background: rgba(60, 40, 20, 0.15);
     border-radius: 99px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 0, 0, 0.2);
+    background: rgba(60, 40, 20, 0.28);
   }
 }
 
 @layer components {
+  /* 主按钮：墨色实心，朱砂 hover（克制点缀） */
   .btn-primary {
-    @apply px-4 py-2 bg-accent-600 hover:bg-accent-700 text-white rounded-lg font-medium
+    @apply px-4 py-2 bg-ink-700 hover:bg-vermilion-600 text-paper-50 rounded-lg font-medium
            shadow-sm active:scale-[0.98] transition-colors duration-150
-           disabled:opacity-50 disabled:cursor-not-allowed;
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-ink-700;
   }
 
+  /* 次按钮：纸白底 + 墨细线 */
   .btn-secondary {
-    @apply px-4 py-2 bg-white border border-neutral-200 text-neutral-700 rounded-lg font-medium
-           hover:bg-neutral-50 hover:border-neutral-300 active:scale-[0.98]
+    @apply px-4 py-2 bg-paper-50 border border-ink-200 text-ink-600 rounded-lg font-medium
+           hover:bg-paper-200 hover:border-ink-300 active:scale-[0.98]
            transition-colors duration-150;
   }
 
   .btn-danger {
-    @apply px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium
+    @apply px-4 py-2 bg-vermilion-500 hover:bg-vermilion-600 text-paper-50 rounded-lg font-medium
            shadow-sm active:scale-[0.98] transition-colors duration-150;
   }
 
+  /* 卡片：纸白底 + 墨细线，淡 shadow */
   .card {
-    @apply bg-white rounded-xl border border-neutral-200 shadow-sm;
+    @apply bg-paper-50 rounded-xl border border-ink-100 shadow-sm;
   }
 
   .input {
-    @apply w-full px-3.5 py-2.5 bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-900
-           focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 focus:bg-white
-           placeholder:text-neutral-400 transition-colors duration-150;
+    @apply w-full px-3.5 py-2.5 bg-paper-50 border border-ink-200 rounded-lg text-ink-700
+           focus:outline-none focus:ring-2 focus:ring-vermilion-200 focus:border-vermilion-400 focus:bg-paper-50
+           placeholder:text-ink-300 transition-colors duration-150;
   }
 
   .badge {
     @apply inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium;
   }
 
+  /* 印章式状态标（克制朱砂） */
   .badge-pending {
-    @apply badge bg-amber-50 text-amber-700;
+    @apply badge bg-amber-50 text-amber-700 border border-amber-200;
   }
-
   .badge-running {
-    @apply badge bg-blue-50 text-blue-700;
+    @apply badge bg-vermilion-50 text-vermilion-600 border border-vermilion-200;
   }
-
   .badge-completed {
-    @apply badge bg-emerald-50 text-emerald-700;
+    @apply badge bg-emerald-50 text-emerald-700 border border-emerald-200;
   }
-
   .badge-failed {
-    @apply badge bg-red-50 text-red-700;
+    @apply badge bg-red-50 text-red-700 border border-red-200;
   }
 
   .book-cover {
-    @apply relative w-full aspect-[3/4] rounded-lg overflow-hidden border border-neutral-200;
+    @apply relative w-full aspect-[3/4] rounded-lg overflow-hidden border border-ink-200;
   }
 
+  /* 题材色：降低饱和度，融入雅致调 */
   .genre-xuanhuan {
-    @apply bg-indigo-50 text-indigo-700;
+    @apply bg-ink-100 text-ink-600;
   }
   .genre-xianxia {
     @apply bg-emerald-50 text-emerald-700;
@@ -89,6 +98,22 @@
     @apply bg-blue-50 text-blue-700;
   }
   .genre-yanqing {
-    @apply bg-pink-50 text-pink-700;
+    @apply bg-vermilion-50 text-vermilion-600;
+  }
+
+  /* 文学雅致风工具类 */
+  /* 宋体标题（页面/区块标题用，营造书卷气） */
+  .heading-serif {
+    @apply font-serif text-ink-800 font-bold tracking-tight;
+  }
+  /* 印章式标记（朱砂方印，用于关键强调，克制使用） */
+  .seal {
+    @apply inline-flex items-center justify-center px-2 py-1 rounded
+           bg-vermilion-500 text-paper-50 text-xs font-bold font-serif
+           shadow-sm tracking-wider;
+  }
+  /* 墨色分隔线（替代 border，更柔和） */
+  .divider-ink {
+    @apply border-t border-ink-100;
   }
 }

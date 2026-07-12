@@ -1,26 +1,26 @@
 <template>
-  <header class="bg-white border-b border-neutral-200 sticky top-0 z-50">
+  <header class="bg-paper-50/90 backdrop-blur-sm border-b border-ink-100 sticky top-0 z-50">
     <div class="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
       <router-link to="/" class="flex items-center gap-2 hover:opacity-80 transition-opacity select-none">
-        <span class="text-lg font-bold text-neutral-900">xIaoShuo</span>
-        <span class="text-[10px] bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded font-medium">AI 创作平台</span>
+        <span class="text-lg font-serif font-bold text-ink-800 tracking-tight">xIaoShuo</span>
+        <span class="text-[10px] bg-paper-200 text-ink-400 px-1.5 py-0.5 rounded font-medium border border-ink-100">AI 创作平台</span>
       </router-link>
       <nav class="flex items-center gap-5">
         <router-link
           to="/tasks"
-          class="text-sm text-neutral-500 hover:text-neutral-900 transition-colors font-medium"
+          class="text-sm text-ink-400 hover:text-ink-700 transition-colors font-medium"
         >
           任务大厅
         </router-link>
         <router-link
           to="/settings/llm"
-          class="text-sm text-neutral-500 hover:text-neutral-900 transition-colors font-medium"
+          class="text-sm text-ink-400 hover:text-ink-700 transition-colors font-medium"
         >
           模型配置
         </router-link>
         <router-link
           to="/inspiration"
-          class="text-sm text-neutral-500 hover:text-neutral-900 transition-colors font-medium"
+          class="text-sm text-ink-400 hover:text-ink-700 transition-colors font-medium"
         >
           灵感向导
         </router-link>
