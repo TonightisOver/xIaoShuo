@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-ada-002"
     EMBEDDING_DIM: int = 1536
     EMBEDDING_BASE_URL: str | None = None  # 默认 None 时使用 DEEPSEEK_BASE_URL
+    # DeepSeek API 不提供 embedding 接口（/v1/embeddings 返回 404），默认关闭
+    # 实体 embedding 生成与语义检索；retrieve_context 降级为精确匹配（已足够）。
+    # 仅当配置了支持 embedding 的供应商（如 OpenAI/智谱）时设为 True 启用向量检索。
+    EMBEDDING_ENABLED: bool = False
 
     # HITL 人工审核
     # True（默认）：human_review 节点自动通过，管线端到端跑通（interrupt/resume 待实现）

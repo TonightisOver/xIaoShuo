@@ -81,12 +81,22 @@ async def node(state: NovelState) -> NovelState:
         volumes = result.get("volumes", [])
 
         # 从 volumes 中提取 chapter_outlines（兼容旧格式）
+        # 关键：LLM 返回的每卷 chapters 通常按卷内编号（每卷从 1 开始），
+        # 直接 append 会导致 chapter_number 跨卷重复，后续 persist 时
+        # delete+insert 同号覆盖，丢失大量章节。这里做全局重编号，保证唯一。
         chapter_outlines = result.get("chapter_outlines", [])
         if not chapter_outlines and volumes:
+            chapter_outlines = []
+            global_ch_num = 0
             for vol in volumes:
+                vol_number = vol.get("volume_number", 1)
                 for ch in vol.get("chapters", []):
-                    ch["volume_number"] = vol.get("volume_number", 1)
-                    chapter_outlines.append(ch)
+                    global_ch_num += 1
+                    # 复制避免修改原 vol 结构；用全局编号覆盖卷内编号
+                    ch_out = dict(ch)
+                    ch_out["chapter"] = global_ch_num
+                    ch_out["volume_number"] = vol_number
+                    chapter_outlines.append(ch_out)
 
         return {
             **state,

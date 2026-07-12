@@ -84,6 +84,33 @@ async def test_outline_generation_node():
 
 
 @pytest.mark.asyncio
+async def test_outline_renumbers_chapters_globally_across_volumes():
+    """多卷结构下 chapter_number 应全局重编号，避免跨卷重复导致 persist 覆盖丢失。"""
+    from unittest.mock import AsyncMock, patch
+
+    # LLM 返回 2 卷，每卷 chapters 都从 1 开始（LLM 常见行为）
+    fake_llm_response = '{"outline": {"opening": "a"}, "volumes": [{"volume_number": 1, "title": "v1", "chapters": [{"chapter": 1, "title": "c1", "plot": "p", "words": 3000}, {"chapter": 2, "title": "c2", "plot": "p", "words": 3000}]}, {"volume_number": 2, "title": "v2", "chapters": [{"chapter": 1, "title": "c3", "plot": "p", "words": 3000}, {"chapter": 2, "title": "c4", "plot": "p", "words": 3000}]}]}'
+
+    mock_client = MagicMock()
+    mock_client.generate = AsyncMock(return_value=fake_llm_response)
+
+    with patch("src.core.langgraph.nodes.outline_generation.get_llm_client", return_value=mock_client):
+        state = create_initial_state()
+        state["world_setting"] = {"background": "test"}
+        state["characters"] = [{"name": "test"}]
+        result = await outline_generation.node(state)
+
+    ch_nums = [c["chapter"] for c in result["chapter_outlines"]]
+    # 全局重编号后应为 1,2,3,4（唯一），而非 1,2,1,2（跨卷重复）
+    assert ch_nums == [1, 2, 3, 4], f"章节编号未全局重编号: {ch_nums}"
+    # volume_number 保留正确
+    vols = [c["volume_number"] for c in result["chapter_outlines"]]
+    assert vols == [1, 1, 2, 2]
+    assert len(result["chapter_outlines"]) == 4
+
+
+
+@pytest.mark.asyncio
 async def test_chapter_generation_node():
     """测试章节生成节点"""
     state = create_initial_state()
