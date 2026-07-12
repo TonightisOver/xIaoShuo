@@ -1,5 +1,7 @@
 """LangGraph 节点单元测试"""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from src.core.langgraph.nodes import (
@@ -107,9 +109,25 @@ async def test_quality_check_node():
 
 
 def test_human_review_node():
-    """测试人工审核节点"""
-    state = create_initial_state()
-    result = human_review.node(state)
+    """测试人工审核节点（真 HITL 模式：HITL_AUTO_APPROVE=False 时返回 pending）"""
+    from src.core.config import get_settings
+    with patch("src.core.langgraph.nodes.human_review.get_settings") as ms:
+        ms.return_value = MagicMock(HITL_AUTO_APPROVE=False)
+        state = create_initial_state()
+        result = human_review.node(state)
 
     assert result["approval_status"] == "pending"
     assert result["current_stage"] == "human_review"
+
+
+def test_human_review_auto_approve():
+    """测试 auto-approve 模式：HITL_AUTO_APPROVE=True 时直接通过"""
+    with patch("src.core.langgraph.nodes.human_review.get_settings") as ms:
+        ms.return_value = MagicMock(HITL_AUTO_APPROVE=True)
+        state = create_initial_state()
+        state["chapters"] = [{"chapter": 1, "title": "第一章", "content": "..."}]
+        result = human_review.node(state)
+
+    assert result["approval_status"] == "approved"
+    assert result["current_stage"] == "approved"
+    assert "review_data" in result

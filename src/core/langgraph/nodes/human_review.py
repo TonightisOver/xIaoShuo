@@ -1,9 +1,21 @@
-"""人工审核节点 — 使用 interrupt() 真阻塞等待用户决策"""
+"""人工审核节点
+
+支持两种模式（由 settings.HITL_AUTO_APPROVE 控制）：
+
+1. auto-approve（默认 True）：跳过 interrupt()，直接返回 approved，让管线
+   端到端跑通。审核数据仍写入 state 供前端展示。适用于 HITL interrupt/resume
+   机制尚未实现的阶段（持久化 checkpointer + resume 路径待补）。
+
+2. 真 HITL（HITL_AUTO_APPROVE=False）：调用 interrupt() 阻塞等待用户决策，
+   由外部 review API 通过 Command(resume=decision) 恢复。需配合持久化
+   checkpointer（SqliteSaver）+ _run_langgraph_pipeline 的 resume 路径。
+"""
 
 import structlog
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import interrupt
 
+from src.core.config import get_settings
 from src.core.langgraph.state import NovelState
 
 logger = structlog.get_logger(__name__)
@@ -12,10 +24,6 @@ logger = structlog.get_logger(__name__)
 def node(state: NovelState, config: RunnableConfig | None = None) -> NovelState:
     """人工审核节点
 
-    使用 LangGraph interrupt() 真阻塞等待用户审核。
-    审决策通过外部 API /api/v1/tasks/{task_id}/review 提交，
-    LangGraph 通过 Command(resume=decision) 恢复执行。
-
     Args:
         state: 当前状态
         config: LangGraph config（应包含 thread_id）
@@ -23,7 +31,7 @@ def node(state: NovelState, config: RunnableConfig | None = None) -> NovelState:
     Returns:
         更新后的状态
     """
-    # 1. 准备要呈现给用户的审核数据
+    # 1. 准备要呈现给用户的审核数据（无论哪种模式都写入 state，供前端展示）
     quality_scores = state.get("quality_scores", {})
     consistency_warnings = state.get("consistency_warnings", [])
     revision_requests = state.get("revision_requests", [])
@@ -31,9 +39,6 @@ def node(state: NovelState, config: RunnableConfig | None = None) -> NovelState:
     chapters = state.get("chapters", [])
     last_chapter = chapters[-1] if chapters else None
 
-    # 2. 挂起等待用户决策
-    # interrupt() 抛出 NodeInterrupt，LangGraph 暂停在此处等待 resume
-    # resume 时传入的 Command(resume=user_input) 成为 interrupt() 的返回值
     review_data = {
         "quality_scores": quality_scores,
         "consistency_warnings": consistency_warnings[:5] if consistency_warnings else [],
@@ -41,11 +46,29 @@ def node(state: NovelState, config: RunnableConfig | None = None) -> NovelState:
         "chapter_number": last_chapter.get("chapter", 0) if last_chapter else 0,
     }
 
+    settings = get_settings()
+
+    # 2a. auto-approve 模式：跳过阻塞，直接通过
+    if settings.HITL_AUTO_APPROVE:
+        logger.info(
+            "human_review_auto_approved",
+            chapter_count=len(chapters),
+            quality_overall=quality_scores.get("overall"),
+            warnings_count=len(consistency_warnings),
+        )
+        return {
+            **state,
+            "approval_status": "approved",
+            "current_stage": "approved",
+            "review_data": review_data,
+        }
+
+    # 2b. 真 HITL 模式：阻塞等待用户决策
+    # interrupt() 抛出 NodeInterrupt，LangGraph 暂停等待 resume
+    # resume 时传入的 Command(resume=user_input) 成为 interrupt() 的返回值
     try:
-        # 当 resume 被调用时，interrupt() 返回传入的数据
         resume_result = interrupt(review_data)
     except Exception:
-        # 如果没有 resume，保持 pending 状态
         return {
             **state,
             "approval_status": "pending",

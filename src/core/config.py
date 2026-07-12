@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     EMBEDDING_DIM: int = 1536
     EMBEDDING_BASE_URL: str | None = None  # 默认 None 时使用 DEEPSEEK_BASE_URL
 
+    # HITL 人工审核
+    # True（默认）：human_review 节点自动通过，管线端到端跑通（interrupt/resume 待实现）
+    # False：启用真 interrupt() 阻塞等待人工决策（需配合持久化 checkpointer + resume 路径）
+    HITL_AUTO_APPROVE: bool = True
+
     # Encryption
     LLM_ENCRYPTION_KEY: str = ""
     ADMIN_TOKEN: str = "change-this-admin-token"
