@@ -3,6 +3,8 @@
 import logging
 
 from src.core.json_utils import safe_json_parse, validate_json_structure
+from src.core.langgraph.node_utils import generate_and_validate
+from src.core.langgraph.schemas import WorldSetting
 from src.core.langgraph.state import NovelState
 from src.core.llm.client import get_llm_client
 from src.core.llm.prompts import WORLD_BUILDING_PROMPT
@@ -33,21 +35,24 @@ async def node(state: NovelState) -> NovelState:
         style_instruction = get_style_instruction(state.get("writing_style", ""), state.get("writing_style_prompt", ""))
         if style_instruction:
             prompt = f"{style_instruction}\n\n{prompt}"
-        response = await client.generate(prompt)
 
-        # 使用改进的 JSON 解析
+        # fallback 仍用 dict 形式（与原 state 兼容）
         fallback_world_setting = {
             "background": f"这是一个{state['novel_type']}世界，拥有独特的力量体系。",
             "rules": "修炼分为炼气、筑基、金丹、元婴等境界。",
             "geography": "世界分为东、西、南、北四大域，中央为圣地。",
             "culture": "修仙门派林立，凡人王朝并存。",
         }
+        fallback_model = WorldSetting.model_validate(fallback_world_setting)
 
-        world_setting = safe_json_parse(
-            response, fallback=fallback_world_setting, extract_partial=True
+        # generate_and_validate：LLM 调用 + 解析 + Pydantic 校验 + 失败重试一次
+        typed = await generate_and_validate(
+            client, prompt, WorldSetting, "world_building", fallback=fallback_model,
         )
+        # 转回 dict 写入 state（state 字段类型是 dict）
+        world_setting = typed.model_dump() if typed else fallback_world_setting
 
-        # 验证 JSON 结构
+        # 兜底：确保 4 个必需 key 都存在
         required_keys = ["background", "rules", "geography", "culture"]
         if not validate_json_structure(world_setting, required_keys, "world_setting"):
             logger.warning("Invalid world_setting structure, using fallback")

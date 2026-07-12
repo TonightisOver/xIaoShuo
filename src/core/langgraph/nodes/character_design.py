@@ -34,9 +34,8 @@ async def node(state: NovelState) -> NovelState:
         style_instruction = get_style_instruction(state.get("writing_style", ""), state.get("writing_style_prompt", ""))
         if style_instruction:
             prompt = f"{style_instruction}\n\n{prompt}"
-        response = await client.generate(prompt)
 
-        # 使用改进的 JSON 解析
+        # fallback（dict 形式，与 state 兼容）+ 对应模型实例
         fallback_data = {
             "characters": [
                 {
@@ -61,19 +60,24 @@ async def node(state: NovelState) -> NovelState:
             },
         }
 
-        result = safe_json_parse(
-            response, fallback=fallback_data, extract_partial=True
+        from src.core.langgraph.node_utils import generate_and_validate
+        from src.core.langgraph.schemas import CharacterDesignResult
+
+        fallback_model = CharacterDesignResult.model_validate(fallback_data)
+
+        # generate_and_validate：LLM 调用 + 解析 + Pydantic 校验 + 失败重试一次
+        typed = await generate_and_validate(
+            client, prompt, CharacterDesignResult, "character_design",
+            fallback=fallback_model,
         )
 
-        # 验证 JSON 结构
-        if not validate_json_structure(
-            result, ["characters", "relationships"], "character_design"
-        ):
-            logger.warning("Invalid character_design structure, using fallback")
-            result = fallback_data
-
-        characters = result.get("characters", [])
-        relationships = result.get("relationships", {})
+        if typed is not None:
+            characters = [c.model_dump() for c in typed.characters]
+            relationships = typed.relationships
+        else:
+            # 理论不可达（generate_and_validate 总返回 fallback 或模型），防御性兜底
+            characters = fallback_data["characters"]
+            relationships = fallback_data["relationships"]
 
         return {
             **state,

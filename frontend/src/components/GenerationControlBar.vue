@@ -1,8 +1,8 @@
 <template>
-  <div class="fixed bottom-0 left-0 right-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-t border-[#e5e5ea] dark:border-gray-700 shadow-[0_-2px_16px_rgba(0,0,0,0.06)]">
+  <div class="fixed bottom-0 left-0 right-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-t border-neutral-200 dark:border-gray-700 shadow-[0_-2px_16px_rgba(0,0,0,0.06)]">
     <div class="max-w-4xl mx-auto px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
       <!-- Progress info -->
-      <div class="flex items-center gap-3 text-sm text-[#1d1d1f] dark:text-gray-100">
+      <div class="flex items-center gap-3 text-sm text-neutral-900 dark:text-gray-100">
         <span class="font-semibold">
           第{{ currentChapter }}章 / {{ totalChapters }}章
         </span>
@@ -49,7 +49,7 @@
 
         <button
           :disabled="!isPaused"
-          class="btn-control bg-neutral-200 dark:bg-gray-700 hover:bg-neutral-300 dark:hover:bg-gray-600 text-[#1d1d1f] dark:text-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+          class="btn-control bg-neutral-200 dark:bg-gray-700 hover:bg-neutral-300 dark:hover:bg-gray-600 text-neutral-900 dark:text-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
           @click="$emit('edit')"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -70,12 +70,12 @@
       <div class="w-full max-w-sm rounded-2xl border border-white/30 bg-white/75 dark:bg-gray-900/75 shadow-2xl backdrop-blur-xl ring-1 ring-black/5 dark:ring-white/10">
         <div class="px-6 py-5 space-y-4">
           <div class="space-y-2">
-            <h3 class="text-base font-semibold text-[#1d1d1f] dark:text-gray-100">确定停止生成？</h3>
+            <h3 class="text-base font-semibold text-neutral-900 dark:text-gray-100">确定停止生成？</h3>
             <p class="text-sm leading-6 text-neutral-600 dark:text-gray-300">未保存进度将丢失</p>
           </div>
           <div class="flex justify-end gap-3">
             <button
-              class="rounded-lg bg-white/80 dark:bg-gray-800/80 px-4 py-2 text-sm font-semibold text-[#1d1d1f] dark:text-gray-100 shadow-sm transition-colors hover:bg-white dark:hover:bg-gray-700"
+              class="rounded-lg bg-white/80 dark:bg-gray-800/80 px-4 py-2 text-sm font-semibold text-neutral-900 dark:text-gray-100 shadow-sm transition-colors hover:bg-white dark:hover:bg-gray-700"
               @click="cancelStop"
             >
               继续生成

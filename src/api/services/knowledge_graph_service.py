@@ -4,7 +4,6 @@
 """
 
 import json
-import math
 import time
 import uuid
 from typing import Any
@@ -23,69 +22,10 @@ from src.core.config import get_settings
 from src.core.database import get_db_session
 from src.core.json_utils import safe_json_parse
 from src.core.llm.client import get_llm_client, embed_texts as _embed_texts
+from src.api.services.kg_prompts import CONSISTENCY_CHECK_PROMPT, KG_EXTRACTION_PROMPT
+from src.api.services.kg_similarity import cosine_similarity
 
 logger = structlog.get_logger(__name__)
-
-KG_EXTRACTION_PROMPT = """你是一个小说知识抽取专家。请从以下章节文本中抽取实体和关系。
-
-## 已知实体（避免重复创建）
-{existing_entities_json}
-
-## 章节文本
-{chapter_text}
-
-## 输出格式（严格 JSON）
-{{
-  "entities": [
-    {{
-      "name": "实体名称",
-      "type": "character|location|organization|item|event|foreshadowing",
-      "aliases": ["别名1"],
-      "attributes": {{"status": "alive"}}
-    }}
-  ],
-  "triples": [
-    {{
-      "subject": "实体名称A",
-      "predicate": "关系谓词",
-      "object": "实体名称B",
-      "confidence": 0.9
-    }}
-  ]
-}}
-
-## 抽取规则
-1. 人物实体必须包含 status 属性（alive/dead/missing/unknown）
-2. 伏笔实体必须包含 foreshadowing_status 属性（planted/resolved/hanging）
-3. 关系谓词使用中文，保持简洁（2-4字）
-4. 如果实体已在"已知实体"中存在，使用相同名称，不要创建新实体
-5. confidence < 0.5 的关系不要输出
-"""
-
-CONSISTENCY_CHECK_PROMPT = """\
-你是一个小说一致性检查专家。请检查新章节内容是否与已有设定矛盾。
-
-## 新章节内容（节选）
-{chapter_text}
-
-## 新抽取的关系
-{new_triples}
-
-## 历史设定上下文
-{history_context}
-
-## 输出格式（严格 JSON 数组）
-[
-  {{
-    "severity": "error|warning",
-    "type": "冲突类型",
-    "message": "具体描述",
-    "entity": "相关实体名"
-  }}
-]
-
-如果没有冲突，返回空数组 []。
-"""
 
 
 class KnowledgeGraphService:
@@ -271,14 +211,6 @@ class KnowledgeGraphService:
                         outline_embeddings = await _embed_texts([outline_text])
                         if outline_embeddings and outline_embeddings[0]:
                             outline_vec = outline_embeddings[0]
-
-                            def cosine_similarity(a: list[float], b: list[float]) -> float:
-                                dot = sum(av * bv for av, bv in zip(a, b))
-                                norm_a = math.sqrt(sum(av * av for av in a))
-                                norm_b = math.sqrt(sum(bv * bv for bv in b))
-                                if norm_a == 0 or norm_b == 0:
-                                    return 0.0
-                                return dot / (norm_a * norm_b)
 
                             SIMILARITY_THRESHOLD = 0.5
                             scored = []
@@ -762,6 +694,11 @@ class KnowledgeGraphService:
                         last_chapter=chapter_number,
                         source="extracted",
                     )
+                    # RAG: 为实体生成 embedding（失败不阻断创建，精确检索仍可用）
+                    entity.embedding = await _generate_entity_embedding(
+                        ent_name, ent.get("type", "character"),
+                        ent.get("aliases", []), extracted_attrs,
+                    )
                     session.add(entity)
 
                     new_state = KnowledgeEntityState(
@@ -874,6 +811,11 @@ class KnowledgeGraphService:
                     first_chapter=chapter_number,
                     last_chapter=chapter_number,
                     source="extracted",
+                )
+                # RAG: 为实体生成 embedding（失败不阻断创建，精确检索仍可用）
+                entity.embedding = await _generate_entity_embedding(
+                    ent_name, ent.get("type", "character"),
+                    ent.get("aliases", []), extracted_attrs,
                 )
                 session.add(entity)
 
@@ -1343,6 +1285,65 @@ class KnowledgeGraphService:
 
 # 全局服务实例
 _service: KnowledgeGraphService | None = None
+
+
+def _build_entity_embedding_text(
+    name: str,
+    entity_type: str,
+    aliases: list[str] | None,
+    attributes: dict | None,
+) -> str:
+    """构造用于生成实体 embedding 的文本。
+
+    融合名称、别名、类型与关键属性，使语义检索能匹配到实体的描述性信息。
+    截断到合理长度，避免 embedding 输入过长。
+    """
+    parts: list[str] = [f"[{entity_type}] {name}"]
+    if aliases:
+        parts.append("别名：" + "、".join(aliases))
+    if attributes and isinstance(attributes, dict):
+        # 取属性键值，跳过过长的值
+        attr_items = []
+        for k, v in attributes.items():
+            val = str(v)[:60] if v is not None else ""
+            if val:
+                attr_items.append(f"{k}:{val}")
+        if attr_items:
+            parts.append("属性：" + "；".join(attr_items[:8]))
+    return "\n".join(parts)[:500]  # 截断，避免 embedding 输入过长
+
+
+async def _generate_entity_embedding(
+    name: str,
+    entity_type: str,
+    aliases: list[str] | None,
+    attributes: dict | None,
+) -> list[float] | None:
+    """为实体生成 embedding 向量，用于 RAG 语义检索。
+
+    失败时返回 None（记日志），不阻断实体创建——精确匹配检索仍可用。
+    调用方应在创建实体后异步赋值 embedding 字段。
+
+    Returns:
+        embedding 向量，或 None（API 失败或功能未启用时）。
+    """
+    settings = get_settings()
+    if not settings.KNOWLEDGE_GRAPH_ENABLED:
+        return None
+    text = _build_entity_embedding_text(name, entity_type, aliases, attributes)
+    if not text:
+        return None
+    try:
+        embeddings = await _embed_texts([text])
+        return embeddings[0] if embeddings else None
+    except Exception as e:
+        logger.warning(
+            "entity_embedding_generation_failed",
+            name=name,
+            entity_type=entity_type,
+            error=str(e),
+        )
+        return None
 
 
 def get_knowledge_graph_service() -> KnowledgeGraphService:

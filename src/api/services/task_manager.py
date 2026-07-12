@@ -290,6 +290,41 @@ class TaskManager:
                 logger.info(f"Expired {len(stale_tasks)} stale tasks")
             return len(stale_tasks)
 
+    async def recover_interrupted_tasks(self) -> int:
+        """服务启动时恢复被中断的任务。
+
+        服务重启时，内存中正在跑的 BackgroundTask 会丢失，但 Task 表里这些任务的
+        status 仍是 ``running``（无人实际在跑）。本方法将这些「孤儿 running 任务」
+        标记为 failed，避免它们永远卡在 running 状态误导用户。
+
+        设计决策：标记为 failed 而非自动重跑——自动重跑有重复生成的风险（用户可能
+        已经手动重试），且不同生成类型（分步/全功能/长篇）的入队参数各异，自动重放
+        复杂且易错。标记 failed 让用户知情并自行决定是否重试，更安全。
+
+        Returns:
+            被标记为 failed 的孤儿任务数。
+        """
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(Task).where(Task.status == "running")
+            )
+            orphan_tasks = result.scalars().all()
+            now = datetime.now()
+            for task in orphan_tasks:
+                task.status = "failed"
+                task.completed_at = now
+                current_errors = task.errors or []
+                current_errors.append("系统重启中断：服务重启时任务仍在运行，已标记为失败，请重新发起")
+                task.errors = current_errors
+            await session.commit()
+            if orphan_tasks:
+                logger.warning(
+                    "recovered_interrupted_tasks",
+                    count=len(orphan_tasks),
+                    task_ids=[t.task_id for t in orphan_tasks],
+                )
+            return len(orphan_tasks)
+
 
 # 全局任务管理器实例
 _task_manager: TaskManager | None = None

@@ -12,7 +12,7 @@
         <span v-if="isOutlineStreaming" class="inline-block w-2 h-2 rounded-full bg-purple-500 animate-pulse"></span>
       </span>
       <svg
-        :class="['w-4 h-4 text-gray-400 transition-transform duration-200', collapsed ? '' : 'rotate-180']"
+        :class="['w-4 h-4 text-neutral-400 transition-transform duration-200', collapsed ? '' : 'rotate-180']"
         fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"
       >
         <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />

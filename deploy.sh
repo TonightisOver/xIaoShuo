@@ -42,10 +42,20 @@ DB_PASSWORD=xiaoshuo2026
 # 可选配置
 DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
 DEEPSEEK_MODEL=deepseek-v4-pro
+DEEPSEEK_MODEL_FLASH=deepseek-v4-flash
 LOG_LEVEL=INFO
+
+# LLM 加密密钥（首次部署需生成：python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"）
+LLM_ENCRYPTION_KEY=
+
+# 管理员令牌（访问 LLM 配置接口用，可自定义随机字符串）
+ADMIN_TOKEN=
 EOF
     echo ""
-    echo "!!! 请编辑 .env 填入你的 DEEPSEEK_API_KEY !!!"
+    echo "!!! 请编辑 .env 填入以下必填项 !!!"
+    echo "    DEEPSEEK_API_KEY  - DeepSeek API 密钥"
+    echo "    LLM_ENCRYPTION_KEY - 运行上方注释中的命令生成"
+    echo "    ADMIN_TOKEN       - 自定义管理员令牌"
     echo "    nano $PROJECT_DIR/.env"
     echo ""
 fi
@@ -53,9 +63,10 @@ fi
 echo "=== 部署准备完成 ==="
 echo ""
 echo "下一步："
-echo "  1. 编辑 API Key:  nano $PROJECT_DIR/.env"
+echo "  1. 编辑 .env:  nano $PROJECT_DIR/.env"
 echo "  2. 上传代码到 $PROJECT_DIR（scp 或 git clone）"
-echo "  3. 启动服务:  cd $PROJECT_DIR && docker compose up -d"
+echo "  3. 启动服务:  cd $PROJECT_DIR && docker compose up -d --build"
 echo "  4. 查看日志:  docker compose logs -f api"
+echo "  5. 健康检查:  curl http://localhost:8000/api/v1/health"
 echo ""
-echo "服务启动后访问: http://$(hostname -I | awk '{print $1}')"
+echo "服务启动后访问: http://$(hostname -I | awk '{print $1}'):7000"

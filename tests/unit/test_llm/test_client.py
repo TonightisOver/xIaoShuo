@@ -193,7 +193,12 @@ class TestLLMClientRetry:
 
     @pytest.mark.asyncio
     async def test_max_retries_exhausted_raises(self, mock_settings, mock_chat_openai):
-        """超过 max_retries 次数后应抛出异常"""
+        """超过 max_retries 次数后应抛出异常。
+
+        注意：model fallback 后，pro 耗尽会降级到 flash 再试一轮。本测试用单
+        mock 实例（pro 与 flash 共享），所以总调用数为 pro 重试次数 + flash
+        重试次数。这里只断言「pro 阶段至少重试 max_retries 次且最终抛异常」。
+        """
         mock_llm_instance = AsyncMock()
         mock_chat_openai.return_value = mock_llm_instance
 
@@ -206,8 +211,8 @@ class TestLLMClientRetry:
         with pytest.raises(Exception):
             await client.generate("测试 prompt")
 
-        # max_retries=2 意味着最多尝试 2 次
-        assert mock_llm_instance.ainvoke.call_count == 2
+        # pro 阶段重试 max_retries 次 + 降级 flash 重试 max_retries 次 = 4 次
+        assert mock_llm_instance.ainvoke.call_count == 4
 
     @pytest.mark.asyncio
     async def test_retries_on_500(self, mock_settings, mock_chat_openai):
@@ -482,3 +487,77 @@ class TestLLMClientTokenTracking:
         assert stats["total_calls"] == 1
         # flash 模型名应出现在 by_model 中
         assert "deepseek-v4-flash" in stats["by_model"]
+
+
+class TestLLMClientModelFallback:
+    """测试 pro 模型重试耗尽后降级到 flash 模型（CHANGE: model fallback）。"""
+
+    @pytest.mark.asyncio
+    async def test_pro_exhausted_falls_back_to_flash(self, mock_settings, mock_chat_openai):
+        """pro 重试耗尽后应降级到 flash 并成功返回。"""
+        pro_instance = AsyncMock()
+        flash_instance = AsyncMock()
+        # __init__ 先构造 pro(self.llm_pro) 还是 flash？看源码：先 llm_flash 后 llm_pro
+        # 实际：self.llm_flash = ChatOpenAI(...) 先, self.llm_pro = ChatOpenAI(...) 后
+        # 所以 side_effect 顺序 = [flash, pro]
+        mock_chat_openai.side_effect = [flash_instance, pro_instance]
+
+        # pro 每次都抛可重试错误（耗尽）
+        pro_instance.ainvoke.side_effect = ConnectionError("pro 挂了")
+        # flash 成功
+        flash_instance.ainvoke.return_value = AIMessage(content="flash 保底成功")
+
+        client = LLMClient()
+        client.max_retries = 2
+
+        with patch("tenacity.wait_exponential") as mock_wait:
+            mock_wait.return_value = lambda retry_state: 0
+            result = await client.generate("测试 prompt", use_flash=False)
+
+        assert result == "flash 保底成功"
+        # pro 被调用 max_retries 次（耗尽），flash 被调用 1 次（成功）
+        assert pro_instance.ainvoke.call_count == 2
+        assert flash_instance.ainvoke.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_flash_mode_does_not_fallback(self, mock_settings, mock_chat_openai):
+        """use_flash=True 时 flash 耗尽不再降级，直接抛异常。"""
+        flash_instance = AsyncMock()
+        pro_instance = AsyncMock()
+        mock_chat_openai.side_effect = [flash_instance, pro_instance]
+
+        flash_instance.ainvoke.side_effect = ConnectionError("flash 也挂了")
+
+        client = LLMClient()
+        client.max_retries = 2
+
+        with patch("tenacity.wait_exponential") as mock_wait:
+            mock_wait.return_value = lambda retry_state: 0
+            with pytest.raises(Exception):
+                await client.generate("测试 prompt", use_flash=True)
+
+        # flash 被调用 max_retries 次，pro 从未被调用（不降级）
+        assert flash_instance.ainvoke.call_count == 2
+        assert pro_instance.ainvoke.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_both_pro_and_flash_exhausted_raises(self, mock_settings, mock_chat_openai):
+        """pro 和 flash 都耗尽时应抛异常。"""
+        pro_instance = AsyncMock()
+        flash_instance = AsyncMock()
+        mock_chat_openai.side_effect = [flash_instance, pro_instance]
+
+        pro_instance.ainvoke.side_effect = ConnectionError("pro 挂")
+        flash_instance.ainvoke.side_effect = ConnectionError("flash 也挂")
+
+        client = LLMClient()
+        client.max_retries = 2
+
+        with patch("tenacity.wait_exponential") as mock_wait:
+            mock_wait.return_value = lambda retry_state: 0
+            with pytest.raises(Exception):
+                await client.generate("测试 prompt", use_flash=False)
+
+        # pro 耗尽 2 次 + flash 耗尽 2 次
+        assert pro_instance.ainvoke.call_count == 2
+        assert flash_instance.ainvoke.call_count == 2

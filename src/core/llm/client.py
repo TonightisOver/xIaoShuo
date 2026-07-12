@@ -112,6 +112,107 @@ class LLMClient:
     def _get_llm(self, use_flash: bool = False) -> ChatOpenAI:
         return self.llm_flash if use_flash else self.llm_pro
 
+    async def _invoke_with_retry(
+        self,
+        llm_instance: ChatOpenAI,
+        model_name: str,
+        prompt: str,
+        temperature: float | None,
+        max_tokens: int | None,
+    ) -> str:
+        """对单个 LLM 实例执行带重试的调用（不含模型降级）。
+
+        Raises:
+            RetryError: 重试耗尽（可重试错误持续）。
+            httpx.HTTPStatusError / openai.APIStatusError: 不可重试错误（401 等）。
+            Exception: 其他调用异常。
+        """
+        tracker = get_token_tracker()
+        retry_policy = AsyncRetrying(
+            stop=stop_after_attempt(self.max_retries),
+            wait=wait_exponential(multiplier=1, min=2, max=30),
+            retry=retry_if_exception(_should_retry),
+        )
+        async for attempt in retry_policy:
+            with attempt:
+                try:
+                    messages = [HumanMessage(content=prompt)]
+
+                    kwargs: dict[str, Any] = {}
+                    if temperature is not None:
+                        kwargs["temperature"] = temperature
+                    if max_tokens is not None:
+                        kwargs["max_tokens"] = max_tokens
+
+                    logger.info(
+                        "calling_llm_api",
+                        model=model_name,
+                        prompt_length=len(prompt),
+                        attempt=attempt.retry_state.attempt_number,
+                    )
+                    response = await llm_instance.ainvoke(messages, **kwargs)
+                    logger.info(
+                        "llm_api_response",
+                        response_length=len(str(response.content)),
+                    )
+
+                    # Token 追踪
+                    token_usage = (
+                        response.response_metadata.get("token_usage", {})
+                        if hasattr(response, "response_metadata")
+                        else {}
+                    )
+                    if token_usage and "prompt_tokens" in token_usage:
+                        tracker.record(
+                            model=model_name,
+                            prompt_tokens=token_usage.get("prompt_tokens", 0),
+                            completion_tokens=token_usage.get("completion_tokens", 0),
+                            total_tokens=token_usage.get("total_tokens", 0),
+                        )
+                    else:
+                        tracker.skip()
+
+                    return str(response.content)
+
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 401:
+                        # Auth error — do not retry
+                        logger.error(
+                            "llm_auth_error",
+                            status_code=e.response.status_code,
+                        )
+                        raise
+                    if not _is_retryable_status_error(e):
+                        raise
+                    logger.warning(
+                        "llm_http_error_retrying",
+                        status_code=e.response.status_code,
+                        attempt=attempt.retry_state.attempt_number,
+                    )
+                    raise
+
+                except openai.APIStatusError as e:
+                    if e.status_code == 401:
+                        logger.error(
+                            "llm_auth_error",
+                            status_code=e.status_code,
+                        )
+                        raise
+                    if not _is_retryable_status_error(e):
+                        raise
+                    logger.warning(
+                        "llm_api_status_retrying",
+                        status_code=e.status_code,
+                        attempt=attempt.retry_state.attempt_number,
+                    )
+                    raise
+
+                except Exception as e:
+                    logger.error("llm_api_call_failed", error=str(e), exc_info=True)
+                    raise
+
+        raise RuntimeError("Unexpected exit from retry loop")  # pragma: no cover
+
     async def generate(
         self,
         prompt: str,
@@ -131,108 +232,42 @@ class LLMClient:
             生成的文本
 
         Raises:
-            Exception: API 调用失败（不可重试错误或超过重试次数）
+            Exception: API 调用失败（不可重试错误或超过重试次数，含 flash 降级也失败）。
+
+        模型降级策略：当 use_flash=False（使用 pro 模型）且 pro 重试耗尽时，
+        自动降级到 flash 模型再试一轮，以在 pro 限流/宕机时保底生成。
+        use_flash=True 时不降级（已是最轻量模型）。
         """
-        llm_instance = self._get_llm(use_flash)
-        model_name = self._model_flash if use_flash else self._model_pro
-        tracker = get_token_tracker()
-
-        retry_policy = AsyncRetrying(
-            stop=stop_after_attempt(self.max_retries),
-            wait=wait_exponential(multiplier=1, min=2, max=30),
-            retry=retry_if_exception(_should_retry),
-            reraise=True,
-        )
-
         try:
-            async for attempt in retry_policy:
-                with attempt:
-                    try:
-                        messages = [HumanMessage(content=prompt)]
-
-                        kwargs: dict[str, Any] = {}
-                        if temperature is not None:
-                            kwargs["temperature"] = temperature
-                        if max_tokens is not None:
-                            kwargs["max_tokens"] = max_tokens
-
-                        logger.info(
-                            "calling_llm_api",
-                            model=model_name,
-                            prompt_length=len(prompt),
-                            attempt=attempt.retry_state.attempt_number,
-                        )
-                        response = await llm_instance.ainvoke(messages, **kwargs)
-                        logger.info(
-                            "llm_api_response",
-                            response_length=len(str(response.content)),
-                        )
-
-                        # Token 追踪
-                        token_usage = (
-                            response.response_metadata.get("token_usage", {})
-                            if hasattr(response, "response_metadata")
-                            else {}
-                        )
-                        if token_usage and "prompt_tokens" in token_usage:
-                            tracker.record(
-                                model=model_name,
-                                prompt_tokens=token_usage.get("prompt_tokens", 0),
-                                completion_tokens=token_usage.get("completion_tokens", 0),
-                                total_tokens=token_usage.get("total_tokens", 0),
-                            )
-                        else:
-                            tracker.skip()
-
-                        return str(response.content)
-
-                    except httpx.HTTPStatusError as e:
-                        if e.response.status_code == 401:
-                            # Auth error — do not retry
-                            logger.error(
-                                "llm_auth_error",
-                                status_code=e.response.status_code,
-                            )
-                            raise
-                        if not _is_retryable_status_error(e):
-                            raise
-                        logger.warning(
-                            "llm_http_error_retrying",
-                            status_code=e.response.status_code,
-                            attempt=attempt.retry_state.attempt_number,
-                        )
-                        raise
-
-                    except openai.APIStatusError as e:
-                        if e.status_code == 401:
-                            logger.error(
-                                "llm_auth_error",
-                                status_code=e.status_code,
-                            )
-                            raise
-                        if not _is_retryable_status_error(e):
-                            raise
-                        logger.warning(
-                            "llm_api_status_retrying",
-                            status_code=e.status_code,
-                            attempt=attempt.retry_state.attempt_number,
-                        )
-                        raise
-
-                    except Exception as e:
-                        logger.error("llm_api_call_failed", error=str(e), exc_info=True)
-                        raise
-
+            return await self._invoke_with_retry(
+                self._get_llm(use_flash),
+                self._model_flash if use_flash else self._model_pro,
+                prompt, temperature, max_tokens,
+            )
         except RetryError as e:
-            logger.error(
-                "llm_api_exhausted_retries",
+            if use_flash:
+                # flash 模型已耗尽重试，不再降级
+                logger.error("llm_api_exhausted_retries_flash", max_retries=self.max_retries, error=str(e))
+                raise
+            # pro 重试耗尽 → 降级到 flash 保底
+            logger.warning(
+                "llm_pro_exhausted_fallback_to_flash",
                 max_retries=self.max_retries,
                 error=str(e),
             )
-            raise
+            try:
+                return await self._invoke_with_retry(
+                    self.llm_flash, self._model_flash,
+                    prompt, temperature, max_tokens,
+                )
+            except RetryError as fe:
+                logger.error(
+                    "llm_flash_fallback_also_exhausted",
+                    max_retries=self.max_retries,
+                    error=str(fe),
+                )
+                raise
 
-        # Unreachable — AsyncRetrying always raises or returns via attempt
-        raise RuntimeError("Unexpected exit from retry loop")  # pragma: no cover
 
     async def stream_generate(
         self,
@@ -317,10 +352,14 @@ async def embed_texts(texts: list[str]) -> list[list[float]]:
         texts: 需要生成向量的文本列表
 
     Returns:
-        与 texts 一一对应的向量列表；若 API 失败则返回全零向量。
+        与 texts 一一对应的向量列表。
+
+    Raises:
+        RuntimeError: embedding API 调用失败（网络错误、非 2xx 响应、响应体缺失
+            embedding 字段等）。调用方应捕获并降级处理，**不得**用零向量静默
+            替代——零向量会污染知识图谱的语义检索与实体 embedding 落库。
     """
     settings = get_settings()
-    dim = settings.EMBEDDING_DIM
 
     try:
         client = get_embedding_client()
@@ -331,7 +370,13 @@ async def embed_texts(texts: list[str]) -> list[list[float]]:
         resp = await client.post("/embeddings", json=payload)
         resp.raise_for_status()
         data = resp.json()
-        return [item["embedding"] for item in data.get("data", [])]
+        embeddings = [item["embedding"] for item in data.get("data", [])]
     except Exception as exc:
-        logger.warning("embedding_api_failed_fallback", error=str(exc))
-        return [[0.0] * dim for _ in texts]
+        logger.warning("embedding_api_failed", error=str(exc))
+        raise RuntimeError(f"embedding API 调用失败: {exc}") from exc
+
+    if len(embeddings) != len(texts):
+        raise RuntimeError(
+            f"embedding 数量与输入不匹配: 期望 {len(texts)}, 实际 {len(embeddings)}"
+        )
+    return embeddings

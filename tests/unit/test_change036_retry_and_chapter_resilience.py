@@ -151,7 +151,12 @@ class TestLLMClientRetriesOpenAIErrors:
     async def test_exhausts_retries_on_persistent_api_connection_error(
         self, mock_settings_for_client, mock_chat_openai_cls
     ):
-        """Persistent APIConnectionError exhausts retries and raises."""
+        """Persistent APIConnectionError exhausts retries and raises.
+
+        Note: with model fallback enabled, pro exhausts (2 calls) then falls
+        back to flash which also exhausts (2 calls) = 4 total, since this test
+        uses a single shared mock for both pro and flash instances.
+        """
         import openai
 
         from src.core.llm.client import LLMClient
@@ -168,7 +173,8 @@ class TestLLMClientRetriesOpenAIErrors:
         with pytest.raises(Exception):
             await client.generate("test prompt")
 
-        assert mock_llm.ainvoke.call_count == 2
+        # pro 重试 2 次 + flash 降级重试 2 次 = 4 次
+        assert mock_llm.ainvoke.call_count == 4
 
 
 # ===========================================================================

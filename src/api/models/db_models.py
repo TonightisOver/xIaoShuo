@@ -866,3 +866,54 @@ class UserSession(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
+
+class AgentJournal(Base):
+    """Sub-Agent 执行工作日志
+
+    记录三个核心 Sub-Agent（ContinuityEditor、MemoryCurator、GraphReconciler）
+    每次执行的输入、输出、状态变更、耗时等关键信息，用于审计和可观测性。
+    """
+
+    __tablename__ = "agent_journals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    agent_name: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    novel_id: Mapped[int] = mapped_column(Integer, ForeignKey("novels.id", ondelete="SET NULL"), nullable=True)
+    chapter_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+
+    # 执行状态: running / success / failed / timeout / blocked
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="running")
+    # 执行耗时（毫秒）
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # 输入摘要（截断至 reasonable 大小）
+    input_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # 输出摘要
+    output_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # 关键状态变更记录
+    state_changes: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+
+    # 错误信息（失败时记录）
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # GraphReconciler 专用: 冲突/阻塞实体数
+    conflict_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    blocked_entity_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # MemoryCurator 专用: memo 更新数量
+    memo_update_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # ContinuityEditor 专用: 连续性评分 (0-100)
+    continuity_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # 父级 task 的流转阶段快照
+    stage_snapshot: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now()
+    )
+
