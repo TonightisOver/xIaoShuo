@@ -1,10 +1,10 @@
 <template>
   <div class="max-w-6xl mx-auto px-6 py-8">
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 animate-fade-up">
       <div>
         <h1 class="heading-serif text-2xl flex items-center gap-2.5">
           <span>我的书架</span>
-          <span class="seal text-[10px] px-1.5 py-0.5">
+          <span class="seal text-[10px] px-1.5 py-0.5 animate-fade-in">
             {{ total }}
           </span>
         </h1>
@@ -26,12 +26,12 @@
 
     <!-- Loading -->
     <div v-if="loading" class="flex flex-col items-center justify-center py-32 space-y-3">
-      <div class="w-8 h-8 border-3 border-ink-300 border-t-vermilion-500 rounded-full animate-spin"></div>
+      <div class="w-8 h-8 border-3 border-ink-200 border-t-vermilion-500 rounded-full animate-spin"></div>
       <p class="text-sm text-ink-400">加载中...</p>
     </div>
 
     <!-- Empty -->
-    <div v-else-if="novels.length === 0" class="text-center py-20 card p-8">
+    <div v-else-if="novels.length === 0" class="text-center py-20 card p-8 animate-fade-up">
       <div class="w-14 h-14 mx-auto mb-5 rounded-xl bg-paper-200 flex items-center justify-center">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-7 h-7 text-ink-300">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
@@ -58,9 +58,10 @@
     <!-- Book Grid -->
     <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       <div
-        v-for="novel in novels"
+        v-for="(novel, idx) in novels"
         :key="novel.novel_id"
-        class="card p-4 flex gap-4 group hover:border-ink-300 hover:shadow-md transition-all duration-200"
+        class="card shine-on-hover p-4 flex gap-4 group hover:border-ink-200 hover:shadow-lg hover:-translate-y-1 animate-fade-up-stagger"
+        :style="{ animationDelay: `${Math.min(idx, 8) * 60}ms` }"
       >
         <!-- Book Cover -->
         <div class="shrink-0 w-20 aspect-[3/4] rounded-lg overflow-hidden flex flex-col relative select-none">
@@ -82,7 +83,7 @@
               <span :class="'badge-' + statusClass(novel.status)">{{ statusLabel(novel.status) }}</span>
               <span class="text-[10px] text-ink-300">{{ formatDate(novel.updated_at) }}</span>
             </div>
-            <h3 class="font-serif font-bold text-ink-700 text-sm line-clamp-1">{{ novel.title }}</h3>
+            <h3 class="font-serif font-bold text-ink-600 text-sm line-clamp-1 group-hover:text-vermilion-600 transition-colors">{{ novel.title }}</h3>
             <p class="text-xs text-ink-400 line-clamp-2 leading-relaxed">
               {{ novel.idea || '暂无简介' }}
             </p>

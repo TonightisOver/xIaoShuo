@@ -4,69 +4,85 @@
 
 @layer base {
   body {
-    /* 米色纸张背景 + 墨色正文，营造书卷气 */
-    @apply min-h-screen bg-paper-100 text-ink-700 antialiased
+    /* 明亮纸白背景 + 淡墨正文，纸墨阅读感 */
+    @apply min-h-screen bg-paper-50 text-ink-500 antialiased
            selection:bg-vermilion-100 selection:text-vermilion-700;
     font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", -apple-system, sans-serif;
+    /* 纸张纹理：极淡的暖色噪点，营造纸张质感（不影响阅读） */
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(180, 150, 100, 0.025) 0%, transparent 50%),
+      radial-gradient(circle at 80% 70%, rgba(168, 50, 74, 0.015) 0%, transparent 50%);
+    background-attachment: fixed;
   }
 
-  /* 标题统一用宋体衬线（文学气质） */
+  /* 标题：宋体衬线，墨色但不刺眼（ink-700 而非 800/900） */
   h1, h2, h3 {
-    @apply font-serif text-ink-800;
+    @apply font-serif text-ink-700;
   }
 
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(60, 40, 20, 0.15);
+    background: rgba(140, 120, 90, 0.2);
     border-radius: 99px;
+    transition: background 0.2s;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(60, 40, 20, 0.28);
+    background: rgba(140, 120, 90, 0.4);
+  }
+
+  html {
+    scroll-behavior: smooth;
   }
 }
 
 @layer components {
-  /* 主按钮：墨色实心，朱砂 hover（克制点缀） */
+  /* 主按钮：墨色，hover 朱砂 + 上浮微光 */
   .btn-primary {
-    @apply px-4 py-2 bg-ink-700 hover:bg-vermilion-600 text-paper-50 rounded-lg font-medium
-           shadow-sm active:scale-[0.98] transition-colors duration-150
-           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-ink-700;
+    @apply px-4 py-2 bg-ink-700 hover:bg-vermilion-500 text-paper-50 rounded-lg font-medium
+           shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0
+           transition-all duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-ink-700 disabled:hover:translate-y-0;
   }
 
-  /* 次按钮：纸白底 + 墨细线 */
+  /* 次按钮：纸白底 + 墨细线，hover 微浮 */
   .btn-secondary {
     @apply px-4 py-2 bg-paper-50 border border-ink-200 text-ink-600 rounded-lg font-medium
-           hover:bg-paper-200 hover:border-ink-300 active:scale-[0.98]
-           transition-colors duration-150;
+           hover:bg-paper-100 hover:border-ink-300 hover:-translate-y-0.5 active:translate-y-0
+           transition-all duration-200;
   }
 
   .btn-danger {
     @apply px-4 py-2 bg-vermilion-500 hover:bg-vermilion-600 text-paper-50 rounded-lg font-medium
-           shadow-sm active:scale-[0.98] transition-colors duration-150;
+           shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0
+           transition-all duration-200;
   }
 
-  /* 卡片：纸白底 + 墨细线，淡 shadow */
+  /* 卡片：明亮纸白 + 淡墨线，hover 浮起带光晕 */
   .card {
-    @apply bg-paper-50 rounded-xl border border-ink-100 shadow-sm;
+    @apply bg-paper-50 rounded-xl border border-ink-100 shadow-sm
+           transition-all duration-300;
+  }
+  .card-hover {
+    @apply card hover:border-ink-200 hover:shadow-lg hover:-translate-y-1;
   }
 
   .input {
-    @apply w-full px-3.5 py-2.5 bg-paper-50 border border-ink-200 rounded-lg text-ink-700
-           focus:outline-none focus:ring-2 focus:ring-vermilion-200 focus:border-vermilion-400 focus:bg-paper-50
-           placeholder:text-ink-300 transition-colors duration-150;
+    @apply w-full px-3.5 py-2.5 bg-paper-50 border border-ink-200 rounded-lg text-ink-600
+           focus:outline-none focus:ring-2 focus:ring-vermilion-200 focus:border-vermilion-400
+           placeholder:text-ink-300 transition-all duration-200;
   }
 
   .badge {
     @apply inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium;
   }
 
-  /* 印章式状态标（克制朱砂） */
+  /* 印章式状态标 */
   .badge-pending {
     @apply badge bg-amber-50 text-amber-700 border border-amber-200;
   }
@@ -84,36 +100,71 @@
     @apply relative w-full aspect-[3/4] rounded-lg overflow-hidden border border-ink-200;
   }
 
-  /* 题材色：降低饱和度，融入雅致调 */
-  .genre-xuanhuan {
-    @apply bg-ink-100 text-ink-600;
-  }
-  .genre-xianxia {
-    @apply bg-emerald-50 text-emerald-700;
-  }
-  .genre-kehuan {
-    @apply bg-sky-50 text-sky-700;
-  }
-  .genre-dushi {
-    @apply bg-blue-50 text-blue-700;
-  }
-  .genre-yanqing {
-    @apply bg-vermilion-50 text-vermilion-600;
-  }
+  .genre-xuanhuan { @apply bg-ink-100 text-ink-600; }
+  .genre-xianxia { @apply bg-emerald-50 text-emerald-700; }
+  .genre-kehuan { @apply bg-sky-50 text-sky-700; }
+  .genre-dushi { @apply bg-blue-50 text-blue-700; }
+  .genre-yanqing { @apply bg-vermilion-50 text-vermilion-600; }
 
-  /* 文学雅致风工具类 */
-  /* 宋体标题（页面/区块标题用，营造书卷气） */
+  /* ── 文学雅致风工具类 ── */
+  /* 宋体标题 */
   .heading-serif {
-    @apply font-serif text-ink-800 font-bold tracking-tight;
+    @apply font-serif text-ink-700 font-bold tracking-tight;
   }
-  /* 印章式标记（朱砂方印，用于关键强调，克制使用） */
+  /* 印章式标记（朱砂方印） */
   .seal {
     @apply inline-flex items-center justify-center px-2 py-1 rounded
            bg-vermilion-500 text-paper-50 text-xs font-bold font-serif
            shadow-sm tracking-wider;
   }
-  /* 墨色分隔线（替代 border，更柔和） */
   .divider-ink {
     @apply border-t border-ink-100;
   }
+
+  /* ── 动态特效工具类 ── */
+  /* 入场动画：淡入 + 上移 */
+  .animate-fade-up {
+    animation: fadeUp 0.5s ease-out both;
+  }
+  /* 入场动画：淡入 + 放大（用于标题/印章） */
+  .animate-fade-in {
+    animation: fadeIn 0.4s ease-out both;
+  }
+  /* 列表项依次入场（配合 transition-delay 或 inline style） */
+  .animate-fade-up-stagger {
+    animation: fadeUp 0.5s ease-out both;
+  }
+  /* 微光扫过（卡片 hover 时的光泽流动，高级感） */
+  .shine-on-hover {
+    position: relative;
+    overflow: hidden;
+  }
+  .shine-on-hover::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(120deg, transparent 30%, rgba(255, 250, 240, 0.4) 50%, transparent 70%);
+    transform: translateX(-100%);
+    transition: transform 0.6s ease;
+    pointer-events: none;
+  }
+  .shine-on-hover:hover::after {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
 }
