@@ -112,6 +112,7 @@
 
 <script setup>
 import { ref, reactive, watch } from 'vue'
+import { authHeaders } from '../composables/useApi.js'
 
 const props = defineProps({
   visible: Boolean,
@@ -149,7 +150,7 @@ const fetchPreview = async () => {
   try {
     const res = await fetch(`/api/v1/novels/${props.novelId}/export-preview`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({
         format: form.format,
         scope: form.scope,
@@ -193,7 +194,7 @@ async function doExport() {
 
     const res = await fetch(`/api/v1/novels/${props.novelId}/export`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(body),
     })
 

@@ -98,7 +98,7 @@ describe('ReviewDialog.vue', () => {
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'approved' }),
+        body: JSON.stringify({ approval_status: 'approved' }),
       }),
     )
 
@@ -128,8 +128,8 @@ describe('ReviewDialog.vue', () => {
 
   // ── handleRevise ────────────────────────────────────────────────────────────
 
-  it('handleRevise 首次点击展开输入框，第二次点击提交 revise', async () => {
-    const response = { id: 1, status: 'revise' }
+  it('handleRevise 首次点击展开输入框，第二次点击提交 revision', async () => {
+    const response = { id: 1, status: 'revision' }
     const fetchMock = makeFetch([
       { match: REVIEW_API_URL, ok: true, body: response },
     ])
@@ -153,15 +153,15 @@ describe('ReviewDialog.vue', () => {
 
     const decisionEvent = wrapper.emitted('decision')
     expect(decisionEvent).toHaveLength(1)
-    expect(decisionEvent[0][0].status).toBe('revise')
+    expect(decisionEvent[0][0].status).toBe('revision')
 
-    // Verify instructions were sent
+    // Verify instructions were sent（后端契约：approval_status + revision_instructions）
     expect(fetchMock).toHaveBeenCalledWith(
       REVIEW_API_URL,
       expect.objectContaining({
         body: JSON.stringify({
-          status: 'revise',
-          instructions: '需要修改第三段的描述',
+          approval_status: 'revision',
+          revision_instructions: '需要修改第三段的描述',
         }),
       }),
     )

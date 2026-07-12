@@ -55,6 +55,14 @@ class Settings(BaseSettings):
     # False：启用真 interrupt() 阻塞等待人工决策（需配合持久化 checkpointer + resume 路径）
     HITL_AUTO_APPROVE: bool = True
 
+    # 质量优化循环
+    # quality_check 后若 overall < QUALITY_THRESHOLD 且重试次数 < MAX_REGENERATION_ATTEMPTS，
+    # 回到 chapter_generation 重新生成（提升质量）。设 QUALITY_LOOP_ENABLED=False 可跳过
+    # 直接进入审核（追求速度/节省 token 时用）。
+    QUALITY_LOOP_ENABLED: bool = True
+    QUALITY_THRESHOLD: float = 0.8  # 质量达标线，低于此值触发重生成
+    MAX_REGENERATION_ATTEMPTS: int = 2  # 最多重生成次数（避免无限循环/浪费 token）
+
     # Encryption
     LLM_ENCRYPTION_KEY: str = ""
     ADMIN_TOKEN: str = "change-this-admin-token"

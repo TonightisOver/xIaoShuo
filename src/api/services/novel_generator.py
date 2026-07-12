@@ -283,6 +283,10 @@ async def _run_langgraph_pipeline(
     }
 
     result: dict[str, Any] = {}
+    # 追踪已完成的最多章节数与重生成轮次，避免 regenerate 时 progress 倒退误导用户
+    max_completed_chapters = 0
+    last_regeneration_round = 0
+    last_total_chapters = 0
     try:
         config = {"configurable": configurable}
         async for event in graph.astream(initial_state, config=config):
@@ -296,12 +300,30 @@ async def _run_langgraph_pipeline(
                     continue
                 percentage = _full_generate_percentage(stage_offset + node_idx, total_stages)
 
+                completed = len(state_update.get("chapters", []))
+                total = len(state_update.get("chapter_outlines", []))
+                regen_round = state_update.get("_regeneration_count", 0)
+
+                # regenerate（quality_check 回 chapter_generation）时，章节会重新生成，
+                # completed 可能暂时下降。保留历史 max，避免 progress 倒退；
+                # 同时用 regeneration_round 标注当前是第几轮质量优化。
+                if regen_round > last_regeneration_round:
+                    last_regeneration_round = regen_round
+                    max_completed_chapters = 0  # 新一轮重置基准（重生成会覆盖旧章节）
+                if completed > max_completed_chapters:
+                    max_completed_chapters = completed
+                if total > 0:
+                    last_total_chapters = total
+
                 progress_data = {
                     "current_stage": node_name,
-                    "completed_chapters": len(state_update.get("chapters", [])),
-                    "total_chapters": len(state_update.get("chapter_outlines", [])),
+                    "completed_chapters": max_completed_chapters,
+                    "total_chapters": last_total_chapters,
                     "percentage": percentage,
                 }
+                if last_regeneration_round > 0 and node_name == "chapter_generation":
+                    progress_data["regeneration_round"] = last_regeneration_round
+                    progress_data["current_stage"] = "chapter_generation_optimizing"
                 await task_manager.update_status(
                     task_id, "running", progress=progress_data,
                 )

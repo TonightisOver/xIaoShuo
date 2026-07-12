@@ -259,6 +259,7 @@
 <script setup>
 import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { authHeaders } from '../composables/useApi.js'
 
 const router = useRouter()
 
@@ -480,7 +481,7 @@ async function createProject() {
     try {
       await fetch(`/api/v1/projects/${novel_id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ writing_style: form.writing_style }),
       })
     } catch { /* 非关键，静默 */ }

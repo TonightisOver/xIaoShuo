@@ -14,25 +14,40 @@ from src.core.langgraph.nodes import (
     world_building,
 )
 from src.core.langgraph.state import NovelState
+from src.core.config import get_settings
 
-MAX_REGENERATION_ATTEMPTS = 2
 
+def _quality_loop_decision(state: NovelState, pass_target: str) -> str:
+    """质量循环条件路由的统一实现。
 
-def should_continue(state: NovelState) -> str:
-    """条件路由：根据质量分数决定下一步
+    - QUALITY_LOOP_ENABLED=False：直接通过到 pass_target（跳过重生成）
+    - 否则：overall >= QUALITY_THRESHOLD 或重试次数 >= MAX_REGENERATION_ATTEMPTS 时通过，
+      否则回 regenerate
 
     Args:
         state: 当前状态
+        pass_target: 质量达标时应进入的节点名（如 "human_review" / "review"）
 
     Returns:
-        下一个节点的名称
+        pass_target 或 "regenerate"
     """
+    settings = get_settings()
+    if not getattr(settings, "QUALITY_LOOP_ENABLED", True):
+        return pass_target
+
     quality_score = state.get("quality_scores", {}).get("overall", 0)
     regeneration_count = state.get("_regeneration_count", 0)
-    if quality_score >= 0.8 or regeneration_count >= MAX_REGENERATION_ATTEMPTS:
-        return "human_review"
-    else:
-        return "regenerate"
+    threshold = getattr(settings, "QUALITY_THRESHOLD", 0.8)
+    max_attempts = getattr(settings, "MAX_REGENERATION_ATTEMPTS", 2)
+
+    if quality_score >= threshold or regeneration_count >= max_attempts:
+        return pass_target
+    return "regenerate"
+
+
+def should_continue(state: NovelState) -> str:
+    """条件路由：根据质量分数决定下一步（主管线）"""
+    return _quality_loop_decision(state, "human_review")
 
 
 def create_novel_graph() -> CompiledStateGraph:
@@ -82,20 +97,8 @@ def create_novel_graph() -> CompiledStateGraph:
 
 
 def _should_continue_volume(state: NovelState) -> str:
-    """条件路由：根据质量分数决定下一步（卷级）
-
-    Args:
-        state: 当前状态
-
-    Returns:
-        下一个节点的名称
-    """
-    quality_score = state.get("quality_scores", {}).get("overall", 0)
-    regeneration_count = state.get("_regeneration_count", 0)
-    if quality_score >= 0.8 or regeneration_count >= MAX_REGENERATION_ATTEMPTS:
-        return "review"
-    else:
-        return "regenerate"
+    """条件路由：根据质量分数决定下一步（卷级）"""
+    return _quality_loop_decision(state, "review")
 
 
 def create_volume_generation_graph() -> CompiledStateGraph:
