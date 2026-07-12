@@ -1,11 +1,11 @@
 <template>
-  <div class="timeline-view">
+  <div class="timeline-view animate-fade-up">
     <div class="flex items-center justify-between mb-4">
-      <h2 class="text-base font-bold text-neutral-800">跨章节实体演化时间线</h2>
-      <div v-if="selectedEntity" class="text-xs text-neutral-500">
+      <h2 class="text-base font-bold text-ink-700 heading-serif">跨章节实体演化时间线</h2>
+      <div v-if="selectedEntity" class="text-xs text-ink-500">
         已选实体：
-        <span class="font-bold text-purple-600">{{ selectedEntity.name }}</span>
-        <button @click="selectedEntity = null" class="ml-1.5 text-neutral-400 hover:text-neutral-600">✕</button>
+        <span class="font-bold text-vermilion-600">{{ selectedEntity.name }}</span>
+        <button @click="selectedEntity = null" class="ml-1.5 text-ink-400 hover:text-ink-600">✕</button>
       </div>
     </div>
 
@@ -33,24 +33,24 @@
       <div class="w-8 h-8 rounded-full border-4 border-purple-500/10 border-t-purple-600 animate-spin"></div>
     </div>
 
-    <div v-else-if="!entities.length" class="text-center py-12 text-neutral-400 text-sm bg-neutral-50 rounded-xl border border-neutral-200">
+    <div v-else-if="!entities.length" class="text-center py-12 text-ink-400 text-sm bg-paper-50 rounded-xl border border-ink-200 animate-fade-in">
       暂无实体演化数据。请先生成章节内容后触发知识抽取。
     </div>
 
-    <div v-else-if="!selectedEntity" class="text-center py-8 text-neutral-400 text-sm">
+    <div v-else-if="!selectedEntity" class="text-center py-8 text-ink-400 text-sm">
       请选择一个实体以查看跨章节演化时间线。
     </div>
 
-    <div v-else class="card p-6 rounded-xl bg-white shadow-sm">
+    <div v-else class="card p-6 rounded-xl bg-paper-50 shadow-sm animate-fade-in">
       <!-- Entity header -->
-      <div class="flex items-center gap-3 mb-6 pb-4 border-b border-neutral-200">
+      <div class="flex items-center gap-3 mb-6 pb-4 border-b border-ink-200">
         <span
           class="w-4 h-4 rounded-full shrink-0"
           :style="{ background: getEntityColor(selectedEntity.entity_type) }"
         ></span>
         <div>
-          <p class="font-bold text-neutral-900 text-sm">{{ selectedEntity.name }}</p>
-          <p class="text-[11px] text-neutral-400">
+          <p class="font-bold text-ink-700 text-sm">{{ selectedEntity.name }}</p>
+          <p class="text-[11px] text-ink-400">
             实体类型：{{ typeLabel(selectedEntity.entity_type) }}
             <span v-if="selectedEntity.first_chapter || selectedEntity.last_chapter">
               · 第{{ selectedEntity.first_chapter || '?' }}章 ~ 第{{ selectedEntity.last_chapter || '?' }}章
@@ -64,7 +64,7 @@
         <div class="w-6 h-6 rounded-full border-3 border-purple-500/10 border-t-purple-600 animate-spin"></div>
       </div>
 
-      <div v-else-if="stateEvents.length === 0" class="text-center py-8 text-neutral-400 text-xs">
+      <div v-else-if="stateEvents.length === 0" class="text-center py-8 text-ink-400 text-xs">
         该实体尚无跨章节演化轨迹记录。前往知识图谱页面触发抽取后可在此查看。
       </div>
 
@@ -146,16 +146,16 @@
               width="180"
               height="48"
             >
-              <div class="rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 text-[11px] shadow-xs"
-                :style="{ borderLeft: '3px solid ' + getEntityColor(selectedEntity.entity_type) }"
+              <div class="rounded-lg border border-ink-200 bg-paper-100 px-2.5 py-1.5 text-[11px] shadow-xs animate-fade-up-stagger"
+                :style="{ borderLeft: '3px solid ' + getEntityColor(selectedEntity.entity_type), animationDelay: `${Math.min(i,8)*60}ms` }"
               >
-                <p class="font-bold text-neutral-700">
+                <p class="font-bold text-ink-600">
                   <template v-if="Object.keys(sn.attributes).length">
                     {{ getFirstValue(sn.attributes) }}
                   </template>
-                  <template v-else class="text-neutral-400 italic">无记录</template>
+                  <template v-else class="text-ink-400 italic">无记录</template>
                 </p>
-                <p v-if="sn.attributes" class="text-[10px] text-neutral-400 mt-0.5 truncate">
+                <p v-if="sn.attributes" class="text-[10px] text-ink-400 mt-0.5 truncate">
                   {{ extraAttrs(sn.attributes) }}
                 </p>
               </div>
@@ -184,7 +184,7 @@
       </div>
 
       <!-- Legend -->
-      <div class="flex flex-wrap gap-4 mt-4 px-4 py-2 rounded-lg bg-neutral-50 border border-neutral-200 text-xs text-neutral-500">
+      <div class="flex flex-wrap gap-4 mt-4 px-4 py-2 rounded-lg bg-paper-100 border border-ink-200 text-xs text-ink-500">
         <span class="flex items-center gap-1.5">
           <svg width="12" height="12" viewBox="0 0 12 12">
             <circle cx="6" cy="6" r="5" :fill="getEntityColor(selectedEntity?.entity_type || 'character')" stroke="white" stroke-width="1.5" />

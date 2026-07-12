@@ -1,24 +1,24 @@
 <template>
-  <div class="max-w-6xl mx-auto px-6 py-8">
+  <div class="max-w-6xl mx-auto px-6 py-8 animate-fade-up">
     <div class="mb-8">
-      <h1 class="text-2xl font-bold text-neutral-900">模型配置</h1>
-      <p class="text-neutral-500 mt-1 text-sm">管理 LLM API 配置，查看 token 用量统计</p>
+      <h1 class="text-2xl font-bold text-ink-700 heading-serif">模型配置</h1>
+      <p class="text-ink-400 mt-1 text-sm">管理 LLM API 配置，查看 token 用量统计</p>
     </div>
 
     <!-- LLM 配置列表 -->
-    <div class="card p-6 mb-8">
+    <div class="card p-6 mb-8 animate-fade-up">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-base font-semibold text-neutral-800">API 配置</h2>
+        <h2 class="text-base font-semibold text-ink-600 heading-serif">API 配置</h2>
         <button class="btn-primary text-sm" @click="openCreateModal">新增配置</button>
       </div>
 
       <!-- Loading -->
       <div v-if="loadingConfigs" class="flex items-center justify-center py-12">
-        <div class="w-6 h-6 border-2 border-accent-500 border-t-transparent rounded-full animate-spin"></div>
+        <div class="w-6 h-6 border-2 border-vermilion-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
 
       <!-- Empty -->
-      <div v-else-if="configs.length === 0" class="text-center py-10 text-neutral-400 text-sm">
+      <div v-else-if="configs.length === 0" class="text-center py-10 text-ink-300 text-sm">
         暂无配置，点击"新增配置"添加第一条
       </div>
 
@@ -26,7 +26,7 @@
       <div v-else class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
-            <tr class="border-b border-neutral-200 text-left text-xs text-neutral-500">
+            <tr class="border-b border-ink-200 text-left text-xs text-ink-400">
               <th class="pb-2 pr-4 font-medium">名称</th>
               <th class="pb-2 pr-4 font-medium">Base URL</th>
               <th class="pb-2 pr-4 font-medium">Flash 模型</th>
@@ -39,17 +39,17 @@
             <tr
               v-for="cfg in configs"
               :key="cfg.id"
-              class="border-b border-neutral-100 last:border-0"
+              class="border-b border-ink-100 last:border-0"
             >
-              <td class="py-3 pr-4 font-medium text-neutral-800">{{ cfg.name }}</td>
-              <td class="py-3 pr-4 text-neutral-500 max-w-[200px] truncate">{{ cfg.base_url }}</td>
-              <td class="py-3 pr-4 text-neutral-500">{{ cfg.model_flash }}</td>
-              <td class="py-3 pr-4 text-neutral-500">{{ cfg.model_pro }}</td>
+              <td class="py-3 pr-4 font-medium text-ink-600">{{ cfg.name }}</td>
+              <td class="py-3 pr-4 text-ink-400 max-w-[200px] truncate">{{ cfg.base_url }}</td>
+              <td class="py-3 pr-4 text-ink-400">{{ cfg.model_flash }}</td>
+              <td class="py-3 pr-4 text-ink-400">{{ cfg.model_pro }}</td>
               <td class="py-3 pr-4">
                 <span
                   :class="cfg.is_active
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-neutral-100 text-neutral-500'"
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-paper-100 text-ink-400'"
                   class="text-xs font-medium px-2 py-0.5 rounded"
                 >
                   {{ cfg.is_active ? '激活' : '未激活' }}
@@ -58,12 +58,12 @@
               <td class="py-3">
                 <div class="flex items-center gap-2">
                   <button
-                    class="text-xs text-accent-600 hover:text-accent-800 font-medium transition-colors"
+                    class="text-xs text-vermilion-500 hover:text-vermilion-600 font-medium transition-colors"
                     @click="openEditModal(cfg)"
                   >编辑</button>
                   <button
                     v-if="!cfg.is_active"
-                    class="text-xs text-green-600 hover:text-green-800 font-medium transition-colors"
+                    class="text-xs text-emerald-600 hover:text-emerald-800 font-medium transition-colors"
                     @click="activateConfig(cfg.id)"
                   >激活</button>
                   <button
@@ -80,49 +80,49 @@
     </div>
 
     <!-- Token 统计 -->
-    <div class="card p-6">
+    <div class="card p-6 animate-fade-up">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-base font-semibold text-neutral-800">Token 用量统计</h2>
-        <button class="text-xs text-neutral-500 hover:text-neutral-800 transition-colors" @click="fetchStats">刷新</button>
+        <h2 class="text-base font-semibold text-ink-600 heading-serif">Token 用量统计</h2>
+        <button class="text-xs text-ink-400 hover:text-ink-600 transition-colors" @click="fetchStats">刷新</button>
       </div>
 
       <div v-if="loadingStats" class="flex items-center justify-center py-8">
-        <div class="w-6 h-6 border-2 border-accent-500 border-t-transparent rounded-full animate-spin"></div>
+        <div class="w-6 h-6 border-2 border-vermilion-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
 
       <div v-else-if="stats">
         <!-- 汇总卡片 -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div class="bg-neutral-50 rounded-lg p-4">
-            <p class="text-xs text-neutral-500 mb-1">总调用次数</p>
-            <p class="text-xl font-bold text-neutral-900">{{ stats.total_calls.toLocaleString() }}</p>
+          <div class="bg-paper-50 rounded-lg p-4 border border-ink-100">
+            <p class="text-xs text-ink-400 mb-1">总调用次数</p>
+            <p class="text-xl font-bold text-ink-700">{{ stats.total_calls.toLocaleString() }}</p>
           </div>
-          <div class="bg-neutral-50 rounded-lg p-4">
-            <p class="text-xs text-neutral-500 mb-1">累计 Prompt Tokens</p>
-            <p class="text-xl font-bold text-neutral-900">{{ stats.total_prompt_tokens.toLocaleString() }}</p>
+          <div class="bg-paper-50 rounded-lg p-4 border border-ink-100">
+            <p class="text-xs text-ink-400 mb-1">累计 Prompt Tokens</p>
+            <p class="text-xl font-bold text-ink-700">{{ stats.total_prompt_tokens.toLocaleString() }}</p>
           </div>
-          <div class="bg-neutral-50 rounded-lg p-4">
-            <p class="text-xs text-neutral-500 mb-1">累计 Completion Tokens</p>
-            <p class="text-xl font-bold text-neutral-900">{{ stats.total_completion_tokens.toLocaleString() }}</p>
+          <div class="bg-paper-50 rounded-lg p-4 border border-ink-100">
+            <p class="text-xs text-ink-400 mb-1">累计 Completion Tokens</p>
+            <p class="text-xl font-bold text-ink-700">{{ stats.total_completion_tokens.toLocaleString() }}</p>
           </div>
-          <div class="bg-neutral-50 rounded-lg p-4">
-            <p class="text-xs text-neutral-500 mb-1">累计总 Tokens</p>
-            <p class="text-xl font-bold text-neutral-900">{{ stats.total_tokens.toLocaleString() }}</p>
+          <div class="bg-paper-50 rounded-lg p-4 border border-ink-100">
+            <p class="text-xs text-ink-400 mb-1">累计总 Tokens</p>
+            <p class="text-xl font-bold text-ink-700">{{ stats.total_tokens.toLocaleString() }}</p>
           </div>
         </div>
 
         <!-- 跳过次数 -->
-        <p v-if="stats.records_skipped > 0" class="text-xs text-neutral-400 mb-4">
+        <p v-if="stats.records_skipped > 0" class="text-xs text-ink-300 mb-4">
           注：{{ stats.records_skipped }} 次调用未返回 token 信息（已跳过记录）
         </p>
 
         <!-- 按模型分组 -->
         <div v-if="Object.keys(stats.by_model).length > 0" class="mb-6">
-          <h3 class="text-sm font-medium text-neutral-700 mb-3">按模型分组</h3>
+          <h3 class="text-sm font-medium text-ink-500 mb-3">按模型分组</h3>
           <div class="overflow-x-auto">
             <table class="w-full text-sm">
               <thead>
-                <tr class="border-b border-neutral-200 text-left text-xs text-neutral-500">
+                <tr class="border-b border-ink-200 text-left text-xs text-ink-400">
                   <th class="pb-2 pr-4 font-medium">模型</th>
                   <th class="pb-2 pr-4 font-medium">调用次数</th>
                   <th class="pb-2 pr-4 font-medium">Prompt Tokens</th>
@@ -134,20 +134,20 @@
                 <tr
                   v-for="(data, model) in stats.by_model"
                   :key="model"
-                  class="border-b border-neutral-100 last:border-0"
+                  class="border-b border-ink-100 last:border-0"
                 >
-                  <td class="py-2 pr-4 font-medium text-neutral-800">{{ model }}</td>
-                  <td class="py-2 pr-4 text-neutral-600">{{ data.calls.toLocaleString() }}</td>
-                  <td class="py-2 pr-4 text-neutral-600">{{ data.prompt_tokens.toLocaleString() }}</td>
-                  <td class="py-2 pr-4 text-neutral-600">{{ data.completion_tokens.toLocaleString() }}</td>
-                  <td class="py-2 text-neutral-600">{{ data.total_tokens.toLocaleString() }}</td>
+                  <td class="py-2 pr-4 font-medium text-ink-600">{{ model }}</td>
+                  <td class="py-2 pr-4 text-ink-600">{{ data.calls.toLocaleString() }}</td>
+                  <td class="py-2 pr-4 text-ink-600">{{ data.prompt_tokens.toLocaleString() }}</td>
+                  <td class="py-2 pr-4 text-ink-600">{{ data.completion_tokens.toLocaleString() }}</td>
+                  <td class="py-2 text-ink-600">{{ data.total_tokens.toLocaleString() }}</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
 
-        <p v-else class="text-sm text-neutral-400">暂无调用记录</p>
+        <p v-else class="text-sm text-ink-300">暂无调用记录</p>
       </div>
     </div>
 
@@ -157,30 +157,30 @@
       class="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
       @click.self="closeModal"
     >
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
-        <h3 class="text-base font-semibold text-neutral-900 mb-4">
+      <div class="bg-paper-50 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 border border-ink-100">
+        <h3 class="text-base font-semibold text-ink-700 mb-4 heading-serif">
           {{ editingConfig ? '编辑配置' : '新增配置' }}
         </h3>
 
         <div class="space-y-4">
           <div>
-            <label class="block text-xs font-medium text-neutral-700 mb-1">名称</label>
+            <label class="block text-xs font-medium text-ink-500 mb-1">名称</label>
             <input v-model="form.name" class="input w-full" placeholder="例：我的 DeepSeek" />
           </div>
           <div>
-            <label class="block text-xs font-medium text-neutral-700 mb-1">Base URL</label>
+            <label class="block text-xs font-medium text-ink-500 mb-1">Base URL</label>
             <input v-model="form.base_url" class="input w-full" placeholder="https://api.deepseek.com/v1" />
           </div>
           <div>
-            <label class="block text-xs font-medium text-neutral-700 mb-1">API Key</label>
+            <label class="block text-xs font-medium text-ink-500 mb-1">API Key</label>
             <input v-model="form.api_key" type="password" class="input w-full" placeholder="sk-..." />
           </div>
           <div>
-            <label class="block text-xs font-medium text-neutral-700 mb-1">Flash 模型</label>
+            <label class="block text-xs font-medium text-ink-500 mb-1">Flash 模型</label>
             <input v-model="form.model_flash" class="input w-full" placeholder="deepseek-v4-flash" />
           </div>
           <div>
-            <label class="block text-xs font-medium text-neutral-700 mb-1">Pro 模型</label>
+            <label class="block text-xs font-medium text-ink-500 mb-1">Pro 模型</label>
             <input v-model="form.model_pro" class="input w-full" placeholder="deepseek-v4-pro" />
           </div>
         </div>

@@ -1,12 +1,12 @@
 <template>
-  <div class="max-w-5xl mx-auto px-6 py-10 bg-neutral-50 min-h-screen">
+  <div class="max-w-5xl mx-auto px-6 py-10 bg-paper-50 min-h-screen animate-fade-up">
     <div v-if="loading" class="flex flex-col items-center justify-center py-32 space-y-4">
-      <div class="w-10 h-10 border-4 border-accent-600 border-t-transparent rounded-full animate-spin"></div>
-      <p class="text-sm text-neutral-500 font-medium">作品数据加载中...</p>
+      <div class="w-10 h-10 border-4 border-vermilion-500 border-t-transparent rounded-full animate-spin"></div>
+      <p class="text-sm text-ink-400 font-medium">作品数据加载中...</p>
     </div>
 
     <div v-else-if="!novel" class="text-center py-20 card p-8">
-      <p class="text-neutral-500 text-lg mb-4">该小说不存在或已被移除</p>
+      <p class="text-ink-400 text-lg mb-4">该小说不存在或已被移除</p>
       <router-link to="/" class="btn-secondary">返回书架</router-link>
     </div>
 
@@ -15,17 +15,17 @@
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <div class="flex items-center gap-2 mb-1.5">
-            <router-link to="/" class="text-xs text-accent-600 hover:text-accent-700 font-semibold flex items-center gap-1 group">
+            <router-link to="/" class="text-xs text-vermilion-500 hover:text-vermilion-600 font-semibold flex items-center gap-1 group">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
               </svg>
               返回书架
             </router-link>
           </div>
-          <h1 class="text-3xl font-extrabold text-neutral-900 tracking-tight">{{ novel.title }}</h1>
-          <p class="text-xs text-neutral-500 mt-2 flex items-center gap-2 font-medium">
-            <span class="bg-neutral-100 text-neutral-700 px-2 py-0.5 rounded-md border border-neutral-200">{{ novel.novel_type }}</span>
-            <span class="text-neutral-300">|</span>
+          <h1 class="heading-serif text-3xl tracking-tight animate-fade-in">{{ novel.title }}</h1>
+          <p class="text-xs text-ink-400 mt-2 flex items-center gap-2 font-medium">
+            <span class="bg-paper-100 text-ink-600 px-2 py-0.5 rounded-md border border-ink-200">{{ novel.novel_type }}</span>
+            <span class="text-ink-300">|</span>
             <span>{{ (novel.target_words / 10000).toFixed(0) }}万字创作目标</span>
           </p>
         </div>
@@ -38,7 +38,7 @@
             class="btn-secondary text-sm flex items-center gap-1.5"
             :disabled="generating"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4 text-accent-600">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4 text-vermilion-500">
               <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
             </svg>
             <span>{{ generating ? '启动中...' : (novel.status === 'draft' ? '分步生成' : '重新分步生成') }}</span>
@@ -62,7 +62,7 @@
             :to="`/novels/${novelId}/foreshadows`"
             class="btn-secondary text-sm flex items-center gap-1.5"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4 text-accent-600">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4 text-vermilion-500">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.091-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.091L9 5.25l.813 2.846a4.5 4.5 0 003.091 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.091zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.456-2.456L14.25 6l1.035-.259a3.375 3.375 0 002.456-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
             </svg>
             <span>伏笔追踪</span>
@@ -118,14 +118,14 @@
       </div>
 
       <!-- Tabs Navigation -->
-      <div class="border-b border-neutral-200 mb-8 sticky top-16 z-40 bg-white">
+      <div class="border-b border-ink-200 mb-8 sticky top-16 z-40 bg-paper-50">
         <nav class="flex gap-6 overflow-x-auto scrollbar-none py-1">
           <button v-for="tab in tabs" :key="tab.id"
             :class="[
               'pb-3 text-sm font-semibold tracking-wide border-b-2 transition-all duration-200 whitespace-nowrap',
               activeTab === tab.id
-                ? 'border-accent-600 text-accent-600 font-bold'
-                : 'border-transparent text-neutral-500 hover:text-neutral-700'
+                ? 'border-vermilion-500 text-vermilion-500 font-bold'
+                : 'border-transparent text-ink-400 hover:text-ink-600'
             ]"
             @click="activeTab = tab.id"
           >{{ tab.label }}</button>
@@ -133,9 +133,9 @@
       </div>
 
       <!-- Tab Content: Overview -->
-      <div v-if="activeTab === 'overview'" class="card p-6">
+      <div v-if="activeTab === 'overview'" class="card p-6 animate-fade-up">
         <div class="flex justify-between items-center mb-6">
-          <h2 class="text-neutral-800 font-semibold text-sm">作品概览</h2>
+          <h2 class="heading-serif text-sm">作品概览</h2>
           <div class="flex gap-2">
             <button v-if="!editingOverview" @click="startEditOverview" class="btn-secondary text-xs py-1.5 px-3">编辑设定</button>
             <template v-else>
@@ -145,37 +145,37 @@
           </div>
         </div>
         <dl class="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
-          <div class="p-4 rounded-xl bg-neutral-50 border border-neutral-200">
-            <dt class="text-xs text-neutral-500 font-medium uppercase tracking-wider mb-1">作品状态</dt>
-            <dd class="font-semibold text-neutral-700">
+          <div class="p-4 rounded-xl bg-paper-50 border border-ink-200">
+            <dt class="text-xs text-ink-400 font-medium uppercase tracking-wider mb-1">作品状态</dt>
+            <dd class="font-semibold text-ink-600">
               <span :class="'badge-' + statusClass(novel.status)">{{ statusLabel }}</span>
             </dd>
           </div>
-          <div class="p-4 rounded-xl bg-neutral-50 border border-neutral-200">
-            <dt class="text-xs text-neutral-500 font-medium uppercase tracking-wider mb-1">题材类别</dt>
-            <dd class="font-semibold text-neutral-700">{{ novel.novel_type }}</dd>
+          <div class="p-4 rounded-xl bg-paper-50 border border-ink-200">
+            <dt class="text-xs text-ink-400 font-medium uppercase tracking-wider mb-1">题材类别</dt>
+            <dd class="font-semibold text-ink-600">{{ novel.novel_type }}</dd>
           </div>
-          <div class="col-span-1 md:col-span-2 p-4 rounded-xl bg-neutral-50 border border-neutral-200">
-            <dt class="text-xs text-neutral-500 font-medium uppercase tracking-wider mb-1.5">作品标题</dt>
+          <div class="col-span-1 md:col-span-2 p-4 rounded-xl bg-paper-50 border border-ink-200">
+            <dt class="text-xs text-ink-400 font-medium uppercase tracking-wider mb-1.5">作品标题</dt>
             <dd class="mt-1">
               <input v-if="editingOverview" v-model="overviewForm.title" class="input text-sm w-full" maxlength="200" />
-              <span v-else class="font-extrabold text-neutral-900 text-base">{{ novel.title }}</span>
+              <span v-else class="font-extrabold text-ink-700 text-base">{{ novel.title }}</span>
             </dd>
           </div>
-          <div class="col-span-1 md:col-span-2 p-4 rounded-xl bg-neutral-50 border border-neutral-200">
-            <dt class="text-xs text-neutral-500 font-medium uppercase tracking-wider mb-1.5">核心创意 / 简介</dt>
+          <div class="col-span-1 md:col-span-2 p-4 rounded-xl bg-paper-50 border border-ink-200">
+            <dt class="text-xs text-ink-400 font-medium uppercase tracking-wider mb-1.5">核心创意 / 简介</dt>
             <dd class="mt-1">
               <textarea v-if="editingOverview" v-model="overviewForm.idea" class="input text-sm w-full min-h-[100px] resize-y" rows="5" maxlength="2000"></textarea>
-              <span v-else class="whitespace-pre-wrap text-neutral-700 leading-relaxed">{{ novel.idea || '暂无作品创意设定。' }}</span>
+              <span v-else class="whitespace-pre-wrap text-ink-600 leading-relaxed">{{ novel.idea || '暂无作品创意设定。' }}</span>
             </dd>
           </div>
-          <div class="p-4 rounded-xl bg-neutral-50 border border-neutral-200">
-            <dt class="text-xs text-neutral-500 font-medium uppercase tracking-wider mb-1">已登场人物</dt>
-            <dd class="font-semibold text-neutral-700">{{ novel.characters_count }} 名主要角色</dd>
+          <div class="p-4 rounded-xl bg-paper-50 border border-ink-200">
+            <dt class="text-xs text-ink-400 font-medium uppercase tracking-wider mb-1">已登场人物</dt>
+            <dd class="font-semibold text-ink-600">{{ novel.characters_count }} 名主要角色</dd>
           </div>
-          <div class="p-4 rounded-xl bg-neutral-50 border border-neutral-200">
-            <dt class="text-xs text-neutral-500 font-medium uppercase tracking-wider mb-1">世界设定</dt>
-            <dd class="font-semibold text-neutral-700">{{ novel.world_setting ? '已架构完成' : '暂未生成' }}</dd>
+          <div class="p-4 rounded-xl bg-paper-50 border border-ink-200">
+            <dt class="text-xs text-ink-400 font-medium uppercase tracking-wider mb-1">世界设定</dt>
+            <dd class="font-semibold text-ink-600">{{ novel.world_setting ? '已架构完成' : '暂未生成' }}</dd>
           </div>
         </dl>
         <p v-if="overviewSaved" class="text-xs text-emerald-600 font-bold mt-4 flex items-center gap-1">
@@ -185,9 +185,9 @@
       </div>
 
       <!-- Tab Content: Outlines -->
-      <div v-if="activeTab === 'outlines'" class="card p-6">
+      <div v-if="activeTab === 'outlines'" class="card p-6 animate-fade-up">
         <div class="flex justify-between items-center mb-6">
-          <h2 class="text-neutral-800 font-semibold text-sm">三级大纲体系</h2>
+          <h2 class="heading-serif text-sm">三级大纲体系</h2>
           <router-link :to="`/novels/${novelId}/outlines`" class="btn-primary text-sm flex items-center gap-1.5">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
               <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
@@ -196,37 +196,37 @@
           </router-link>
         </div>
         <div v-if="outlineTree" class="space-y-6 text-sm">
-          <div v-if="outlineTree.master" class="p-5 rounded-xl bg-neutral-50 border border-neutral-200">
-            <h3 class="text-xs text-neutral-500 font-medium uppercase tracking-wider mb-2.5">主线总纲</h3>
-            <p v-if="outlineTree.master.content?.premise" class="font-bold text-neutral-900 text-sm leading-relaxed mb-3">{{ outlineTree.master.content.premise }}</p>
-            <div class="space-y-2 pl-4 border-l-2 border-neutral-200 text-xs">
-              <p v-if="outlineTree.master.content?.main_conflict" class="text-neutral-500"><span class="font-semibold text-neutral-700">核心冲突：</span>{{ outlineTree.master.content.main_conflict }}</p>
-              <p v-if="outlineTree.master.content?.ending" class="text-neutral-500"><span class="font-semibold text-neutral-700">宏大结局：</span>{{ outlineTree.master.content.ending }}</p>
+          <div v-if="outlineTree.master" class="p-5 rounded-xl bg-paper-50 border border-ink-200">
+            <h3 class="text-xs text-ink-400 font-medium uppercase tracking-wider mb-2.5">主线总纲</h3>
+            <p v-if="outlineTree.master.content?.premise" class="font-bold text-ink-700 text-sm leading-relaxed mb-3">{{ outlineTree.master.content.premise }}</p>
+            <div class="space-y-2 pl-4 border-l-2 border-ink-200 text-xs">
+              <p v-if="outlineTree.master.content?.main_conflict" class="text-ink-500"><span class="font-semibold text-ink-600">核心冲突：</span>{{ outlineTree.master.content.main_conflict }}</p>
+              <p v-if="outlineTree.master.content?.ending" class="text-ink-500"><span class="font-semibold text-ink-600">宏大结局：</span>{{ outlineTree.master.content.ending }}</p>
             </div>
           </div>
 
           <div v-if="outlineTree.volumes?.length" class="space-y-4">
-            <h3 class="text-xs text-neutral-500 font-medium uppercase tracking-wider">分卷提纲（{{ outlineTree.volumes.length }} 卷）</h3>
+            <h3 class="text-xs text-ink-400 font-medium uppercase tracking-wider">分卷提纲（{{ outlineTree.volumes.length }} 卷）</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div v-for="vol in outlineTree.volumes" :key="vol.id" class="p-4 rounded-xl bg-white border border-neutral-200 hover:border-neutral-300 transition-colors">
-                <p class="font-bold text-neutral-900 text-sm">第{{ vol.volume_number }}卷：{{ vol.content?.title || '卷设定未命名' }}</p>
-                <p class="text-neutral-500 text-xs mt-2 leading-relaxed line-clamp-3">{{ vol.content?.summary || '暂无提纲摘要' }}</p>
-                <div class="mt-4 flex items-center justify-between text-[10px] text-neutral-400 font-bold tracking-wider">
+              <div v-for="(vol, idx) in outlineTree.volumes" :key="vol.id" class="card-hover shine-on-hover animate-fade-up-stagger p-4 hover:border-ink-300 transition-colors" :style="{ animationDelay: `${Math.min(idx,8)*60}ms` }">
+                <p class="font-bold text-ink-700 text-sm">第{{ vol.volume_number }}卷：{{ vol.content?.title || '卷设定未命名' }}</p>
+                <p class="text-ink-400 text-xs mt-2 leading-relaxed line-clamp-3">{{ vol.content?.summary || '暂无提纲摘要' }}</p>
+                <div class="mt-4 flex items-center justify-between text-[10px] text-ink-300 font-bold tracking-wider">
                   <span>{{ vol.chapters?.length || 0 }} 个章节规划</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <p v-if="!outlineTree.master && !outlineTree.volumes?.length" class="text-neutral-500 py-6 text-center">暂无三级大纲数据，您可以通过大纲编辑器或重新全功能生成来确立。</p>
+          <p v-if="!outlineTree.master && !outlineTree.volumes?.length" class="text-ink-400 py-6 text-center">暂无三级大纲数据，您可以通过大纲编辑器或重新全功能生成来确立。</p>
         </div>
-        <p v-else class="text-sm text-neutral-500 py-6 text-center">系统将在大纲编辑器内管理您的总纲、卷纲与章节大纲结构体系。</p>
+        <p v-else class="text-sm text-ink-400 py-6 text-center">系统将在大纲编辑器内管理您的总纲、卷纲与章节大纲结构体系。</p>
       </div>
 
       <!-- Tab Content: World Setting -->
-      <div v-if="activeTab === 'world'" class="card p-6">
+      <div v-if="activeTab === 'world'" class="card p-6 animate-fade-up">
         <div class="flex justify-between items-center mb-6">
-          <h2 class="text-neutral-800 font-semibold text-sm">世界观宏大设定</h2>
+          <h2 class="heading-serif text-sm">世界观宏大设定</h2>
           <router-link :to="`/novels/${novelId}/world`" class="btn-secondary text-sm flex items-center gap-1">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
               <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
@@ -235,47 +235,47 @@
           </router-link>
         </div>
         <div v-if="world" class="space-y-6 text-sm">
-          <div v-if="world.background" class="p-4 rounded-xl bg-neutral-50 border border-neutral-200">
-            <h3 class="text-xs text-neutral-500 font-medium uppercase tracking-wider mb-2">世界背景与底层神话</h3>
-            <p class="mt-1 text-neutral-700 leading-relaxed whitespace-pre-wrap">{{ world.background }}</p>
+          <div v-if="world.background" class="p-4 rounded-xl bg-paper-50 border border-ink-200">
+            <h3 class="text-xs text-ink-400 font-medium uppercase tracking-wider mb-2">世界背景与底层神话</h3>
+            <p class="mt-1 text-ink-600 leading-relaxed whitespace-pre-wrap">{{ world.background }}</p>
           </div>
-          <div v-if="world.geography" class="p-4 rounded-xl bg-neutral-50 border border-neutral-200">
-            <h3 class="text-xs text-neutral-500 font-medium uppercase tracking-wider mb-2">地理环境与灵力分布</h3>
-            <p class="mt-1 text-neutral-700 leading-relaxed whitespace-pre-wrap">{{ world.geography }}</p>
+          <div v-if="world.geography" class="p-4 rounded-xl bg-paper-50 border border-ink-200">
+            <h3 class="text-xs text-ink-400 font-medium uppercase tracking-wider mb-2">地理环境与灵力分布</h3>
+            <p class="mt-1 text-ink-600 leading-relaxed whitespace-pre-wrap">{{ world.geography }}</p>
           </div>
-          <div v-if="world.culture" class="p-4 rounded-xl bg-neutral-50 border border-neutral-200">
-            <h3 class="text-xs text-neutral-500 font-medium uppercase tracking-wider mb-2">教派宗门与文化体系</h3>
-            <p class="mt-1 text-neutral-700 leading-relaxed whitespace-pre-wrap">{{ world.culture }}</p>
+          <div v-if="world.culture" class="p-4 rounded-xl bg-paper-50 border border-ink-200">
+            <h3 class="text-xs text-ink-400 font-medium uppercase tracking-wider mb-2">教派宗门与文化体系</h3>
+            <p class="mt-1 text-ink-600 leading-relaxed whitespace-pre-wrap">{{ world.culture }}</p>
           </div>
-          <div v-if="world.rules" class="p-4 rounded-xl bg-neutral-50 border border-neutral-200">
-            <h3 class="text-xs text-neutral-500 font-medium uppercase tracking-wider mb-2">天道规则与能量演变</h3>
-            <p class="mt-1 text-neutral-700 leading-relaxed whitespace-pre-wrap">{{ world.rules }}</p>
+          <div v-if="world.rules" class="p-4 rounded-xl bg-paper-50 border border-ink-200">
+            <h3 class="text-xs text-ink-400 font-medium uppercase tracking-wider mb-2">天道规则与能量演变</h3>
+            <p class="mt-1 text-ink-600 leading-relaxed whitespace-pre-wrap">{{ world.rules }}</p>
           </div>
-          <p v-if="!world.background && !world.rules" class="text-neutral-500 py-6 text-center">暂未生成世界观设定体系，点击上方"编辑设定"即可手工创建或等待 AI 提炼。</p>
+          <p v-if="!world.background && !world.rules" class="text-ink-400 py-6 text-center">暂未生成世界观设定体系，点击上方"编辑设定"即可手工创建或等待 AI 提炼。</p>
         </div>
-        <p v-else class="text-neutral-500 py-6 text-center">暂无世界设定架构。</p>
+        <p v-else class="text-ink-400 py-6 text-center">暂无世界设定架构。</p>
       </div>
 
       <!-- Tab Content: Power Systems -->
       <div v-if="activeTab === 'power-systems'" class="space-y-4">
         <div class="flex justify-between items-center mb-2">
-          <h2 class="text-neutral-800 font-semibold text-sm">力量与境界法则</h2>
+          <h2 class="heading-serif text-sm">力量与境界法则</h2>
         </div>
-        <div v-if="powerSystems.length === 0" class="card p-8 text-center text-neutral-500">
+        <div v-if="powerSystems.length === 0" class="card p-8 text-center text-ink-400">
           暂无设定的境界或灵力修炼体系
         </div>
-        <div v-for="ps in powerSystems" :key="ps.id" class="card p-5">
-          <h3 class="font-bold text-neutral-900 text-base border-b border-neutral-200 pb-3 mb-4 flex items-center gap-2">
-            <span class="w-2.5 h-2.5 rounded-full bg-accent-600"></span>
+        <div v-for="(ps, idx) in powerSystems" :key="ps.id" class="card card-hover animate-fade-up-stagger p-5" :style="{ animationDelay: `${Math.min(idx,8)*60}ms` }">
+          <h3 class="heading-serif text-base border-b border-ink-200 pb-3 mb-4 flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-vermilion-500"></span>
             <span>{{ ps.name }}</span>
           </h3>
-          <p v-if="ps.description" class="text-xs text-neutral-500 mb-4 leading-relaxed bg-neutral-50 p-3 rounded-lg border border-neutral-200">{{ ps.description }}</p>
+          <p v-if="ps.description" class="text-xs text-ink-400 mb-4 leading-relaxed bg-paper-50 p-3 rounded-lg border border-ink-200">{{ ps.description }}</p>
           <div v-if="ps.levels?.length" class="space-y-3">
-            <div v-for="(lvl, i) in ps.levels" :key="i" class="flex flex-col sm:flex-row sm:items-start gap-2 text-xs py-3 border-b border-neutral-100 last:border-0 pl-1">
-              <span class="font-bold text-accent-600 shrink-0 w-24 tracking-wide">第{{ i + 1 }}重：{{ lvl.name }}</span>
+            <div v-for="(lvl, i) in ps.levels" :key="i" class="flex flex-col sm:flex-row sm:items-start gap-2 text-xs py-3 border-b border-ink-100 last:border-0 pl-1">
+              <span class="font-bold text-vermilion-500 shrink-0 w-24 tracking-wide">第{{ i + 1 }}重：{{ lvl.name }}</span>
               <div class="flex-1 space-y-1">
-                <p class="text-neutral-700 leading-relaxed"><span class="text-neutral-500 font-bold">描述：</span>{{ lvl.description }}</p>
-                <p v-if="lvl.breakthrough" class="text-amber-600 leading-relaxed font-semibold"><span class="text-neutral-500 font-bold">突破契机：</span>{{ lvl.breakthrough }}</p>
+                <p class="text-ink-600 leading-relaxed"><span class="text-ink-400 font-bold">描述：</span>{{ lvl.description }}</p>
+                <p v-if="lvl.breakthrough" class="text-amber-600 leading-relaxed font-semibold"><span class="text-ink-400 font-bold">突破契机：</span>{{ lvl.breakthrough }}</p>
               </div>
             </div>
           </div>
@@ -285,28 +285,28 @@
       <!-- Tab Content: Characters -->
       <div v-if="activeTab === 'characters'" class="space-y-4">
         <div class="flex justify-between items-center mb-2">
-          <h2 class="text-neutral-800 font-semibold text-sm">登场人物志</h2>
+          <h2 class="heading-serif text-sm">登场人物志</h2>
           <router-link :to="`/novels/${novelId}/characters`" class="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-accent-600">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-vermilion-500">
               <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
             </svg>
             <span>管理人物档案</span>
           </router-link>
         </div>
-        <div v-if="characters.length === 0" class="card p-8 text-center text-neutral-500">
+        <div v-if="characters.length === 0" class="card p-8 text-center text-ink-400">
           暂无登场主要人物，点击右侧管理添加。
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div v-for="char in characters" :key="char.id" class="card p-5 flex gap-4 hover:border-neutral-300 transition-colors">
-            <div class="w-12 h-12 rounded-xl bg-neutral-100 border border-neutral-200 shrink-0 flex items-center justify-center font-bold text-neutral-600 font-serif text-lg">
+          <div v-for="(char, idx) in characters" :key="char.id" class="card card-hover shine-on-hover animate-fade-up-stagger p-5 flex gap-4 hover:border-ink-300 transition-colors" :style="{ animationDelay: `${Math.min(idx,8)*60}ms` }">
+            <div class="w-12 h-12 rounded-xl bg-paper-100 border border-ink-200 shrink-0 flex items-center justify-center font-bold text-ink-600 font-serif text-lg">
               {{ char.name ? char.name[0] : '人' }}
             </div>
             <div class="flex-1 space-y-1">
               <div class="flex items-center justify-between gap-2">
-                <span class="font-bold text-neutral-900 text-sm">{{ char.name }}</span>
-                <span v-if="char.role" class="text-[10px] bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded-md font-bold border border-neutral-200">{{ char.role }}</span>
+                <span class="font-bold text-ink-700 text-sm">{{ char.name }}</span>
+                <span v-if="char.role" class="text-[10px] bg-paper-100 text-ink-600 px-2 py-0.5 rounded-md font-bold border border-ink-200">{{ char.role }}</span>
               </div>
-              <p v-if="char.description" class="text-xs text-neutral-500 leading-relaxed mt-2">{{ char.description }}</p>
+              <p v-if="char.description" class="text-xs text-ink-400 leading-relaxed mt-2">{{ char.description }}</p>
             </div>
           </div>
         </div>
@@ -361,7 +361,7 @@
       <!-- Tab Content: Conversations -->
       <div v-if="activeTab === 'conversations'" class="space-y-4">
         <div class="flex justify-between items-center mb-2">
-          <h2 class="text-neutral-800 font-semibold text-sm">AI 创作对话</h2>
+          <h2 class="heading-serif text-sm">AI 创作对话</h2>
           <button @click="startConversation" class="btn-primary text-xs py-1.5 px-3 flex items-center gap-1">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -369,16 +369,17 @@
             <span>开启讨论</span>
           </button>
         </div>
-        <div v-if="conversations.length === 0" class="card p-8 text-center text-neutral-500">
+        <div v-if="conversations.length === 0" class="card p-8 text-center text-ink-400">
           暂无创作对话，点击右上角开启与 AI 深度讨论剧情或人物走向吧。
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <router-link v-for="conv in conversations" :key="conv.id"
+          <router-link v-for="(conv, idx) in conversations" :key="conv.id"
             :to="`/novels/${novelId}/conversations/${conv.id}`"
-            class="card p-4 block hover:border-neutral-300 transition-colors"
+            class="card card-hover shine-on-hover animate-fade-up-stagger p-4 block hover:border-ink-300 transition-colors"
+            :style="{ animationDelay: `${Math.min(idx,8)*60}ms` }"
           >
             <div class="flex justify-between items-center gap-3">
-              <span class="font-bold text-neutral-900 text-sm truncate pr-2">{{ conv.topic }}</span>
+              <span class="font-bold text-ink-700 text-sm truncate pr-2">{{ conv.topic }}</span>
               <span :class="conv.status === 'active' ? 'badge-running' : 'badge-completed'" class="shrink-0 font-bold">
                 {{ conv.status === 'active' ? '进行中' : '已归档' }}
               </span>

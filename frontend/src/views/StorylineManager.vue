@@ -1,7 +1,7 @@
 <template>
-  <div class="max-w-4xl mx-auto px-6 py-10">
+  <div class="max-w-4xl mx-auto px-6 py-10 animate-fade-up">
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-xl font-bold text-neutral-900">故事线管理</h1>
+      <h1 class="heading-serif text-xl">故事线管理</h1>
       <router-link :to="`/novels/${novelId}`" class="btn-secondary text-sm">返回</router-link>
     </div>
 
@@ -12,15 +12,15 @@
     </div>
 
     <!-- AI Preview Panel: Storylines -->
-    <div v-if="pendingStorylines.length" class="card p-5 mb-6 border-2 border-accent-200">
+    <div v-if="pendingStorylines.length" class="card p-5 mb-6 border-2 border-vermilion-200">
       <div class="flex items-center justify-between mb-3">
-        <h3 class="font-medium text-neutral-800">AI 生成预览 — 故事线（可修改后确认）</h3>
+        <h3 class="font-serif text-ink-700 font-medium">AI 生成预览 — 故事线（可修改后确认）</h3>
         <div class="flex gap-2">
           <button @click="confirmStorylines" class="btn-primary text-xs" :disabled="confirmingStorylines">{{ confirmingStorylines ? '保存中...' : '确认保存' }}</button>
           <button @click="pendingStorylines = []" class="btn-secondary text-xs">取消</button>
         </div>
       </div>
-      <div v-for="(sl, i) in pendingStorylines" :key="i" class="mb-3 p-3 bg-neutral-50 rounded-lg space-y-2">
+      <div v-for="(sl, i) in pendingStorylines" :key="i" class="mb-3 p-3 bg-paper-50 rounded-lg space-y-2 animate-fade-up-stagger" :style="{ animationDelay: `${Math.min(i,8)*60}ms` }">
         <div class="flex gap-2">
           <input v-model="sl.name" class="input text-sm flex-1" placeholder="故事线名称" />
           <select v-model="sl.type" class="input text-sm w-28">
@@ -37,15 +37,15 @@
     <!-- AI Preview Panel: Arcs -->
     <div v-if="pendingArcs.length" class="card p-5 mb-6 border-2 border-amber-200">
       <div class="flex items-center justify-between mb-3">
-        <h3 class="font-medium text-neutral-800">AI 生成预览 — 人物弧光（可修改后确认）</h3>
+        <h3 class="font-serif text-ink-700 font-medium">AI 生成预览 — 人物弧光（可修改后确认）</h3>
         <div class="flex gap-2">
           <button @click="confirmArcs" class="btn-primary text-xs" :disabled="confirmingArcs">{{ confirmingArcs ? '保存中...' : '确认保存' }}</button>
           <button @click="pendingArcs = []" class="btn-secondary text-xs">取消</button>
         </div>
       </div>
-      <div v-for="(arc, i) in pendingArcs" :key="i" class="mb-3 p-3 bg-neutral-50 rounded-lg space-y-2">
+      <div v-for="(arc, i) in pendingArcs" :key="i" class="mb-3 p-3 bg-paper-50 rounded-lg space-y-2 animate-fade-up-stagger" :style="{ animationDelay: `${Math.min(i,8)*60}ms` }">
         <div class="flex gap-2 items-center">
-          <span class="text-xs text-neutral-500 shrink-0">人物：</span>
+          <span class="text-xs text-ink-400 shrink-0">人物：</span>
           <select v-model="arc.character_id" class="input text-sm w-40">
             <option v-for="c in characters" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select>
@@ -64,13 +64,13 @@
     <!-- AI Preview Panel: Scenes -->
     <div v-if="pendingScenes.length" class="card p-5 mb-6 border-2 border-emerald-200">
       <div class="flex items-center justify-between mb-3">
-        <h3 class="font-medium text-neutral-800">AI 生成预览 — 场景（可修改后确认）</h3>
+        <h3 class="font-serif text-ink-700 font-medium">AI 生成预览 — 场景（可修改后确认）</h3>
         <div class="flex gap-2">
           <button @click="confirmScenes" class="btn-primary text-xs" :disabled="confirmingScenes">{{ confirmingScenes ? '保存中...' : '确认保存' }}</button>
           <button @click="pendingScenes = []" class="btn-secondary text-xs">取消</button>
         </div>
       </div>
-      <div v-for="(sc, i) in pendingScenes" :key="i" class="mb-3 p-3 bg-neutral-50 rounded-lg space-y-2">
+      <div v-for="(sc, i) in pendingScenes" :key="i" class="mb-3 p-3 bg-paper-50 rounded-lg space-y-2 animate-fade-up-stagger" :style="{ animationDelay: `${Math.min(i,8)*60}ms` }">
         <div class="flex gap-2">
           <input v-model="sc.name" class="input text-sm flex-1" placeholder="场景名称" />
           <input v-model="sc.location" class="input text-sm w-40" placeholder="地理位置" />
@@ -83,7 +83,7 @@
     <!-- Storylines -->
     <section class="mb-8">
       <div class="flex items-center justify-between mb-3">
-        <h2 class="font-medium text-neutral-800">故事线</h2>
+        <h2 class="font-serif text-ink-700 font-medium">故事线</h2>
         <div class="flex gap-2">
           <button @click="aiGenerateStorylines" class="btn-secondary text-xs" :disabled="aiLoading === 'storylines'">
             {{ aiLoading === 'storylines' ? 'AI生成中...' : 'AI 生成' }}
@@ -91,24 +91,24 @@
           <button @click="addStoryline" class="btn-primary text-xs">手动添加</button>
         </div>
       </div>
-      <div v-if="storylines.length === 0" class="card p-4 text-center text-neutral-400 text-sm">暂无故事线</div>
-      <div v-for="sl in storylines" :key="sl.id" class="card p-4 mb-2">
+      <div v-if="storylines.length === 0" class="card p-4 text-center text-ink-300 text-sm">暂无故事线</div>
+      <div v-for="(sl, idx) in storylines" :key="sl.id" class="card card-hover shine-on-hover p-4 mb-2 animate-fade-up-stagger" :style="{ animationDelay: `${Math.min(idx,8)*60}ms` }">
         <div class="flex items-center justify-between">
           <div>
-            <span class="badge bg-accent-50 text-accent-700 mr-2">{{ sl.type }}</span>
+            <span class="badge bg-vermilion-50 text-vermilion-600 mr-2">{{ sl.type }}</span>
             <span class="font-medium text-sm">{{ sl.name }}</span>
             <span class="badge ml-2" :class="sl.status === 'active' ? 'badge-running' : 'badge-completed'">{{ sl.status }}</span>
           </div>
           <button @click="deleteStoryline(sl.id)" class="text-red-400 hover:text-red-600 text-xs">删除</button>
         </div>
-        <p v-if="sl.description" class="text-xs text-neutral-500 mt-1">{{ sl.description }}</p>
+        <p v-if="sl.description" class="text-xs text-ink-400 mt-1">{{ sl.description }}</p>
       </div>
     </section>
 
     <!-- Character Arcs -->
     <section class="mb-8">
       <div class="flex items-center justify-between mb-3">
-        <h2 class="font-medium text-neutral-800">人物弧光</h2>
+        <h2 class="font-serif text-ink-700 font-medium">人物弧光</h2>
         <div class="flex gap-2">
           <button @click="aiGenerateArcs" class="btn-secondary text-xs" :disabled="aiLoading === 'arcs'">
             {{ aiLoading === 'arcs' ? 'AI生成中...' : 'AI 生成' }}
@@ -116,8 +116,8 @@
           <button @click="addArc" class="btn-primary text-xs">手动添加</button>
         </div>
       </div>
-      <div v-if="arcs.length === 0" class="card p-4 text-center text-neutral-400 text-sm">暂无人物弧光</div>
-      <div v-for="arc in arcs" :key="arc.id" class="card p-4 mb-2">
+      <div v-if="arcs.length === 0" class="card p-4 text-center text-ink-300 text-sm">暂无人物弧光</div>
+      <div v-for="(arc, idx) in arcs" :key="arc.id" class="card card-hover shine-on-hover p-4 mb-2 animate-fade-up-stagger" :style="{ animationDelay: `${Math.min(idx,8)*60}ms` }">
         <div class="flex items-center justify-between">
           <div>
             <span class="badge bg-amber-50 text-amber-700 mr-2">{{ arc.arc_type }}</span>
@@ -125,14 +125,14 @@
           </div>
           <button @click="deleteArc(arc.id)" class="text-red-400 hover:text-red-600 text-xs">删除</button>
         </div>
-        <p v-if="arc.description" class="text-xs text-neutral-500 mt-1">{{ arc.description }}</p>
+        <p v-if="arc.description" class="text-xs text-ink-400 mt-1">{{ arc.description }}</p>
       </div>
     </section>
 
     <!-- Scenes -->
     <section>
       <div class="flex items-center justify-between mb-3">
-        <h2 class="font-medium text-neutral-800">场景</h2>
+        <h2 class="font-serif text-ink-700 font-medium">场景</h2>
         <div class="flex gap-2">
           <button @click="aiGenerateScenes" class="btn-secondary text-xs" :disabled="aiLoading === 'scenes'">
             {{ aiLoading === 'scenes' ? 'AI生成中...' : 'AI 生成' }}
@@ -140,16 +140,16 @@
           <button @click="addScene" class="btn-primary text-xs">手动添加</button>
         </div>
       </div>
-      <div v-if="scenes.length === 0" class="card p-4 text-center text-neutral-400 text-sm">暂无场景</div>
-      <div v-for="scene in scenes" :key="scene.id" class="card p-4 mb-2">
+      <div v-if="scenes.length === 0" class="card p-4 text-center text-ink-300 text-sm">暂无场景</div>
+      <div v-for="(scene, idx) in scenes" :key="scene.id" class="card card-hover shine-on-hover p-4 mb-2 animate-fade-up-stagger" :style="{ animationDelay: `${Math.min(idx,8)*60}ms` }">
         <div class="flex items-center justify-between">
           <div>
             <span class="font-medium text-sm">{{ scene.name }}</span>
-            <span v-if="scene.location" class="text-xs text-neutral-400 ml-2">{{ scene.location }}</span>
+            <span v-if="scene.location" class="text-xs text-ink-400 ml-2">{{ scene.location }}</span>
           </div>
           <button @click="deleteScene(scene.id)" class="text-red-400 hover:text-red-600 text-xs">删除</button>
         </div>
-        <p v-if="scene.description" class="text-xs text-neutral-500 mt-1">{{ scene.description }}</p>
+        <p v-if="scene.description" class="text-xs text-ink-400 mt-1">{{ scene.description }}</p>
       </div>
     </section>
   </div>

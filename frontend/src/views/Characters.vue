@@ -1,13 +1,13 @@
 <template>
-  <div class="max-w-3xl mx-auto px-6 py-10">
+  <div class="max-w-3xl mx-auto px-6 py-10 animate-fade-up">
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-xl font-bold text-neutral-900">人物管理</h1>
+      <h1 class="heading-serif text-xl">人物管理</h1>
       <router-link :to="`/novels/${novelId}`" class="btn-secondary text-sm">返回</router-link>
     </div>
 
     <!-- Add Character Form -->
     <div class="card p-5 mb-6">
-      <h2 class="text-sm font-medium text-neutral-600 mb-3">添加人物</h2>
+      <h2 class="text-sm font-serif text-ink-700 font-medium mb-3">添加人物</h2>
       <form @submit.prevent="addCharacter" class="grid grid-cols-2 gap-3">
         <input v-model="newChar.name" class="input text-sm" placeholder="姓名" required />
         <select v-model="newChar.role" class="input text-sm">
@@ -28,21 +28,21 @@
 
     <!-- Character List -->
     <div class="space-y-3">
-      <div v-for="char in characters" :key="char.id" class="card p-5">
+      <div v-for="(char, idx) in characters" :key="char.id" class="card card-hover shine-on-hover p-5 animate-fade-up-stagger" :style="{ animationDelay: `${Math.min(idx,8)*60}ms` }">
         <div class="flex items-start justify-between">
           <div class="flex-1">
             <div class="flex items-center gap-2 mb-2">
-              <span class="font-bold text-neutral-800">{{ char.name }}</span>
-              <span v-if="char.role" class="badge bg-accent-50 text-accent-700">{{ char.role }}</span>
+              <span class="font-bold text-ink-700">{{ char.name }}</span>
+              <span v-if="char.role" class="badge bg-vermilion-50 text-vermilion-600">{{ char.role }}</span>
             </div>
-            <p v-if="char.description" class="text-sm text-neutral-600 mb-1">{{ char.description }}</p>
-            <p v-if="char.personality" class="text-sm text-neutral-500"><span class="text-neutral-400">性格：</span>{{ char.personality }}</p>
-            <p v-if="char.abilities" class="text-sm text-neutral-500"><span class="text-neutral-400">能力：</span>{{ char.abilities }}</p>
+            <p v-if="char.description" class="text-sm text-ink-600 mb-1">{{ char.description }}</p>
+            <p v-if="char.personality" class="text-sm text-ink-400"><span class="text-ink-300">性格：</span>{{ char.personality }}</p>
+            <p v-if="char.abilities" class="text-sm text-ink-400"><span class="text-ink-300">能力：</span>{{ char.abilities }}</p>
           </div>
           <button @click="deleteChar(char.id)" class="text-red-400 hover:text-red-600 text-sm ml-4">删除</button>
         </div>
       </div>
-      <p v-if="characters.length === 0" class="text-center text-neutral-400 py-8">暂无人物，请添加</p>
+      <p v-if="characters.length === 0" class="text-center text-ink-300 py-8">暂无人物，请添加</p>
     </div>
   </div>
 </template>

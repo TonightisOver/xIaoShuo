@@ -1,31 +1,31 @@
 <template>
-  <div class="min-h-screen bg-neutral-50 py-10 px-4 sm:px-6 lg:px-8">
+  <div class="min-h-screen bg-paper-50 py-10 px-4 sm:px-6 lg:px-8 animate-fade-up">
     <div class="max-w-7xl mx-auto space-y-8">
       <!-- 头部：标题与面包屑 -->
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div class="flex items-center gap-2 mb-1.5">
-            <router-link :to="`/novels/${novelId}`" class="text-xs text-accent-600 hover:text-accent-700 font-semibold flex items-center gap-1 group">
+            <router-link :to="`/novels/${novelId}`" class="text-xs text-vermilion-500 hover:text-vermilion-600 font-semibold flex items-center gap-1 group">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
               </svg>
               返回作品详情
             </router-link>
           </div>
-          <h1 class="text-2xl font-extrabold text-neutral-900 tracking-tight flex items-center gap-2">
+          <h1 class="text-2xl font-extrabold text-ink-700 tracking-tight flex items-center gap-2 heading-serif animate-fade-in">
             <span>职业体系管理</span>
-            <span v-if="novel" class="text-sm font-medium text-neutral-500 bg-neutral-200/60 px-2 py-0.5 rounded-md border border-neutral-300">《{{ novel.title }}》</span>
+            <span v-if="novel" class="text-sm font-medium text-ink-400 bg-paper-200 px-2 py-0.5 rounded-md border border-ink-200">《{{ novel.title }}》</span>
           </h1>
-          <p class="text-xs text-neutral-500 mt-1">为小说架构职业等级阶梯，分配角色当前修炼阶段，打造严密的战力或成长体系。</p>
+          <p class="text-xs text-ink-400 mt-1">为小说架构职业等级阶梯，分配角色当前修炼阶段，打造严密的战力或成长体系。</p>
         </div>
 
         <!-- 顶部操作按钮 -->
         <div class="flex items-center gap-3">
           <button
             @click="openAiGenerateModal"
-            class="btn-secondary text-xs flex items-center gap-1.5 bg-gradient-to-r hover:from-accent-50 hover:to-indigo-50 border-accent-200/80"
+            class="btn-secondary text-xs flex items-center gap-1.5 border-ink-200"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-accent-600 animate-pulse">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-vermilion-500 animate-pulse">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.091-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.091L9 5.25l.813 2.846a4.5 4.5 0 003.091 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.091z" />
             </svg>
             <span>AI 生成职业</span>
@@ -47,19 +47,19 @@
         
         <!-- 左侧：职业卡片列表 (4/12) -->
         <div class="lg:col-span-5 space-y-4">
-          <div class="glass-container rounded-2xl border border-white/20 p-5 shadow-xl">
-            <h2 class="text-sm font-bold text-neutral-800 mb-4 flex items-center justify-between">
+          <div class="card p-5">
+            <h2 class="text-sm font-bold text-ink-600 mb-4 flex items-center justify-between heading-serif">
               <span>已设职业库</span>
-              <span class="text-xs font-mono font-bold bg-neutral-200/50 text-neutral-600 px-2 py-0.5 rounded-full">{{ careers.length }} 个</span>
+              <span class="text-xs font-mono font-bold bg-paper-200 text-ink-400 px-2 py-0.5 rounded-full">{{ careers.length }} 个</span>
             </h2>
 
             <div v-if="loading" class="flex flex-col items-center justify-center py-16 space-y-3">
-              <div class="w-8 h-8 border-3 border-accent-600 border-t-transparent rounded-full animate-spin"></div>
-              <p class="text-xs text-neutral-400 font-medium">数据加载中...</p>
+              <div class="w-8 h-8 border-3 border-vermilion-500 border-t-transparent rounded-full animate-spin"></div>
+              <p class="text-xs text-ink-300 font-medium">数据加载中...</p>
             </div>
 
-            <div v-else-if="careers.length === 0" class="text-center py-16 px-4 border border-dashed border-neutral-300/60 rounded-xl bg-white/30 backdrop-blur-sm">
-              <p class="text-xs text-neutral-400 mb-3">暂无职业体系设定</p>
+            <div v-else-if="careers.length === 0" class="text-center py-16 px-4 border border-dashed border-ink-200 rounded-xl bg-paper-100">
+              <p class="text-xs text-ink-300 mb-3">暂无职业体系设定</p>
               <div class="flex justify-center gap-2">
                 <button @click="openAiGenerateModal" class="btn-secondary text-[11px] py-1 px-2.5">AI 快速生成</button>
                 <button @click="openAddCareerModal" class="btn-primary text-[11px] py-1 px-2.5">手动添加</button>
@@ -68,19 +68,20 @@
 
             <div v-else class="space-y-3 max-h-[580px] overflow-y-auto pr-1">
               <div
-                v-for="career in careers"
+                v-for="(career, idx) in careers"
                 :key="career.id"
                 @click="selectCareer(career)"
-                class="glass-panel text-left p-4 rounded-xl border transition-all duration-300 cursor-pointer flex flex-col justify-between"
+                class="card text-left p-4 cursor-pointer flex flex-col justify-between transition-all duration-300 animate-fade-up-stagger shine-on-hover"
+                :style="{ animationDelay: `${Math.min(idx,8)*60}ms` }"
                 :class="[
                   selectedCareer && selectedCareer.id === career.id
-                    ? 'border-accent-500 bg-accent-50/20 shadow-md ring-1 ring-accent-500/20'
-                    : 'border-neutral-200/60 bg-white/50 hover:bg-white/80 hover:border-neutral-300'
+                    ? 'border-vermilion-400 bg-vermilion-50 shadow-md ring-1 ring-vermilion-200'
+                    : 'border-ink-100 hover:bg-paper-100 hover:border-ink-200'
                 ]"
               >
                 <div>
                   <div class="flex items-center justify-between mb-2">
-                    <h3 class="font-bold text-sm text-neutral-800 flex items-center gap-2">
+                    <h3 class="font-bold text-sm text-ink-600 flex items-center gap-2">
                       <span class="w-1.5 h-1.5 rounded-full" :class="getCategoryColor(career.category)"></span>
                       <span>{{ career.name }}</span>
                     </h3>
@@ -88,14 +89,14 @@
                       {{ career.category }}
                     </span>
                   </div>
-                  <p class="text-xs text-neutral-500 leading-relaxed line-clamp-2 mb-3">
+                  <p class="text-xs text-ink-400 leading-relaxed line-clamp-2 mb-3">
                     {{ career.description || '暂无详细背景描述。' }}
                   </p>
                 </div>
-                <div class="flex items-center justify-between text-[10px] text-neutral-400 font-bold border-t border-neutral-100/80 pt-2">
+                <div class="flex items-center justify-between text-[10px] text-ink-300 font-bold border-t border-ink-100 pt-2">
                   <span>包含阶段数：{{ career.stages?.length || 10 }} 阶</span>
                   <div class="flex items-center gap-2">
-                    <button @click.stop="openEditCareerModal(career)" class="text-accent-600 hover:text-accent-700">编辑</button>
+                    <button @click.stop="openEditCareerModal(career)" class="text-vermilion-500 hover:text-vermilion-600">编辑</button>
                     <button @click.stop="deleteCareer(career.id)" class="text-red-500 hover:text-red-600">删除</button>
                   </div>
                 </div>
@@ -106,18 +107,18 @@
 
         <!-- 右侧：职业详情与 vertical timeline (7/12) -->
         <div class="lg:col-span-7 space-y-4">
-          <div class="glass-container rounded-2xl border border-white/20 p-6 shadow-xl min-h-[400px] flex flex-col">
+          <div class="card p-6 min-h-[400px] flex flex-col animate-fade-up">
             <template v-if="selectedCareer">
               <!-- 职业基本情况 -->
-              <div class="border-b border-neutral-200/80 pb-4 mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-left">
+              <div class="border-b border-ink-100 pb-4 mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-left">
                 <div>
                   <div class="flex items-center gap-2 mb-1">
-                    <h2 class="text-lg font-bold text-neutral-800">{{ selectedCareer.name }}</h2>
+                    <h2 class="text-lg font-bold text-ink-600 heading-serif">{{ selectedCareer.name }}</h2>
                     <span class="text-xs font-semibold px-2 py-0.5 rounded border" :class="getCategoryBadgeClass(selectedCareer.category)">
                       {{ selectedCareer.category }}
                     </span>
                   </div>
-                  <p class="text-xs text-neutral-500 leading-relaxed max-w-xl">
+                  <p class="text-xs text-ink-400 leading-relaxed max-w-xl">
                     {{ selectedCareer.description }}
                   </p>
                 </div>
@@ -129,7 +130,7 @@
 
               <!-- 职业阶段 Timeline -->
               <div class="flex-1">
-                <h3 class="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-4 text-left">修习境界阶段天梯</h3>
+                <h3 class="text-xs font-bold text-ink-400 uppercase tracking-wider mb-4 text-left">修习境界阶段天梯</h3>
                 <!-- Timeline 组件 -->
                 <CareerStageTimeline
                   :stages="selectedCareer.stages"
@@ -139,8 +140,8 @@
               </div>
             </template>
 
-            <div v-else class="flex-1 flex flex-col items-center justify-center py-24 text-center text-neutral-400">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12 text-neutral-300 mb-3 animate-bounce">
+            <div v-else class="flex-1 flex flex-col items-center justify-center py-24 text-center text-ink-300">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12 text-ink-300 mb-3 animate-bounce">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801-1.206a2.25 2.25 0 00-3.302 0m3.302 0a2.245 2.245 0 001.324-.079m-3.302 0a2.245 2.245 0 01-1.324-.079m0 0a2.249 2.249 0 00-2.247 2.247c0 1.135.845 2.098 1.976 2.192a48.474 48.474 0 001.123.08M12 3v1.5m0 22.5V21m-9-9h1.5m16.5 0H18" />
               </svg>
               <p class="text-sm font-medium">请从左侧职业库中选择一个职业，或者通过 AI/手动 方式添加一个新职业来查看修习天梯。</p>
@@ -151,23 +152,23 @@
       </div>
 
       <!-- 底部：角色职业分配区 -->
-      <div class="glass-container rounded-2xl border border-white/20 p-6 shadow-xl text-left">
-        <h2 class="text-sm font-bold text-neutral-800 mb-4 flex items-center gap-2">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-accent-600">
+      <div class="card p-6 text-left animate-fade-up">
+        <h2 class="text-sm font-bold text-ink-600 mb-4 flex items-center gap-2 heading-serif">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-vermilion-500">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
           </svg>
           <span>角色境界修习分配</span>
         </h2>
 
-        <div v-if="characters.length === 0" class="text-center py-10 px-4 border border-dashed border-neutral-300 rounded-xl bg-white/40">
-          <p class="text-xs text-neutral-400 mb-2">当前作品库中暂无人物角色档案</p>
-          <router-link :to="`/novels/${novelId}/characters`" class="text-xs text-accent-600 hover:text-accent-700 font-bold">立即去管理人物档案添加角色 &rarr;</router-link>
+        <div v-if="characters.length === 0" class="text-center py-10 px-4 border border-dashed border-ink-200 rounded-xl bg-paper-100">
+          <p class="text-xs text-ink-300 mb-2">当前作品库中暂无人物角色档案</p>
+          <router-link :to="`/novels/${novelId}/characters`" class="text-xs text-vermilion-500 hover:text-vermilion-600 font-bold">立即去管理人物档案添加角色 &rarr;</router-link>
         </div>
 
         <div v-else class="overflow-x-auto">
-          <table class="min-w-full divide-y divide-neutral-200">
+          <table class="min-w-full divide-y divide-ink-100">
             <thead>
-              <tr class="text-xs font-bold text-neutral-400 uppercase tracking-wider text-left">
+              <tr class="text-xs font-bold text-ink-300 uppercase tracking-wider text-left">
                 <th class="py-3 px-4">角色姓名</th>
                 <th class="py-3 px-4">定位身份</th>
                 <th class="py-3 px-4">主要修习职业</th>
@@ -175,13 +176,13 @@
                 <th class="py-3 px-4 text-right">操作</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-neutral-100 text-xs text-neutral-600">
-              <tr v-for="char in characters" :key="char.id" class="hover:bg-white/40 transition-colors">
+            <tbody class="divide-y divide-ink-100 text-xs text-ink-600">
+              <tr v-for="char in characters" :key="char.id" class="hover:bg-paper-100 transition-colors">
                 <!-- 姓名 -->
-                <td class="py-3.5 px-4 font-bold text-neutral-800">{{ char.name }}</td>
+                <td class="py-3.5 px-4 font-bold text-ink-600">{{ char.name }}</td>
                 <!-- 角色定位 -->
                 <td class="py-3.5 px-4">
-                  <span class="bg-neutral-100/80 text-neutral-700 px-2 py-0.5 rounded border border-neutral-200 font-medium">
+                  <span class="bg-paper-100 text-ink-500 px-2 py-0.5 rounded border border-ink-200 font-medium">
                     {{ char.role || '未定' }}
                   </span>
                 </td>
@@ -190,7 +191,7 @@
                   <select
                     v-model="assignments[char.id].careerId"
                     @change="onAssignmentChange(char.id)"
-                    class="bg-white/80 border border-neutral-200 rounded-lg px-2.5 py-1 text-xs focus:ring-1 focus:ring-accent-500 focus:border-accent-500"
+                    class="bg-paper-50 border border-ink-200 rounded-lg px-2.5 py-1 text-xs focus:ring-1 focus:ring-vermilion-400 focus:border-vermilion-400"
                   >
                     <option value="">暂无职业</option>
                     <option v-for="career in careers" :key="career.id" :value="career.id">
@@ -204,7 +205,7 @@
                     v-model="assignments[char.id].stageIndex"
                     @change="saveAssignment(char.id)"
                     :disabled="!assignments[char.id].careerId"
-                    class="bg-white/80 border border-neutral-200 rounded-lg px-2.5 py-1 text-xs focus:ring-1 focus:ring-accent-500 focus:border-accent-500 disabled:bg-neutral-100 disabled:text-neutral-400"
+                    class="bg-paper-50 border border-ink-200 rounded-lg px-2.5 py-1 text-xs focus:ring-1 focus:ring-vermilion-400 focus:border-vermilion-400 disabled:bg-paper-200 disabled:text-ink-300"
                   >
                     <option v-for="(stage, idx) in getCareerStages(assignments[char.id].careerId)" :key="idx" :value="idx">
                       Lvl {{ idx + 1 }}: {{ stage.name }}
@@ -213,7 +214,7 @@
                 </td>
                 <!-- 自动保存状态 -->
                 <td class="py-3.5 px-4 text-right">
-                  <span v-if="savingStates[char.id]" class="text-[10px] text-accent-600 font-semibold flex items-center justify-end gap-1">
+                  <span v-if="savingStates[char.id]" class="text-[10px] text-vermilion-500 font-semibold flex items-center justify-end gap-1">
                     <svg class="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
                       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                       <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -226,7 +227,7 @@
                     </svg>
                     <span>已同步</span>
                   </span>
-                  <span v-else class="text-[10px] text-neutral-400">自动同步</span>
+                  <span v-else class="text-[10px] text-ink-300">自动同步</span>
                 </td>
               </tr>
             </tbody>
@@ -236,21 +237,21 @@
     </div>
 
     <!-- AI 自动生成配置 Modal -->
-    <div v-if="showAiModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/40 backdrop-blur-sm">
-      <div class="glass-container max-w-md w-full rounded-2xl border border-white/20 p-6 shadow-2xl space-y-4">
-        <h3 class="text-base font-bold text-neutral-800 flex items-center gap-2 text-left">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-5 h-5 text-accent-600">
+    <div v-if="showAiModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/40 backdrop-blur-sm">
+      <div class="card max-w-md w-full p-6 space-y-4 animate-fade-up">
+        <h3 class="text-base font-bold text-ink-600 flex items-center gap-2 text-left heading-serif">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-5 h-5 text-vermilion-500">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.091-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.091L9 5.25l.813 2.846a4.5 4.5 0 003.091 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.091z" />
           </svg>
           <span>AI 职业天梯架构编织</span>
         </h3>
-        <p class="text-xs text-neutral-500 leading-relaxed text-left">
+        <p class="text-xs text-ink-400 leading-relaxed text-left">
           AI 将结合作品的题材设定、能量守恒定律和冲突架构，为您定制出一套逻辑严密、兼具想象力的 10 重境界职业体系阶梯。
         </p>
 
         <div class="space-y-3 text-left">
           <div>
-            <label class="block text-xs font-semibold text-neutral-500 mb-1">选择职业倾向体系</label>
+            <label class="block text-xs font-semibold text-ink-400 mb-1">选择职业倾向体系</label>
             <select v-model="aiCareerConfig.category" class="input text-xs w-full">
               <option value="修仙">修仙天道体系</option>
               <option value="武道">高武炼体体系</option>
@@ -262,8 +263,8 @@
           </div>
 
           <div v-if="novel">
-            <label class="block text-xs font-semibold text-neutral-500 mb-1">参考小说类型</label>
-            <div class="bg-neutral-100 border rounded-lg p-2.5 text-xs text-neutral-600 font-medium">
+            <label class="block text-xs font-semibold text-ink-400 mb-1">参考小说类型</label>
+            <div class="bg-paper-100 border border-ink-100 rounded-lg p-2.5 text-xs text-ink-500 font-medium">
               类型：{{ novel.novel_type }} | 目标字数：{{ (novel.target_words / 10000).toFixed(0) }}万字
             </div>
           </div>
@@ -279,22 +280,22 @@
         </div>
 
         <!-- 动效加载遮罩 -->
-        <div v-if="aiGenerating" class="absolute inset-0 bg-white/85 backdrop-blur-md rounded-2xl flex flex-col items-center justify-center space-y-4 p-6 z-10">
-          <div class="w-12 h-12 border-4 border-accent-600 border-t-transparent rounded-full animate-spin"></div>
+        <div v-if="aiGenerating" class="absolute inset-0 bg-paper-50/85 backdrop-blur-md rounded-xl flex flex-col items-center justify-center space-y-4 p-6 z-10">
+          <div class="w-12 h-12 border-4 border-vermilion-500 border-t-transparent rounded-full animate-spin"></div>
           <div class="text-center space-y-1.5">
-            <p class="text-sm font-bold text-neutral-800">{{ aiLoadingTitle }}</p>
-            <p class="text-[10px] text-neutral-400 font-medium animate-pulse">正在利用 Gemini 大模型解析灵感规则...</p>
+            <p class="text-sm font-bold text-ink-600">{{ aiLoadingTitle }}</p>
+            <p class="text-[10px] text-ink-300 font-medium animate-pulse">正在利用 Gemini 大模型解析灵感规则...</p>
           </div>
         </div>
       </div>
     </div>
 
     <!-- 手动添加 / 编辑职业 Modal -->
-    <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/40 backdrop-blur-sm overflow-y-auto">
-      <div class="glass-container max-w-2xl w-full rounded-2xl border border-white/20 p-6 shadow-2xl my-8 space-y-5 text-left relative">
-        <h3 class="text-base font-bold text-neutral-800 flex items-center justify-between border-b pb-3">
+    <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/40 backdrop-blur-sm overflow-y-auto">
+      <div class="card max-w-2xl w-full p-6 my-8 space-y-5 text-left relative animate-fade-up">
+        <h3 class="text-base font-bold text-ink-600 flex items-center justify-between border-b border-ink-100 pb-3 heading-serif">
           <span>{{ isEditMode ? '编辑职业体系' : '新建职业体系' }}</span>
-          <button @click="showEditModal = false" class="text-neutral-400 hover:text-neutral-600">
+          <button @click="showEditModal = false" class="text-ink-300 hover:text-ink-500">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
               <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -304,11 +305,11 @@
         <!-- 基本字段 -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div class="sm:col-span-1">
-            <label class="block text-xs font-semibold text-neutral-500 mb-1">职业名称</label>
+            <label class="block text-xs font-semibold text-ink-400 mb-1">职业名称</label>
             <input v-model="editCareerForm.name" class="input text-xs w-full" placeholder="例如：玄剑仙、脑域算力士" required />
           </div>
           <div class="sm:col-span-1">
-            <label class="block text-xs font-semibold text-neutral-500 mb-1">职业类别</label>
+            <label class="block text-xs font-semibold text-ink-400 mb-1">职业类别</label>
             <select v-model="editCareerForm.category" class="input text-xs w-full">
               <option value="修仙">修仙</option>
               <option value="武道">武道</option>
@@ -319,30 +320,30 @@
             </select>
           </div>
           <div class="sm:col-span-2">
-            <label class="block text-xs font-semibold text-neutral-500 mb-1">职业背景描述</label>
+            <label class="block text-xs font-semibold text-ink-400 mb-1">职业背景描述</label>
             <textarea v-model="editCareerForm.description" class="input text-xs w-full min-h-[60px]" placeholder="描述此职业的世界定位、修行纲领、优缺点等..."></textarea>
           </div>
         </div>
 
         <!-- 10个阶段等级天梯编辑器 -->
         <div class="space-y-3">
-          <h4 class="text-xs font-bold text-neutral-500 border-b pb-1.5 flex items-center justify-between">
+          <h4 class="text-xs font-bold text-ink-400 border-b border-ink-100 pb-1.5 flex items-center justify-between">
             <span>修习 10 重境界天梯设定</span>
-            <span class="text-[10px] text-accent-600 font-semibold">* 每一重都需要定义名称和突破瓶颈修行</span>
+            <span class="text-[10px] text-vermilion-500 font-semibold">* 每一重都需要定义名称和突破瓶颈修行</span>
           </h4>
           <div class="space-y-2 max-h-[250px] overflow-y-auto pr-1">
             <div
               v-for="(stage, idx) in editCareerForm.stages"
               :key="idx"
-              class="p-3 bg-neutral-100/50 border border-neutral-200 rounded-xl space-y-2.5"
+              class="p-3 bg-paper-100 border border-ink-100 rounded-xl space-y-2.5"
             >
               <div class="flex items-center gap-3">
-                <span class="text-[10px] font-bold font-mono px-2 py-0.5 rounded bg-neutral-200 text-neutral-600">
+                <span class="text-[10px] font-bold font-mono px-2 py-0.5 rounded bg-paper-200 text-ink-400">
                   Lvl {{ idx + 1 }}
                 </span>
                 <input
                   v-model="stage.name"
-                  class="bg-white border border-neutral-200 rounded-lg px-2.5 py-1 text-xs flex-1 focus:ring-1 focus:ring-accent-500 focus:outline-none"
+                  class="bg-paper-50 border border-ink-200 rounded-lg px-2.5 py-1 text-xs flex-1 focus:ring-1 focus:ring-vermilion-400 focus:outline-none"
                   placeholder="境界名称（如：气感、练气、淬体）"
                   required
                 />
@@ -350,12 +351,12 @@
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <input
                   v-model="stage.description"
-                  class="bg-white border border-neutral-200 rounded-lg px-2.5 py-1 text-xs focus:ring-1 focus:ring-accent-500 focus:outline-none"
+                  class="bg-paper-50 border border-ink-200 rounded-lg px-2.5 py-1 text-xs focus:ring-1 focus:ring-vermilion-400 focus:outline-none"
                   placeholder="修炼描述：如经脉灵气贯通..."
                 />
                 <input
                   v-model="stage.breakthrough"
-                  class="bg-white border border-neutral-200 rounded-lg px-2.5 py-1 text-xs focus:ring-1 focus:ring-accent-500 focus:outline-none"
+                  class="bg-paper-50 border border-ink-200 rounded-lg px-2.5 py-1 text-xs focus:ring-1 focus:ring-vermilion-400 focus:outline-none"
                   placeholder="突破条件：如吞服筑基丹、打破凡胎障..."
                 />
               </div>
@@ -364,7 +365,7 @@
         </div>
 
         <!-- 保存按钮 -->
-        <div class="flex gap-3 justify-end pt-3 border-t">
+        <div class="flex gap-3 justify-end pt-3 border-t border-ink-100">
           <button @click="saveCareer" class="btn-primary text-xs px-6" :disabled="savingCareer">
             {{ savingCareer ? '保存中...' : '确定保存' }}
           </button>
@@ -823,27 +824,6 @@ onMounted(load)
 </script>
 
 <style scoped>
-.glass-container {
-  background: rgba(255, 255, 255, 0.65);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
-}
-
-.glass-panel {
-  background: rgba(255, 255, 255, 0.55);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.glass-panel:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.04);
-}
-
 /* 隐藏滚动条 */
 ::-webkit-scrollbar {
   width: 4px;

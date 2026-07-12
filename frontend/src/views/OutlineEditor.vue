@@ -1,14 +1,14 @@
 <template>
-  <div class="max-w-4xl mx-auto px-6 py-10">
+  <div class="max-w-4xl mx-auto px-6 py-10 animate-fade-up">
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-xl font-bold text-neutral-900">大纲管理</h1>
+      <h1 class="heading-serif text-xl">大纲管理</h1>
       <router-link :to="`/novels/${novelId}`" class="btn-secondary text-sm">返回</router-link>
     </div>
 
     <!-- Master Outline -->
     <div class="card p-6 mb-6">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="font-medium text-neutral-800">总纲</h2>
+        <h2 class="font-serif text-ink-700 font-medium">总纲</h2>
         <div class="flex gap-2">
           <button @click="aiGenerateMaster" class="btn-secondary text-xs" :disabled="generatingMaster">
             {{ generatingMaster ? 'AI生成中...' : 'AI生成' }}
@@ -21,19 +21,19 @@
       </div>
       <div class="space-y-3">
         <div>
-          <label class="text-xs text-neutral-500">核心前提</label>
+          <label class="text-xs text-ink-400">核心前提</label>
           <textarea v-model="master.premise" class="input text-sm mt-1 min-h-[60px]" placeholder="故事的核心设定和前提"></textarea>
         </div>
         <div>
-          <label class="text-xs text-neutral-500">主要冲突</label>
+          <label class="text-xs text-ink-400">主要冲突</label>
           <textarea v-model="master.main_conflict" class="input text-sm mt-1 min-h-[60px]" placeholder="推动故事发展的核心矛盾"></textarea>
         </div>
         <div>
-          <label class="text-xs text-neutral-500">结局走向</label>
+          <label class="text-xs text-ink-400">结局走向</label>
           <textarea v-model="master.ending" class="input text-sm mt-1" placeholder="故事的结局方向"></textarea>
         </div>
         <div>
-          <label class="text-xs text-neutral-500">主题</label>
+          <label class="text-xs text-ink-400">主题</label>
           <input v-model="master.themes_text" class="input text-sm mt-1" placeholder="用逗号分隔，如：成长,友情,正义" />
         </div>
       </div>
@@ -44,24 +44,24 @@
     <!-- Sync Suggestions Panel -->
     <div v-if="suggestions.length > 0" class="card p-5 mb-6 border-l-4 border-amber-400">
       <div class="flex items-center justify-between mb-3">
-        <h2 class="font-medium text-neutral-800">同步建议 ({{ suggestions.length }})</h2>
+        <h2 class="font-serif text-ink-700 font-medium">同步建议 ({{ suggestions.length }})</h2>
         <div class="flex gap-2">
           <button @click="batchAction('accept')" class="btn-primary text-xs">全部接受</button>
           <button @click="batchAction('reject')" class="btn-secondary text-xs">全部忽略</button>
         </div>
       </div>
       <div class="space-y-2 max-h-60 overflow-y-auto">
-        <div v-for="s in suggestions" :key="s.id" class="flex items-start gap-3 p-2 rounded bg-neutral-50">
+        <div v-for="(s, idx) in suggestions" :key="s.id" class="flex items-start gap-3 p-2 rounded bg-paper-50 animate-fade-up-stagger" :style="{ animationDelay: `${Math.min(idx,8)*60}ms` }">
           <span :class="severityClass(s.severity)" class="text-xs px-1.5 py-0.5 rounded font-medium shrink-0">
             {{ s.severity }}
           </span>
           <div class="flex-1 min-w-0">
-            <p class="text-sm text-neutral-700">第{{ s.affected_chapter }}章 · {{ impactLabel(s.impact_type) }}</p>
-            <p class="text-xs text-neutral-500 mt-0.5 truncate">{{ s.suggestion }}</p>
+            <p class="text-sm text-ink-500">第{{ s.affected_chapter }}章 · {{ impactLabel(s.impact_type) }}</p>
+            <p class="text-xs text-ink-400 mt-0.5 truncate">{{ s.suggestion }}</p>
           </div>
           <div class="flex gap-1 shrink-0">
             <button @click="acceptOne(s.id)" class="text-emerald-600 hover:text-emerald-800 text-xs">接受</button>
-            <button @click="rejectOne(s.id)" class="text-neutral-400 hover:text-neutral-600 text-xs">忽略</button>
+            <button @click="rejectOne(s.id)" class="text-ink-400 hover:text-ink-600 text-xs">忽略</button>
           </div>
         </div>
       </div>
@@ -69,7 +69,7 @@
 
     <!-- Sync Status -->
     <div v-if="syncStatus.length > 0" class="card p-5 mb-6">
-      <h2 class="font-medium text-neutral-800 mb-3">章节同步状态</h2>
+      <h2 class="font-serif text-ink-700 font-medium mb-3">章节同步状态</h2>
       <div class="flex flex-wrap gap-2">
         <span v-for="st in syncStatus" :key="st.chapter_number"
           class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded"
@@ -82,11 +82,11 @@
 
     <!-- Volume Outlines -->
     <div class="space-y-4">
-      <h2 class="font-medium text-neutral-800">卷纲</h2>
-      <div v-if="volumes.length === 0" class="card p-6 text-center text-neutral-400">
+      <h2 class="font-serif text-ink-700 font-medium">卷纲</h2>
+      <div v-if="volumes.length === 0" class="card p-6 text-center text-ink-300">
         暂无卷纲，请先编辑总纲后点击"生成卷纲"
       </div>
-      <div v-for="vol in volumes" :key="vol.id" class="card p-5">
+      <div v-for="(vol, idx) in volumes" :key="vol.id" class="card card-hover shine-on-hover p-5 animate-fade-up-stagger" :style="{ animationDelay: `${Math.min(idx,8)*60}ms` }">
         <div class="flex items-center justify-between mb-2">
           <h3 class="font-medium text-sm">卷{{ vol.volume_number }}：{{ vol.content?.title || '未命名' }}</h3>
           <div class="flex gap-2">
@@ -98,15 +98,15 @@
             </button>
           </div>
         </div>
-        <p v-if="vol.content?.summary" class="text-sm text-neutral-600 mb-2">{{ vol.content.summary }}</p>
-        <p v-if="vol.content?.goal" class="text-xs text-neutral-500">目标：{{ vol.content.goal }}</p>
-        <p v-if="vol.content?.climax" class="text-xs text-neutral-500">高潮：{{ vol.content.climax }}</p>
+        <p v-if="vol.content?.summary" class="text-sm text-ink-600 mb-2">{{ vol.content.summary }}</p>
+        <p v-if="vol.content?.goal" class="text-xs text-ink-400">目标：{{ vol.content.goal }}</p>
+        <p v-if="vol.content?.climax" class="text-xs text-ink-400">高潮：{{ vol.content.climax }}</p>
 
         <!-- Chapter outlines under this volume -->
-        <div v-if="chaptersByVolume[vol.volume_number]" class="mt-3 ml-4 space-y-1 border-l-2 border-neutral-200 pl-3">
-          <div v-for="ch in chaptersByVolume[vol.volume_number]" :key="ch.id" class="text-xs text-neutral-600">
+        <div v-if="chaptersByVolume[vol.volume_number]" class="mt-3 ml-4 space-y-1 border-l-2 border-ink-200 pl-3">
+          <div v-for="ch in chaptersByVolume[vol.volume_number]" :key="ch.id" class="text-xs text-ink-600">
             <span class="font-medium">第{{ ch.chapter_number }}章：{{ ch.content?.title || '' }}</span>
-            <span v-if="ch.content?.turning_point" class="text-neutral-400 ml-2">转折：{{ ch.content.turning_point }}</span>
+            <span v-if="ch.content?.turning_point" class="text-ink-400 ml-2">转折：{{ ch.content.turning_point }}</span>
           </div>
         </div>
       </div>
@@ -322,13 +322,13 @@ function impactLabel(type) {
 function syncStatusClass(status) {
   if (status === 'completed') return 'bg-emerald-50 text-emerald-700'
   if (status === 'deviated') return 'bg-red-50 text-red-700'
-  return 'bg-neutral-50 text-neutral-600'
+  return 'bg-paper-50 text-ink-600'
 }
 
 function syncDotClass(status) {
   if (status === 'completed') return 'bg-emerald-500'
   if (status === 'deviated') return 'bg-red-500'
-  return 'bg-neutral-400'
+  return 'bg-ink-400'
 }
 
 onMounted(load)

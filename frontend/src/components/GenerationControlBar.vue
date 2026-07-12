@@ -1,13 +1,13 @@
 <template>
-  <div class="fixed bottom-0 left-0 right-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-t border-neutral-200 dark:border-gray-700 shadow-[0_-2px_16px_rgba(0,0,0,0.06)]">
+  <div class="fixed bottom-0 left-0 right-0 z-50 bg-paper-50/80 dark:bg-gray-900/80 backdrop-blur-lg border-t border-ink-200 dark:border-gray-700 shadow-[0_-2px_16px_rgba(0,0,0,0.06)] animate-fade-up">
     <div class="max-w-4xl mx-auto px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
       <!-- Progress info -->
-      <div class="flex items-center gap-3 text-sm text-neutral-900 dark:text-gray-100">
+      <div class="flex items-center gap-3 text-sm text-ink-700 dark:text-gray-100">
         <span class="font-semibold">
           第{{ currentChapter }}章 / {{ totalChapters }}章
         </span>
-        <span class="text-neutral-400 dark:text-neutral-500">|</span>
-        <span class="font-mono text-xs text-neutral-500 dark:text-neutral-400">{{ wordCount.toLocaleString() }} 字</span>
+        <span class="text-ink-400 dark:text-neutral-500">|</span>
+        <span class="font-mono text-xs text-ink-500 dark:text-neutral-400">{{ wordCount.toLocaleString() }} 字</span>
       </div>
 
       <!-- Action buttons -->
@@ -15,7 +15,7 @@
         <button
           v-if="!isPaused"
           :disabled="!isStreaming"
-          class="btn-control bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+          class="btn-secondary disabled:opacity-40 disabled:cursor-not-allowed"
           @click="$emit('pause')"
         >
           <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -26,7 +26,7 @@
 
         <button
           v-else
-          class="btn-control bg-emerald-500 hover:bg-emerald-600 text-white"
+          class="btn-primary"
           @click="$emit('resume')"
         >
           <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -38,7 +38,7 @@
         <button
           :disabled="!isStreaming && !isPaused"
           title="Esc"
-          class="btn-control bg-rose-500 hover:bg-rose-600 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+          class="btn-danger disabled:opacity-40 disabled:cursor-not-allowed"
           @click="requestStop"
         >
           <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -49,7 +49,7 @@
 
         <button
           :disabled="!isPaused"
-          class="btn-control bg-neutral-200 dark:bg-gray-700 hover:bg-neutral-300 dark:hover:bg-gray-600 text-neutral-900 dark:text-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+          class="btn-secondary disabled:opacity-40 disabled:cursor-not-allowed"
           @click="$emit('edit')"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -67,21 +67,21 @@
       class="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 backdrop-blur-sm px-4"
       @click.self="cancelStop"
     >
-      <div class="w-full max-w-sm rounded-2xl border border-white/30 bg-white/75 dark:bg-gray-900/75 shadow-2xl backdrop-blur-xl ring-1 ring-black/5 dark:ring-white/10">
+      <div class="card w-full max-w-sm animate-fade-up">
         <div class="px-6 py-5 space-y-4">
           <div class="space-y-2">
-            <h3 class="text-base font-semibold text-neutral-900 dark:text-gray-100">确定停止生成？</h3>
-            <p class="text-sm leading-6 text-neutral-600 dark:text-gray-300">未保存进度将丢失</p>
+            <h3 class="text-base font-semibold text-ink-700 dark:text-gray-100">确定停止生成？</h3>
+            <p class="text-sm leading-6 text-ink-500 dark:text-gray-300">未保存进度将丢失</p>
           </div>
           <div class="flex justify-end gap-3">
             <button
-              class="rounded-lg bg-white/80 dark:bg-gray-800/80 px-4 py-2 text-sm font-semibold text-neutral-900 dark:text-gray-100 shadow-sm transition-colors hover:bg-white dark:hover:bg-gray-700"
+              class="btn-secondary"
               @click="cancelStop"
             >
               继续生成
             </button>
             <button
-              class="rounded-lg bg-rose-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-rose-600"
+              class="btn-danger"
               @click="confirmStop"
             >
               确认停止
@@ -160,7 +160,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.btn-control {
+.btn-secondary {
   @apply flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all duration-200 shadow-sm;
 }
 </style>

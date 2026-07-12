@@ -1,13 +1,13 @@
 <template>
-  <div class="space-y-6">
-    <div v-for="vol in volumes" :key="vol.id" class="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden">
+  <div class="space-y-6 animate-fade-up">
+    <div v-for="(vol, vidx) in volumes" :key="vol.id" class="card card-hover shine-on-hover animate-fade-up-stagger bg-paper-50 rounded-2xl shadow-sm border border-ink-100 overflow-hidden" :style="{ animationDelay: `${Math.min(vidx,8)*60}ms` }">
       <!-- Volume Header -->
-      <div class="flex items-center justify-between px-6 py-4 border-b border-neutral-50">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-ink-100">
         <div class="flex items-center gap-3">
-          <span class="text-xs font-medium px-2.5 py-1 bg-indigo-50 text-indigo-600 rounded-lg">
+          <span class="text-xs font-medium px-2.5 py-1 bg-vermilion-50 text-vermilion-500 rounded-lg">
             卷 {{ vol.volume_number }}
           </span>
-          <h3 class="font-semibold text-neutral-900 text-[15px]">{{ vol.title || '未命名分卷' }}</h3>
+          <h3 class="font-semibold text-ink-700 text-[15px]">{{ vol.title || '未命名分卷' }}</h3>
           <span :class="statusClasses(vol.status)" class="text-[11px] font-medium px-2 py-0.5 rounded-full">
             {{ statusLabel(vol.status) }}
           </span>
@@ -15,34 +15,35 @@
         <button
           v-if="vol.status !== 'generating'"
           @click="$emit('generate-volume', vol.volume_number)"
-          class="text-xs font-medium px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+          class="btn-primary text-xs font-medium px-4 py-2"
         >
           {{ vol.status === 'completed' ? '重新生成' : '生成本卷' }}
         </button>
       </div>
 
       <!-- Volume Summary -->
-      <p v-if="vol.summary" class="px-6 py-3 text-sm text-neutral-500 leading-relaxed border-b border-neutral-50">{{ vol.summary }}</p>
+      <p v-if="vol.summary" class="px-6 py-3 text-sm text-ink-500 leading-relaxed border-b border-ink-100">{{ vol.summary }}</p>
 
       <!-- Chapter List -->
-      <div v-if="volumeChapters(vol)" class="divide-y divide-neutral-50">
+      <div v-if="volumeChapters(vol)" class="divide-y divide-ink-100">
         <div
-          v-for="ch in volumeChapters(vol)"
+          v-for="(ch, cidx) in volumeChapters(vol)"
           :key="ch.id"
-          class="flex items-center justify-between px-6 py-3.5 hover:bg-neutral-50/50 transition-colors group"
+          class="animate-fade-up-stagger flex items-center justify-between px-6 py-3.5 hover:bg-paper-50 transition-colors group"
+          :style="{ animationDelay: `${Math.min(cidx,8)*60}ms` }"
         >
           <router-link
             :to="`/novels/${novelId}/chapters/${ch.chapter_number}`"
             class="flex-1 flex items-center gap-3 min-w-0"
           >
-            <span class="text-sm text-neutral-400 font-mono w-6 shrink-0">{{ chapterIndexInVolume(vol, ch) }}</span>
-            <span class="text-sm font-medium text-neutral-800 truncate">{{ ch.title }}</span>
+            <span class="text-sm text-ink-400 font-mono w-6 shrink-0">{{ chapterIndexInVolume(vol, ch) }}</span>
+            <span class="text-sm font-medium text-ink-600 truncate">{{ ch.title }}</span>
           </router-link>
           <div class="flex items-center gap-3 shrink-0">
-            <span class="text-xs text-neutral-400 font-mono">{{ ch.word_count || 0 }} 字</span>
+            <span class="text-xs text-ink-400 font-mono">{{ ch.word_count || 0 }} 字</span>
             <button
               @click.prevent="confirmDelete(ch)"
-              class="opacity-0 group-hover:opacity-100 text-neutral-300 hover:text-red-500 transition-all p-1 rounded"
+              class="opacity-0 group-hover:opacity-100 text-ink-300 hover:text-red-500 transition-all p-1 rounded"
               title="删除章节"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
@@ -52,23 +53,23 @@
           </div>
         </div>
       </div>
-      <p v-else class="px-6 py-6 text-sm text-neutral-400 text-center">暂无章节</p>
+      <p v-else class="px-6 py-6 text-sm text-ink-400 text-center">暂无章节</p>
     </div>
 
     <!-- Delete Confirmation Modal -->
     <Teleport to="body">
       <div v-if="deleteTarget" class="fixed inset-0 z-50 flex items-center justify-center">
         <div class="absolute inset-0 bg-black/20 backdrop-blur-sm" @click="deleteTarget = null"></div>
-        <div class="relative bg-white rounded-2xl shadow-xl p-6 w-80 mx-4">
-          <h3 class="text-base font-semibold text-neutral-900 mb-2">确认删除</h3>
-          <p class="text-sm text-neutral-500 mb-5">
+        <div class="relative bg-paper-50 rounded-2xl shadow-xl p-6 w-80 mx-4 border border-ink-200 animate-fade-in">
+          <h3 class="text-base font-semibold text-ink-700 mb-2">确认删除</h3>
+          <p class="text-sm text-ink-500 mb-5">
             确定要删除「第{{ deleteTarget.chapter_number }}章：{{ deleteTarget.title }}」吗？此操作不可撤销。
           </p>
           <div class="flex gap-3 justify-end">
-            <button @click="deleteTarget = null" class="px-4 py-2 text-sm font-medium text-neutral-600 hover:text-neutral-800 rounded-lg hover:bg-neutral-100 transition-colors">
+            <button @click="deleteTarget = null" class="btn-secondary text-sm font-medium">
               取消
             </button>
-            <button @click="doDelete" class="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors">
+            <button @click="doDelete" class="btn-danger text-sm font-medium">
               删除
             </button>
           </div>
@@ -109,12 +110,12 @@ function chapterIndexInVolume(vol, ch) {
 
 function statusClasses(s) {
   const map = {
-    draft: 'bg-neutral-100 text-neutral-500',
-    generating: 'bg-amber-50 text-amber-600',
-    completed: 'bg-emerald-50 text-emerald-600',
-    failed: 'bg-red-50 text-red-500',
+    draft: 'badge-pending',
+    generating: 'badge-running',
+    completed: 'badge-completed',
+    failed: 'badge-failed',
   }
-  return map[s] || 'bg-neutral-100 text-neutral-500'
+  return map[s] || 'badge-pending'
 }
 
 function statusLabel(s) {
