@@ -16,6 +16,10 @@ class InspirationStepRequest(BaseModel):
     user_input: str = Field(..., min_length=1)
 
 
+class InspirationCreateRequest(BaseModel):
+    target_words: int = Field(default=100000, ge=10000, le=10000000)
+
+
 @router.post("/start")
 async def start_inspiration_session():
     wizard = get_inspiration_wizard()
@@ -63,10 +67,14 @@ async def generate_inspiration_outline(session_id: str):
 
 
 @router.post("/{session_id}/create")
-async def create_inspiration_project(session_id: str):
+async def create_inspiration_project(
+    session_id: str,
+    request: InspirationCreateRequest | None = None,
+):
     wizard = get_inspiration_wizard()
+    target_words = request.target_words if request else 100000
     try:
-        return await wizard.create_project(session_id)
+        return await wizard.create_project(session_id, target_words=target_words)
     except KeyError:
         raise HTTPException(status_code=404, detail="Inspiration session not found")
     except Exception as exc:
