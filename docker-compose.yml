@@ -33,8 +33,15 @@ services:
       LLM_ENCRYPTION_KEY: ${LLM_ENCRYPTION_KEY}
       ADMIN_TOKEN: ${ADMIN_TOKEN}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # HITL 真 interrupt/resume（需持久化 checkpointer）
+      HITL_AUTO_APPROVE: ${HITL_AUTO_APPROVE:-true}
+      CHECKPOINTER_TYPE: ${CHECKPOINTER_TYPE:-memory}
+      CHECKPOINTER_DB_PATH: ${CHECKPOINTER_DB_PATH:-/app/data/checkpoints.db}
     ports:
       - "8000:8000"
+    volumes:
+      # 持久化 LangGraph checkpointer（HITL interrupt 状态跨容器重启保留）
+      - ./data:/app/data
 
   nginx:
     build:
