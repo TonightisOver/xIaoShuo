@@ -65,6 +65,13 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("Database initialized")
 
+    # 初始化持久化 checkpointer（HITL interrupt/resume 必需，sqlite 模式持久化 graph 状态）
+    from src.core.langgraph.checkpointer import (
+        setup_persistent_checkpointer,
+        teardown_persistent_checkpointer,
+    )
+    await setup_persistent_checkpointer()
+
     # 恢复服务重启时被中断的任务（孤儿 running 任务标记为 failed）
     from src.api.services.task_manager import get_task_manager
     recovered = await get_task_manager().recover_interrupted_tasks()
@@ -134,6 +141,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("xIaoShuo API shutting down...")
+    await teardown_persistent_checkpointer()
     await close_db()
     logger.info("Database connections closed")
 
