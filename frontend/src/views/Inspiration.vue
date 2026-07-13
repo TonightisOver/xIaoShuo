@@ -468,7 +468,7 @@ async function createProject() {
   try {
     const res = await fetch(`/api/v1/inspiration/${sessionId.value}/create`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ target_words: form.target_words }),
     })
     if (!res.ok) {

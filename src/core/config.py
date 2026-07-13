@@ -51,8 +51,8 @@ class Settings(BaseSettings):
     EMBEDDING_ENABLED: bool = False
 
     # HITL 人工审核
-    # True（默认）：human_review 节点自动通过，管线端到端跑通（interrupt/resume 待实现）
-    # False：启用真 interrupt() 阻塞等待人工决策（需配合持久化 checkpointer + resume 路径）
+    # True：human_review 节点自动通过（不 interrupt），管线端到端跑通
+    # False：启用真 interrupt() 阻塞等待人工决策（已实现，配合持久化 checkpointer + resume 路径）
     HITL_AUTO_APPROVE: bool = True
 
     # 质量优化循环
@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     # 回到 chapter_generation 重新生成（提升质量）。设 QUALITY_LOOP_ENABLED=False 可跳过
     # 直接进入审核（追求速度/节省 token 时用）。
     QUALITY_LOOP_ENABLED: bool = True
-    QUALITY_THRESHOLD: float = 0.8  # 质量达标线，低于此值触发重生成
+    QUALITY_THRESHOLD: float = 0.7  # 质量达标线，低于此值触发重生成（LLM 给分偏严，0.8 常误触发）
     MAX_REGENERATION_ATTEMPTS: int = 2  # 最多重生成次数（避免无限循环/浪费 token）
 
     # Encryption

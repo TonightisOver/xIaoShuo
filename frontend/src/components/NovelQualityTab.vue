@@ -16,7 +16,7 @@
     <template v-else>
       <!-- Overall Score Grid -->
       <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div v-for="(val, key, idx) in report.overall_avg_scores" :key="key" class="card card-hover shine-on-hover animate-fade-up-stagger p-4 bg-[#1a1c2a] border border-[#27293d] flex flex-col justify-between h-28" :style="{ animationDelay: `${Math.min(idx,8)*60}ms` }">
+        <div v-for="(val, key, idx) in report.overall_avg_scores" :key="key" class="card card-hover shine-on-hover animate-fade-up-stagger p-4 bg-paper-100 border border-ink-200 flex flex-col justify-between h-28" :style="{ animationDelay: `${Math.min(idx,8)*60}ms` }">
           <div class="text-[10px] text-ink-300 uppercase font-bold tracking-wider">{{ dimensionLabel(key) }}</div>
           <div class="flex items-baseline justify-between mt-2">
             <span class="text-3xl font-extrabold" :class="scoreColorClass(val)">{{ (val * 10).toFixed(1) }}</span>
@@ -31,7 +31,7 @@
       <!-- Warnings & Alerts Section -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Warnings list (Col span 2) -->
-        <div class="lg:col-span-2 card p-6 bg-[#151722] border border-[#27293d] space-y-4">
+        <div class="lg:col-span-2 card p-6 bg-paper-100 border border-ink-200 space-y-4">
           <h3 class="text-sm font-bold text-ink-700 heading-serif flex items-center gap-2">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-amber-500">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
@@ -55,7 +55,7 @@
         </div>
 
         <!-- Right Side: Special Status chapters -->
-        <div class="card p-6 bg-[#151722] border border-[#27293d] space-y-4">
+        <div class="card p-6 bg-paper-100 border border-ink-200 space-y-4">
           <h3 class="text-sm font-bold text-ink-700 heading-serif">段落状态检测</h3>
 
           <div class="space-y-4">
@@ -67,7 +67,7 @@
               </div>
             </div>
 
-            <div class="border-t border-[#27293d] pt-3">
+            <div class="border-t border-ink-200 pt-3">
               <span class="text-xs text-ink-300 font-semibold block mb-1.5">情节推进缓慢章节 (Stalled chapters)</span>
               <div v-if="stalledChapters.length === 0" class="text-xs text-ink-400 italic">推进节奏良好</div>
               <div v-else class="flex flex-wrap gap-1.5">
@@ -81,8 +81,8 @@
       <!-- Volume breakdown cards -->
       <div class="space-y-4">
         <h3 class="text-sm font-bold text-ink-700 heading-serif">分卷趋势深度追踪</h3>
-        <div v-for="(vol, vidx) in report.volume_reports" :key="vol.volume_number" class="card animate-fade-up-stagger p-6 bg-[#151722] border border-[#27293d] space-y-4" :style="{ animationDelay: `${Math.min(vidx,8)*60}ms` }">
-          <div class="flex justify-between items-center pb-2 border-b border-[#27293d]">
+        <div v-for="(vol, vidx) in report.volume_reports" :key="vol.volume_number" class="card animate-fade-up-stagger p-6 bg-paper-100 border border-ink-200 space-y-4" :style="{ animationDelay: `${Math.min(vidx,8)*60}ms` }">
+          <div class="flex justify-between items-center pb-2 border-b border-ink-200">
             <h4 class="font-extrabold text-ink-600 text-sm">
               {{ vol.volume_number === 0 ? '未分卷章节质量快照' : `第 ${vol.volume_number} 卷质量快照` }}
             </h4>
@@ -90,7 +90,7 @@
           </div>
 
           <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
-            <div v-for="(score, dim) in vol.avg_scores" :key="dim" class="bg-[#0f1015] border border-[#27293d] rounded-xl p-2.5 text-center">
+            <div v-for="(score, dim) in vol.avg_scores" :key="dim" class="bg-paper-200 border border-ink-200 rounded-xl p-2.5 text-center">
               <div class="text-[9px] text-ink-400 uppercase font-bold truncate">{{ dimensionLabel(dim) }}</div>
               <div class="text-lg font-black mt-1" :class="scoreColorClass(score)">{{ (score * 10).toFixed(1) }}</div>
             </div>
@@ -230,7 +230,7 @@ export default {
 .card {
   border-radius: 16px;
   background-color: #12131e;
-  border-color: #27293d;
+  border-color: #d9d0c2;
 }
 .custom-scrollbar::-webkit-scrollbar { width: 5px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }

@@ -148,6 +148,7 @@ class InspirationWizard:
 
     async def create_project(
         self, session_id: str, target_words: int = 100000,
+        owner_id: int | None = None,
     ) -> dict[str, Any]:
         session = self._get_session(session_id)
         collected = session["collected"]
@@ -160,6 +161,7 @@ class InspirationWizard:
             novel_type=novel_type,
             target_words=target_words,
             title=title,
+            owner_id=owner_id,
         )
         session["novel_id"] = novel_id
         session["updated_at"] = datetime.now(UTC).isoformat()
