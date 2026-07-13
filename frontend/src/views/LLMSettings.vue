@@ -200,6 +200,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { authHeaders } from '../composables/useApi.js'
 
 const configs = ref([])
 const loadingConfigs = ref(true)
@@ -301,7 +302,7 @@ async function saveConfig() {
 
     const res = await fetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(body),
     })
 
@@ -319,7 +320,10 @@ async function saveConfig() {
 }
 
 async function activateConfig(id) {
-  const res = await fetch(`/api/v1/llm/configs/${id}/activate`, { method: 'POST' })
+  const res = await fetch(`/api/v1/llm/configs/${id}/activate`, {
+    method: 'POST',
+    headers: { ...authHeaders() },
+  })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     alert(err.detail || '激活失败')
@@ -330,7 +334,10 @@ async function activateConfig(id) {
 
 async function deleteConfig(id) {
   if (!confirm('确定删除此配置？')) return
-  const res = await fetch(`/api/v1/llm/configs/${id}`, { method: 'DELETE' })
+  const res = await fetch(`/api/v1/llm/configs/${id}`, {
+    method: 'DELETE',
+    headers: { ...authHeaders() },
+  })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     alert(err.detail || '删除失败')
