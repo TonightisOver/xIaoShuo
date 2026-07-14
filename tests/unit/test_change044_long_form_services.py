@@ -436,6 +436,32 @@ class TestQualityReportService:
         for dim_scores in report["score_trends"].values():
             assert all(s == 0.7 for s in dim_scores)
 
+    def test_build_volume_report_has_unverified_when_no_scores(self):
+        """无任何评分的章节应标记 has_unverified=True（供前端诚实提示）。"""
+        from src.api.services.quality_report_service import QualityReportService
+        svc = QualityReportService()
+        chapters = self._make_chapters(2, word_count=4000)
+        # 空 version_map + 空 overall_score_map → 从未评估
+        report = svc._build_volume_report(1, chapters, {}, {})
+        assert report["has_unverified"] is True
+
+    def test_build_volume_report_no_unverified_when_scored(self):
+        """所有章节有评分时 has_unverified=False。"""
+        from src.api.services.quality_report_service import QualityReportService
+        svc = QualityReportService()
+        chapters = self._make_chapters(2, word_count=4000)
+        # 每章都有 overall 分 → 已评估
+        overall_map = {ch.chapter_number: 0.8 for ch in chapters}
+        report = svc._build_volume_report(1, chapters, {}, overall_map)
+        assert report["has_unverified"] is False
+
+    def test_build_volume_report_empty_no_unverified(self):
+        """空卷 has_unverified=False。"""
+        from src.api.services.quality_report_service import QualityReportService
+        svc = QualityReportService()
+        report = svc._build_volume_report(1, [], {}, {})
+        assert report["has_unverified"] is False
+
     def test_build_volume_report_detects_low_word_count_warning(self):
         """Warning generated when a chapter has abnormally low word count."""
         from src.api.services.quality_report_service import QualityReportService

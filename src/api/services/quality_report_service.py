@@ -163,6 +163,7 @@ class QualityReportService:
                 "warnings": [],
                 "filler_chapters": [],
                 "stalled_chapters": [],
+                "has_unverified": False,
             }
 
         total_word_count = sum(c.word_count for c in chapters)
@@ -194,6 +195,16 @@ class QualityReportService:
         # Detect stalled chapters
         stalled_chapters = self._detect_stalled_chapters(chapter_scores)
 
+        # 未评估检测：章节被标记 unverified，或既无版本评分也无总分（从未评估）
+        has_unverified = any(
+            getattr(ch, "quality_status", None) == "unverified"
+            or (
+                ch.chapter_number not in version_map
+                and overall_score_map.get(ch.chapter_number) is None
+            )
+            for ch in chapters
+        )
+
         return {
             "volume_number": volume_number,
             "chapter_count": len(chapters),
@@ -203,6 +214,7 @@ class QualityReportService:
             "warnings": warnings,
             "filler_chapters": filler_chapters,
             "stalled_chapters": stalled_chapters,
+            "has_unverified": has_unverified,
         }
 
     def _extract_chapter_scores(
