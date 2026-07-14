@@ -136,12 +136,13 @@ class TaskManager:
             await session.commit()
             logger.info(f"Updated task {task_id} status to {status}")
 
-    async def complete_task(self, task_id: str, result: dict[str, Any]) -> None:
+    async def complete_task(self, task_id: str, result: dict[str, Any], status: str = "completed") -> None:
         """完成任务
 
         Args:
             task_id: 任务 ID
             result: 任务结果
+            status: 任务状态 (completed/partially_completed/completed_with_unverified_quality/failed)
         """
         async with get_db_session() as session:
             db_result = await session.execute(
@@ -153,18 +154,18 @@ class TaskManager:
                 logger.warning(f"Task {task_id} not found")
                 return
 
-            task.status = "completed"
+            task.status = status
             task.completed_at = datetime.now()
             task.result = result
             task.progress = {
-                "current_stage": result.get("current_stage", "completed"),
+                "current_stage": result.get("current_stage", status),
                 "completed_chapters": len(result.get("chapters", [])),
                 "total_chapters": len(result.get("chapters", [])),
-                "percentage": 100,
+                "percentage": 100 if status == "completed" else result.get("completion_percentage", 100),
             }
 
             await session.commit()
-            logger.info(f"Completed task {task_id}")
+            logger.info(f"Completed task {task_id} with status {status}")
 
     async def fail_task(self, task_id: str, error: str) -> None:
         """任务失败

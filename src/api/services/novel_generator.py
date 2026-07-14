@@ -964,6 +964,8 @@ async def generate_long_form_background(
         # Stage 2: Generate volume by volume
         global_chapter_start = 1
         all_chapters_generated = []
+        failed_volumes: list[int] = []
+        unverified_volumes: list[int] = []
 
         for vol_num in range(1, total_volumes + 1):
             # Update progress
@@ -1038,6 +1040,9 @@ async def generate_long_form_background(
                     chapters=vol_chapters,
                 )
 
+                if quality_report.get("has_unverified"):
+                    unverified_volumes.append(vol_num)
+
                 # Update progress
                 await progress_service.update_volume_status(
                     novel_id=novel_id,
@@ -1062,6 +1067,7 @@ async def generate_long_form_background(
                     volume_number=vol_num,
                     error=str(vol_error),
                 )
+                failed_volumes.append(vol_num)
                 await progress_service.update_volume_status(
                     novel_id=novel_id,
                     volume_number=vol_num,
@@ -1071,12 +1077,20 @@ async def generate_long_form_background(
                 # Continue to next volume
                 continue
 
-        # Final completion
+        # Final completion — distinguish volume-level statuses
+        if failed_volumes and not all_chapters_generated:
+            final_status = "failed"
+        elif failed_volumes:
+            final_status = "partially_completed"
+        elif unverified_volumes:
+            final_status = "completed_with_unverified_quality"
+        else:
+            final_status = "completed"
         await task_manager.complete_task(task_id, {
             "novel_id": novel_id,
             "total_volumes": total_volumes,
             "total_chapters": len(all_chapters_generated),
-        })
+        }, status=final_status)
 
         await _emit_progress(
             task_id, EventType.COMPLETED,
