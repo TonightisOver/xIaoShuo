@@ -1,9 +1,10 @@
 """LangGraph 流程图定义"""
 
-from src.core.langgraph.checkpointer import get_checkpointer
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from src.core.config import get_settings
+from src.core.langgraph.checkpointer import get_checkpointer
 from src.core.langgraph.nodes import (
     chapter_generation,
     character_design,
@@ -14,13 +15,14 @@ from src.core.langgraph.nodes import (
     world_building,
 )
 from src.core.langgraph.state import NovelState
-from src.core.config import get_settings
 
 
 def _quality_loop_decision(state: NovelState, pass_target: str) -> str:
     """质量循环条件路由的统一实现。
 
     - QUALITY_LOOP_ENABLED=False：直接通过到 pass_target（跳过重生成）
+    - 一致性硬门禁：consistency_blocked 为 True 时，无论 overall 多少都必须 regenerate
+    - unverified 状态在未达重试上限时走 regenerate
     - 否则：overall >= QUALITY_THRESHOLD 或重试次数 >= MAX_REGENERATION_ATTEMPTS 时通过，
       否则回 regenerate
 
@@ -35,11 +37,28 @@ def _quality_loop_decision(state: NovelState, pass_target: str) -> str:
     if not getattr(settings, "QUALITY_LOOP_ENABLED", True):
         return pass_target
 
-    quality_score = state.get("quality_scores", {}).get("overall", 0)
+    quality_scores = state.get("quality_scores", {})
     regeneration_count = state.get("_regeneration_count", 0)
-    threshold = getattr(settings, "QUALITY_THRESHOLD", 0.8)
     max_attempts = getattr(settings, "MAX_REGENERATION_ATTEMPTS", 2)
 
+    # 硬门禁：一致性严重冲突，无论综合分多少都不通过
+    if quality_scores.get("consistency_blocked"):
+        if regeneration_count >= max_attempts:
+            return pass_target  # 达重试上限放行（不无限循环），但状态仍带 blocked 标记
+        return "regenerate"
+
+    # 未评估状态不应伪装通过
+    if quality_scores.get("status") == "unverified":
+        if regeneration_count >= max_attempts:
+            return pass_target
+        return "regenerate"
+
+    quality_score = quality_scores.get("overall", 0)
+    if quality_score is None:
+        # 无分且非 unverified（如 consistency_blocked 已处理）→ 放行不阻塞
+        return pass_target
+
+    threshold = getattr(settings, "QUALITY_THRESHOLD", 0.8)
     if quality_score >= threshold or regeneration_count >= max_attempts:
         return pass_target
     return "regenerate"

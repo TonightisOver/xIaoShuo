@@ -107,7 +107,8 @@ class TestQualityCheckNode:
     async def test_quality_check_graceful_fallback_on_llm_error(self):
         """When LLM API fails or times out, the node gracefully falls back.
 
-        It should use default scores.
+        It should mark the chapter as unverified (overall=None) rather than
+        fabricating a passing score (was 0.82, which exceeded the 0.7 threshold).
         """
         state: NovelState = {
             "project_id": "test-project-fallback",
@@ -133,10 +134,8 @@ class TestQualityCheckNode:
 
         assert updated_state["current_stage"] == "quality_check_completed"
         scores = updated_state["quality_scores"]
-        assert scores["overall"] == 0.82  # Fallback score
-        assert scores["advancement"] == 0.80
-        assert scores["conflict"] == 0.80
-        assert scores["character_consistency"] == 0.85
+        assert scores["overall"] is None  # unverified: 评估失败绝不伪造合格分
+        assert scores["status"] == "unverified"
         assert scores["consistency"] == 1.0
 
     @pytest.mark.asyncio
