@@ -63,9 +63,15 @@ def should_invoke_l2(
 ) -> bool:
     """决定是否对该章调用 L2 LLM 评审。
 
-    - HIGH：必调
-    - MEDIUM：按抽检比例（每 3 章抽 1 章）
-    - LOW：在 balanced/high 模式下也做低频抽检，economy 模式不抽检
+    - HIGH：必调（失败/关键章/严重告警）
+    - MEDIUM：每 3 章抽 1 章（index%3==0，含第1章作为冷启动基线）
+    - LOW：按 QUALITY_MODE 决定——
+        high 模式每 3 章抽 1 章（更激进，质量优先）
+        balanced 模式每 5 章抽 1 章（均衡）
+        economy 模式不抽检（成本优先）
+        未知模式保守不抽检
+
+    注：index=0 时各取模均为 0，第1章会被抽检，作为冷启动基线校准。
     """
     settings = get_settings()
     mode = getattr(settings, "QUALITY_MODE", "balanced")
@@ -73,11 +79,10 @@ def should_invoke_l2(
     if risk == RiskLevel.HIGH:
         return True
     if risk == RiskLevel.MEDIUM:
-        # 每 3 章抽 1 章
         return chapter_index_in_volume % 3 == 0
     # LOW
     if mode == "high":
-        return chapter_index_in_volume % 5 == 0  # 低频抽检
+        return chapter_index_in_volume % 3 == 0
     if mode == "balanced":
         return chapter_index_in_volume % 5 == 0
-    return False  # economy: 不抽检低风险
+    return False  # economy 或未知模式：不抽检低风险

@@ -65,7 +65,8 @@ class Settings(BaseSettings):
 
     # 质量门禁成本模式：economy(成本优先) / balanced(均衡) / high(质量优先)
     QUALITY_MODE: str = "balanced"
-    # 普通章(非关键章)的 L2 LLM 评审抽检比例(0-1)，economy 模式下更低
+    # 【预留】L2 LLM 评审抽检比例(0-1)。当前 should_invoke_l2 用固定取模(%3/%5)，
+    # 本配置预留给未来按比例随机抽检策略接入；当前未使用，调整它不会改变抽检行为。
     QUALITY_SAMPLE_RATIO: float = 0.2
     # 单章最大 L3 改写次数（避免无限循环）
     QUALITY_MAX_REWRITE_PER_CHAPTER: int = 2
