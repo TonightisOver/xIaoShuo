@@ -157,7 +157,12 @@ class ChapterService:
         user_notes: str | None = None,
         is_active: bool = False,
     ) -> int:
-        """创建章节版本快照，同时更新 Chapter.content 和 Chapter.word_count。"""
+        """创建章节版本快照。
+
+        仅当 is_active=True 时，才清零同章其它版本的 is_active 并把内容写回
+        Chapter.content / Chapter.word_count；is_active=False 只创建快照，
+        不触碰当前活跃正文（供候选择优比较后再决定是否激活）。
+        """
         async with get_db_session() as session:
             ch_res = await session.execute(
                 select(Chapter)

@@ -13,6 +13,11 @@ from src.core.quality.evaluator import evaluate_chapter_quality
 
 logger = structlog.get_logger(__name__)
 
+# 候选择优时不允许恶化的受保护维度（人物/世界观一致性）
+PROTECTED_DIMS = ("character_consistency", "world_consistency")
+# 受保护维度允许的抖动容差
+PROTECTED_DIM_TOLERANCE = 0.05
+
 
 async def _evaluate_chapter_quality_for_novel(
     novel_id: str, chapter_number: int, content: str
@@ -212,10 +217,9 @@ class RewriteLoopService:
             )
 
             # 候选择优：仅当整体提升且受保护维度未恶化时才激活候选
-            PROTECTED_DIMS = ["character_consistency", "world_consistency"]
             overall_up = scores_after.get("overall", 0) > scores_before.get("overall", 0)
             protected_ok = all(
-                scores_after.get(dim, 0) >= scores_before.get(dim, 0) - 0.05
+                scores_after.get(dim, 0) >= scores_before.get(dim, 0) - PROTECTED_DIM_TOLERANCE
                 for dim in PROTECTED_DIMS
             )
             activated = overall_up and protected_ok

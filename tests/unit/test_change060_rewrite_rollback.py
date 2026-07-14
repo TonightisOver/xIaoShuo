@@ -44,6 +44,21 @@ def _worse_scores():
     }
 
 
+def _better_scores():
+    """After rewrite, overall rose and protected dims did not drop."""
+    return {
+        "advancement": 0.95,
+        "conflict": 0.95,
+        "character_consistency": 0.9,
+        "world_consistency": 0.9,
+        "foreshadowing": 0.95,
+        "pacing": 0.95,
+        "readability": 0.95,
+        "trope_alignment": 0.95,
+        "overall": 0.93,
+    }
+
+
 def _fake_session(novel=None, ws=None, chars=None):
     """Return a mock async session context manager."""
     session = AsyncMock()
@@ -145,3 +160,69 @@ async def test_rewrite_reverts_when_score_drops():
     hist = result["improvement_history"]
     assert len(hist) == 1
     assert hist[0].get("activated") is False
+
+
+@pytest.mark.asyncio
+async def test_rewrite_activates_when_score_improves():
+    """候选评分高于基线且保护维度不恶化时应被激活。"""
+    mock_manager = AsyncMock()
+    mock_manager.get_chapter = AsyncMock(return_value={"content": "基线正文"})
+    mock_manager.create_chapter_version = AsyncMock(return_value=2)
+    mock_manager.activate_chapter_version = AsyncMock(return_value=True)
+
+    mock_rewrite_ctx = MagicMock()
+    mock_rewrite_ctx.world_setting = ""
+    mock_rewrite_ctx.chapter_outline = ""
+    mock_rewrite_ctx.prev_chapter_summary = ""
+    mock_rewrite_ctx.next_chapter_summary = ""
+    mock_rewrite_ctx.characters = ""
+    mock_rewrite_ctx.story_bible = ""
+    mock_rewrite_ctx.writing_style = ""
+    mock_builder = MagicMock()
+    mock_builder.build_rewrite_context = AsyncMock(return_value=mock_rewrite_ctx)
+
+    ctx_factory, _ = _fake_session()
+    svc = RewriteLoopService()
+
+    with (
+        patch(
+            "src.api.services.rewrite_loop_service.get_novel_manager",
+            return_value=mock_manager,
+        ),
+        patch(
+            "src.api.services.rewrite_loop_service._evaluate_chapter_quality_for_novel",
+            new_callable=AsyncMock,
+            side_effect=[_low_scores(), _better_scores()],
+        ),
+        patch(
+            "src.core.llm.chapter_rewriter.batch_targeted_rewrite",
+            new_callable=AsyncMock,
+            return_value="更优候选正文",
+        ),
+        patch(
+            "src.api.services.rewrite_loop_service.QualityActionService",
+        ) as mock_qas,
+        patch(
+            "src.api.services.rewrite_loop_service.get_db_session",
+            ctx_factory,
+        ),
+        patch(
+            "src.api.services.rewrite_loop_service.NovelContextBuilder",
+            return_value=mock_builder,
+        ),
+    ):
+        mock_qas.return_value.generate_rewrite_actions = MagicMock(
+            return_value=[{"action_type": "enhance", "dimension": "pacing"}]
+        )
+        result = await svc.auto_improve_chapter(
+            _novel_id(), 1, max_iterations=1, target_score=0.9
+        )
+
+    # 候选版本 2 分数上升 → 应被激活
+    activate_calls = mock_manager.activate_chapter_version.call_args_list
+    activated_versions = [c.kwargs.get("version_number") for c in activate_calls]
+    assert 2 in activated_versions
+
+    hist = result["improvement_history"]
+    assert len(hist) == 1
+    assert hist[0].get("activated") is True
