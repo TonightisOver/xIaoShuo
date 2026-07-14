@@ -77,8 +77,8 @@ async def extract_state_delta(
         raw = await client.generate(prompt, max_tokens=1500)
         parsed = safe_json_parse(raw, fallback=None)
         if isinstance(parsed, dict):
-            # 合并 schema，补全缺失字段
-            delta = {k: parsed.get(k, v) for k, v in DEFAULT_DELTA_SCHEMA.items()}
+            # 合并 schema 并做类型守卫：LLM 返回的非法类型字段回退为 schema 默认值
+            delta = {k: _coerce_field(parsed.get(k), v) for k, v in DEFAULT_DELTA_SCHEMA.items()}
             return delta
     except Exception as e:
         logger.warning("state_delta_extract_failed", chapter=chapter_number, error=str(e))
@@ -87,6 +87,25 @@ async def extract_state_delta(
     fallback = dict(DEFAULT_DELTA_SCHEMA)
     fallback["_unverified"] = True
     return fallback
+
+
+def _coerce_field(parsed_val: Any, default_val: Any) -> Any:
+    """类型守卫：LLM 返回的字段类型若与 schema 默认值不兼容，用默认值（等价该字段抽取失败）。"""
+    # bool 是 int 子类，单独排除以免 True 被当作 1 接受
+    if isinstance(default_val, bool):
+        expected = bool
+    else:
+        expected = type(default_val)
+    if default_val is None or default_val == {} or default_val == []:
+        # 默认值为空容器/None 时，按预期容器类型校验
+        if isinstance(default_val, list):
+            return parsed_val if isinstance(parsed_val, list) else default_val
+        if isinstance(default_val, dict):
+            return parsed_val if isinstance(parsed_val, dict) else default_val
+        return default_val
+    if isinstance(parsed_val, expected) and not isinstance(parsed_val, bool):
+        return parsed_val
+    return default_val
 
 
 def merge_delta_for_context(prev_delta: dict[str, Any] | None, cur_delta: dict[str, Any]) -> str:
