@@ -44,7 +44,9 @@ def _quality_loop_decision(state: NovelState, pass_target: str) -> str:
     # 硬门禁：一致性严重冲突，无论综合分多少都不通过
     if quality_scores.get("consistency_blocked"):
         if regeneration_count >= max_attempts:
-            return pass_target  # 达重试上限放行（不无限循环），但状态仍带 blocked 标记
+            # 达重试上限放行，避免无限循环；但 quality_scores 仍带 consistency_blocked 标记，
+            # 下游不应仅凭此标记判定不合格，需结合 _regeneration_count 判断
+            return pass_target
         return "regenerate"
 
     # 未评估状态不应伪装通过

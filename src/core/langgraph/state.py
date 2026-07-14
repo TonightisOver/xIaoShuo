@@ -32,6 +32,10 @@ class NovelState(TypedDict, total=False):
 
     # 质量指标
     quality_scores: dict[str, float]
+    # L0 规则预筛结果（quality_check 节点收集，运行时编排后续接入）
+    l0_results: list[dict]
+    # KG 连续性审查报告
+    kg_continuity_report: dict | None
 
     # 知识图谱相关
     kg_context: str

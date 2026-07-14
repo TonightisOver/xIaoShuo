@@ -70,7 +70,8 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
     chapter_title = last_chapter.get("title", f"第{len(chapters)}章")
     chapter_number = last_chapter.get("chapter", len(chapters))
 
-    # L0 规则门禁：对所有章节跑零 Token 预筛
+    # NOTE: L0 预筛结果暂仅收集入 state（l0_results），供卷级报告与后续运行时拦截编排使用。
+    # 当前不在此节点拦截章节（运行时编排属后续 Task，见计划 §已知局限 2）。
     from src.core.quality.rules import run_l0_rules
 
     l0_all: list[dict] = []
@@ -145,6 +146,7 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
                     error_count = sum(1 for c in conflicts if c.get("severity") == "error")
                     if error_count > 0:
                         consistency_score = max(0.3, 1.0 - error_count * 0.2)
+                        consistency_blocked = True  # 硬门禁：严重一致性冲突，无论 overall 多少都不通过
             except Exception as e:
                 logger.warning(f"Consistency check failed: {e}")
 
@@ -165,6 +167,7 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
                 )
                 if bible_errors > 0:
                     consistency_score = max(0.3, consistency_score - bible_errors * 0.1)
+                    consistency_blocked = True  # 硬门禁：StoryBible 严重冲突（人物/设定矛盾），无论 overall 多少都不通过
         except Exception as e:
             logger.warning(f"StoryBible conflict detection failed: {e}")
 
