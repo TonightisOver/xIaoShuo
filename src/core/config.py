@@ -63,6 +63,19 @@ class Settings(BaseSettings):
     QUALITY_THRESHOLD: float = 0.7  # 质量达标线，低于此值触发重生成（LLM 给分偏严，0.8 常误触发）
     MAX_REGENERATION_ATTEMPTS: int = 2  # 最多重生成次数（避免无限循环/浪费 token）
 
+    # 质量门禁成本模式：economy(成本优先) / balanced(均衡) / high(质量优先)
+    QUALITY_MODE: str = "balanced"
+    # 普通章(非关键章)的 L2 LLM 评审抽检比例(0-1)，economy 模式下更低
+    QUALITY_SAMPLE_RATIO: float = 0.2
+    # 单章最大 L3 改写次数（避免无限循环）
+    QUALITY_MAX_REWRITE_PER_CHAPTER: int = 2
+    # 单章评审 Token 预算上限（达到即转人工）
+    QUALITY_TOKEN_BUDGET_PER_CHAPTER: int = 20000
+    # 关键章节类型（开篇/高潮/反转/卷末/结局）必审 L2
+    QUALITY_CRITICAL_CHAPTER_TYPES: list[str] = [
+        "opening", "climax", "twist", "volume_end", "ending", "key_milestone",
+    ]
+
     # Encryption
     LLM_ENCRYPTION_KEY: str = ""
     ADMIN_TOKEN: str = "change-this-admin-token"
