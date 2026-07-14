@@ -304,6 +304,11 @@ class Chapter(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(),
         onupdate=func.now()
     )
+    # 结构化状态增量：本章关键事件/人物变化/伏笔/时间线/未解决冲突
+    # 替代"正文前 300 字截取"作为长期记忆，供 L1 风险分级与卷级检查使用
+    state_delta: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # 本章是否通过质量门禁及评估状态：verified / unverified / failed
+    quality_status: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
 
     novel: Mapped["Novel"] = relationship(back_populates="chapters")
 
