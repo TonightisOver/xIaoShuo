@@ -371,8 +371,8 @@ async def _generate_single_chapter_inner(
             "title": chapter_outline.get("title", f"第{chapter_num}章"),
             "content": "",
             "word_count": 0,
-            "generation_failed": True,
             "paused": True,
+            "generation_failed": False,
         }
 
     blueprint_constraint: str | None = None
@@ -443,18 +443,20 @@ async def _generate_single_chapter_inner(
         gen_max_tokens = 8000
     if on_token:
         content = ""
+        token_count = 0
         async for token in client.stream_generate(prompt, use_flash=True):
             content += token
             await on_token(token, content)
-            if pause_checker is not None and await pause_checker():
+            token_count += 1
+            if pause_checker is not None and token_count % 50 == 0 and await pause_checker():
                 logger.info("chapter_generation_paused_mid_stream", chapter=chapter_num)
                 return {
                     "chapter": chapter_num,
                     "title": chapter_outline.get("title", f"第{chapter_num}章"),
                     "content": content,
                     "word_count": len(content),
-                    "generation_failed": True,
                     "paused": True,
+                    "generation_failed": False,
                 }
     else:
         content = await client.generate(prompt, max_tokens=gen_max_tokens, use_flash=True)

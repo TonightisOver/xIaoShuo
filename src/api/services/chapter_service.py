@@ -227,6 +227,7 @@ class ChapterService:
                     "source": v.source,
                     "rewrite_instruction": v.rewrite_instruction,
                     "quality_score": v.quality_score,
+                    "quality_scores": v.quality_scores,
                     "model_name": v.model_name,
                     "is_active": v.is_active,
                     "created_at": v.created_at,

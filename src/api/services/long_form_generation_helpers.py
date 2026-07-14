@@ -676,11 +676,14 @@ async def generate_volume_quality_report(
 
         # 1. 失败章 → unverified + 告警
         if ch.get("generation_failed") or ch.get("paused"):
-            unverified_chapters.append({"chapter": ch_num, "title": title, "reason": "generation_failed"})
+            reason = "paused" if ch.get("paused") and not ch.get("generation_failed") else "generation_failed"
+            unverified_chapters.append({"chapter": ch_num, "title": title, "reason": reason})
+            warn_type = "paused" if ch.get("paused") and not ch.get("generation_failed") else "generation_failed"
+            warn_msg = f"第{ch_num}章" + ("已暂停，质量未评估" if reason == "paused" else "生成失败，质量未评估")
             warnings.append({
                 "chapter": ch_num, "title": title,
-                "severity": "error", "type": "generation_failed",
-                "message": f"第{ch_num}章生成失败，质量未评估",
+                "severity": "error", "type": warn_type,
+                "message": warn_msg,
             })
             continue
 
@@ -713,15 +716,19 @@ async def generate_volume_quality_report(
                 v = sc.get(k)
                 if isinstance(v, (int, float)):
                     dim_sums[k].append(float(v))
+        # 只包含已评估维度（有真实值），未评估维度不出现在 dict 中
+        # 下游 .get(dim, 0) 对缺失 key 返回 0，区分"未评估"与"评了 0 分"由 dim 是否在 dict 决定
         avg_scores = {
-            k: round(sum(v) / len(v), 4) if v else None
-            for k, v in dim_sums.items()
+            k: round(sum(v) / len(v), 4)
+            for k, v in dim_sums.items() if v
         }
-        evaluated = [v for v in avg_scores.values() if v is not None]
-        avg_quality_score = round(sum(evaluated) / len(evaluated), 4) if evaluated else None
+        if avg_scores:
+            avg_quality_score = round(sum(avg_scores.values()) / len(avg_scores), 4)
+        else:
+            avg_quality_score = None
     else:
-        # 没有任何真实评分时，分数为 None（未评估），绝不写 0.7
-        avg_scores = {k: None for k in dimension_keys}
+        # 无任何持久化评分：avg_scores 为空 dict，avg_quality_score 为 None
+        avg_scores = {}
         avg_quality_score = None
 
     return {
@@ -741,14 +748,17 @@ async def generate_volume_quality_report(
 async def _get_persisted_chapter_scores(
     manager, novel_id: str, chapter_number: int
 ) -> dict[str, float] | None:
-    """从持久层获取单章已存评分。若接口不存在或无评分，返回 None。
+    """从持久层获取单章已存评分。优先读多维 quality_scores，回退单数 quality_score。
 
-    这里尝试调用 manager.list_chapter_versions 获取 version 上的 quality_score；
-    若尚未实现逐章评分持久化，返回 None 以触发"未评估"语义，而非伪造 0.7。
+    无评分/异常返回 None，触发"未评估"语义，绝不伪造 0.7。
     """
     try:
         versions = await manager.list_chapter_versions(novel_id, chapter_number)
         for v in versions:
+            multi = v.get("quality_scores")
+            if isinstance(multi, dict) and multi:
+                # 复数多维：直接返回（key 应含 advancement 等维度）
+                return {k: float(val) for k, val in multi.items() if isinstance(val, (int, float))}
             qs = v.get("quality_score")
             if isinstance(qs, (int, float)):
                 return {"overall": float(qs)}

@@ -27,7 +27,9 @@ async def test_failed_chapter_produces_warning_not_fake_score():
     )
 
     # 不能再是固定 0.7
-    assert report["avg_quality_score"] != 0.7 or report.get("has_unverified")
+    # 失败章场景无真实持久化评分，分数应为 None（未评估），绝不写 0.7
+    assert report["avg_quality_score"] is None
+    assert report.get("has_unverified") is True
     # 失败章节必须出现在告警或 unverified 列表
     assert report["warnings"], "失败章节应产生告警"
     unverified = [c for c in report.get("unverified_chapters", [])]
