@@ -641,13 +641,13 @@ class TestFillerDetectionService:
         assert score > 0.3  # At least moderately suspicious
 
     def test_filler_score_marked_filler(self):
-        """Chapter explicitly marked as 'filler' type — L0 基于正文而非 DB 标记，5000 字正常章不再标灌水。"""
+        """Chapter explicitly marked as 'filler' type gets bonus score (L0 分 + 显式标记 +0.5)。"""
         from src.api.services.filler_detection_service import FillerDetectionService
         svc = FillerDetectionService()
         ch = _make_chapter(word_count=5000, chapter_type="filler")
         score = svc._calculate_filler_score(ch, avg_word_count=3000)
-        # L0 基于字数/内容判断，5000 字不触发任何违规，filler_score 应为 0.0
-        assert score == 0.0
+        # 5000 字正文 L0 不报违规(0.0)，但显式 filler 标记叠加 +0.5
+        assert score > 0.4
 
     def test_filler_score_very_low_word_count(self):
         """Chapter with < 1000 words gets additional penalty."""

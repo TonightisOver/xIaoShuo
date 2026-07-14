@@ -86,7 +86,12 @@ class FillerDetectionService:
     def _calculate_filler_score(
         self, chapter: Chapter, avg_word_count: float
     ) -> float:
-        """Calculate filler score. 复用 L0 规则门禁的重复/句式/字数检测。"""
+        """Calculate filler score.
+
+        以 L0 规则门禁（段落重复/句式复用/字数）的内容打分为基础，
+        叠加 chapter_type=="filler" 这一显式标记信号（+0.5），
+        使被明确标记为灌水的章节即便正文够长也能被检出。
+        """
         content = chapter.content or ""
         l0 = run_l0_rules(
             content=content,
@@ -95,7 +100,13 @@ class FillerDetectionService:
             chapter_outline=None,
             chapter_number=chapter.chapter_number,
         )
-        return l0.get("filler_score", 0.0)
+        score = l0.get("filler_score", 0.0)
+
+        # 显式 filler 标记是 L0 看不到的 DB 信号，叠加进分数
+        if chapter.chapter_type == "filler":
+            score += 0.5
+
+        return min(1.0, score)
 
     def _get_filler_reasons(
         self, chapter: Chapter, avg_word_count: float
