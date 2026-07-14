@@ -646,8 +646,8 @@ class TestFillerDetectionService:
         svc = FillerDetectionService()
         ch = _make_chapter(word_count=5000, chapter_type="filler")
         score = svc._calculate_filler_score(ch, avg_word_count=3000)
-        # 5000 字正文 L0 不报违规(0.0)，但显式 filler 标记叠加 +0.5
-        assert score > 0.4
+        # 5000 字正文 L0 不报违规(0.0)，但显式 filler 标记叠加 +0.6，须越过 detect 的 >0.5 阈值
+        assert score > 0.5
 
     def test_filler_score_very_low_word_count(self):
         """Chapter with < 1000 words gets additional penalty."""
@@ -750,6 +750,24 @@ class TestFillerDetectionService:
         assert result["total_chapters"] == 5
         # Normal chapters should not be flagged
         assert result["filler_ratio"] < 0.5
+
+    @pytest.mark.asyncio
+    async def test_detect_filler_chapters_marked_filler_is_detected(self):
+        """被显式标记 filler 且正文够长的章节，必须出现在检出列表（集成层验证越过 >0.5 阈值）。"""
+        chapters = [
+            _make_chapter(volume_number=1, chapter_number=1, word_count=3000),
+            _make_chapter(volume_number=1, chapter_number=2, word_count=5000, chapter_type="filler"),
+            _make_chapter(volume_number=1, chapter_number=3, word_count=3000),
+        ]
+        ctx_fn, _ = _fake_session(chapters)
+
+        with patch("src.api.services.filler_detection_service.get_db_session", ctx_fn):
+            from src.api.services.filler_detection_service import FillerDetectionService
+            svc = FillerDetectionService()
+            result = await svc.detect_filler_chapters("novel-123")
+
+        flagged = [c["chapter_number"] for c in result["filler_chapters"]]
+        assert 2 in flagged, "被标记 filler 的长章应被检出"
 
     # --- singleton factory ---
 

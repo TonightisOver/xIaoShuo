@@ -102,9 +102,10 @@ class FillerDetectionService:
         )
         score = l0.get("filler_score", 0.0)
 
-        # 显式 filler 标记是 L0 看不到的 DB 信号，叠加进分数
+        # 显式 filler 标记是 L0 看不到的 DB 信号，叠加进分数。
+        # 加成 0.6 确保正文再长的 filler 标记章也能越过 detect_filler_chapters 的 >0.5 阈值。
         if chapter.chapter_type == "filler":
-            score += 0.5
+            score += 0.6
 
         return min(1.0, score)
 
