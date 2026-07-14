@@ -192,9 +192,9 @@ class RewriteLoopService:
                 context=rewrite_context,
             )
 
-            # 7. 创建新版本
+            # 7. 创建候选版本（先不激活，等评分确认改善后再激活）
             action_types = [a.get("action_type", "") for a in actions]
-            new_version = await manager.create_chapter_version(
+            candidate_version = await manager.create_chapter_version(
                 novel_id=novel_id,
                 chapter_number=chapter_number,
                 content=new_content,
@@ -203,23 +203,45 @@ class RewriteLoopService:
                     f"auto_improve_iter{iteration}:"
                     f" {','.join(action_types)}"
                 ),
-                is_active=True,
+                is_active=False,
             )
 
             # 8. 评估改写后的分数
             scores_after = await _evaluate_chapter_quality_for_novel(
                 novel_id, chapter_number, new_content
             )
-            final_scores = scores_after
 
+            # 候选择优：仅当整体提升且受保护维度未恶化时才激活候选
+            PROTECTED_DIMS = ["character_consistency", "world_consistency"]
+            overall_up = scores_after.get("overall", 0) > scores_before.get("overall", 0)
+            protected_ok = all(
+                scores_after.get(dim, 0) >= scores_before.get(dim, 0) - 0.05
+                for dim in PROTECTED_DIMS
+            )
+            activated = overall_up and protected_ok
             improvement_history.append({
                 "iteration": iteration,
                 "scores_before": scores_before,
                 "scores_after": scores_after,
                 "actions_taken": action_types,
-                "new_version_number": new_version,
+                "candidate_version": candidate_version,
+                "activated": activated,
                 "word_count": len(new_content),
             })
+
+            if activated:
+                await manager.activate_chapter_version(
+                    novel_id=novel_id, chapter_number=chapter_number,
+                    version_number=candidate_version,
+                )
+                final_scores = scores_after
+                all_pass_after = all(
+                    scores_after.get(dim, 0) >= target_score for dim in target_dims
+                )
+                if all_pass_after:
+                    break
+            else:
+                final_scores = scores_before
 
             logger.info(
                 "auto_improve_iteration_done",
@@ -228,20 +250,8 @@ class RewriteLoopService:
                 iteration=iteration,
                 overall_before=scores_before.get("overall"),
                 overall_after=scores_after.get("overall"),
+                activated=activated,
             )
-
-            # 检查改写后是否达标
-            all_pass_after = all(
-                scores_after.get(dim, 0) >= target_score for dim in target_dims
-            )
-            if all_pass_after:
-                logger.info(
-                    "auto_improve_target_reached_after_rewrite",
-                    novel_id=novel_id,
-                    chapter_number=chapter_number,
-                    iteration=iteration,
-                )
-                break
 
         reached_target = all(
             final_scores.get(dim, 0) >= target_score for dim in target_dims

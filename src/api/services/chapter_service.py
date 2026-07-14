@@ -200,11 +200,17 @@ class ChapterService:
                 created_at=datetime.now(UTC),
             )
             session.add(version)
-
-            ch.content = content
-            ch.word_count = word_count
-            ch.updated_at = datetime.now(UTC)
-
+            if is_active:
+                await session.execute(
+                    ChapterVersion.__table__.update()
+                    .where(ChapterVersion.novel_id == novel_id,
+                           ChapterVersion.chapter_number == chapter_number,
+                           ChapterVersion.version_number != new_version)
+                    .values(is_active=False)
+                )
+                ch.content = content
+                ch.word_count = word_count
+                ch.updated_at = datetime.now(UTC)
             await session.flush()
             return new_version
 
