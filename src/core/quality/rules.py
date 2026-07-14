@@ -15,6 +15,7 @@ SHORT_FRACTION_OF_AVG = 0.4   # < 平均字数 40% → 灌水候选
 REPETITION_THRESHOLD = 0.5    # 段落重复率超过此值 → 重复告警
 OUTLINE_COVERAGE_MIN = 0.2    # 大纲关键词命中率低于此 → 覆盖率告警
 SENTENCE_PREFIX_LEN = 8       # 句首 N 字用于句式复用检测
+SENTENCE_PREFIX_REPEAT_THRESHOLD = 0.4  # 句首重复率超过此值 → 句式趋同告警
 
 
 def run_l0_rules(
@@ -73,7 +74,7 @@ def run_l0_rules(
         prefixes = [s[:SENTENCE_PREFIX_LEN] for s in sentences]
         unique_prefixes = len(set(prefixes))
         prefix_repeat = 1 - unique_prefixes / len(prefixes)
-        if prefix_repeat >= 0.4:
+        if prefix_repeat >= SENTENCE_PREFIX_REPEAT_THRESHOLD:
             violations.append({
                 "severity": "warning", "type": "repetitive_sentence_pattern",
                 "message": f"句首重复率 {prefix_repeat:.0%}，句式趋同",
@@ -99,6 +100,7 @@ def run_l0_rules(
             "severity": "error", "type": "generation_failed",
             "message": "章节生成失败占位内容",
         })
+        filler_score += 0.5  # 生成失败的章节一定标记为灌水/失败
 
     filler_flag = filler_score >= 0.5
     stalled_flag = any(v["type"] == "stalled" for v in violations)
@@ -113,16 +115,25 @@ def run_l0_rules(
 
 
 def _outline_coverage(content: str, outline: Any) -> float:
-    """计算正文对大纲关键词的命中率（0-1）。"""
+    """计算正文对大纲关键词的命中率（0-1）。
+
+    用 2-gram 滑片提取大纲中的连续中文双字关键词，
+    避免贪婪正则把整段中文当成一个关键词导致覆盖率恒为 0。
+    """
     if not outline:
         return 1.0  # 无大纲时不报覆盖率问题
     if isinstance(outline, dict):
         text = " ".join(str(v) for v in outline.values())
     else:
         text = str(outline)
-    # 提取 2 字以上的关键词（简化：取所有长度>=2 的连续中文片段）
-    keywords = re.findall(r"[一-龥]{2,}", text)
-    keywords = list(dict.fromkeys(keywords))  # 去重保序
+    # 提取所有连续中文片段，再切为 2-gram 关键词
+    segments = re.findall(r"[一-龥]+", text)
+    keywords: list[str] = []
+    for seg in segments:
+        for i in range(len(seg) - 1):
+            kw = seg[i:i + 2]
+            if kw not in keywords:
+                keywords.append(kw)
     if not keywords:
         return 1.0
     hit = sum(1 for kw in keywords if kw in content)
