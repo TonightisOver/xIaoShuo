@@ -159,3 +159,53 @@ async def test_create_project_uses_novel_manager(client):
     kwargs = manager.create_novel.await_args.kwargs
     assert kwargs["title"] == "废土王令"
     assert kwargs["novel_type"] == "科幻"
+
+
+async def test_generate_outline_stateless_with_collected_in_body(client):
+    """无状态生成大纲：请求体传 collected，不依赖 session（容器重启也不丢）。"""
+    llm = Mock()
+    llm.generate = AsyncMock(return_value="无状态大纲内容")
+
+    with patch("src.api.services.inspiration_service.get_llm_client", return_value=llm):
+        # 不 start session，直接传 collected
+        response = await client.post(
+            "/api/v1/inspiration/nostate/generate",
+            json={"collected": {"idea": "快递员发现命运碎片", "title": "命运快件"}},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["outline"] == "无状态大纲内容"
+    assert data["collected"]["title"] == "命运快件"
+    prompt = llm.generate.call_args_list[-1].args[0]
+    assert "命运快件" in prompt
+
+
+async def test_create_project_stateless_with_collected_in_body(client):
+    """无状态创建项目：请求体传 collected + target_words，不依赖 session。"""
+    manager = Mock()
+    manager.create_novel = AsyncMock(return_value="novel-stateless")
+
+    with patch(
+        "src.api.services.inspiration_service.get_novel_manager",
+        return_value=manager,
+    ):
+        response = await client.post(
+            "/api/v1/inspiration/nostate/create",
+            json={
+                "collected": {"idea": "x", "title": "测试书", "genre": "玄幻"},
+                "target_words": 50000,
+                "outline": "大纲文本",
+            },
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["novel_id"] == "novel-stateless"
+    assert data["title"] == "测试书"
+    assert data["novel_type"] == "玄幻"
+    manager.create_novel.assert_awaited_once()
+    kwargs = manager.create_novel.await_args.kwargs
+    assert kwargs["target_words"] == 50000
+    assert kwargs["title"] == "测试书"
+    assert kwargs["novel_type"] == "玄幻"

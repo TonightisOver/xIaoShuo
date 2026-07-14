@@ -448,22 +448,16 @@ async function advanceStep(text) {
 
 async function generateOutline() {
   if (outlineGenerating.value) return
-  if (!sessionId.value) {
-    alert('会话未初始化，请刷新页面重试')
-    return
-  }
   outlineGenerating.value = true
   try {
-    const res = await fetch(`/api/v1/inspiration/${sessionId.value}/generate`, {
+    // 无状态：直接传 collected 数据，不依赖 session（容器重启也不丢）
+    const res = await fetch(`/api/v1/inspiration/${sessionId.value || 'nostate'}/generate`, {
       method: 'POST',
-      headers: { ...authHeaders() },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ collected: collected.value }),
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
-      // 细化错误：404=session 过期(容器重启/超时)，需重新开始；其他显示后端 detail
-      if (res.status === 404) {
-        throw new Error('会话已过期（可能因服务重启），请刷新页面重新开始灵感向导')
-      }
       throw new Error(err.detail || `大纲生成失败（HTTP ${res.status}）`)
     }
     const data = await res.json()
@@ -481,10 +475,15 @@ async function generateOutline() {
 async function createProject() {
   projectCreating.value = true
   try {
-    const res = await fetch(`/api/v1/inspiration/${sessionId.value}/create`, {
+    // 无状态：直接传 collected + target_words + outline，不依赖 session
+    const res = await fetch(`/api/v1/inspiration/${sessionId.value || 'nostate'}/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ target_words: form.target_words }),
+      body: JSON.stringify({
+        collected: collected.value,
+        target_words: form.target_words,
+        outline: outlineText.value || null,
+      }),
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))

@@ -22,6 +22,18 @@ class InspirationCreateRequest(BaseModel):
     target_words: int = Field(default=100000, ge=10000, le=10000000)
 
 
+class InspirationGenerateRequest(BaseModel):
+    """无状态生成大纲：前端直接传 collected 数据，不依赖 session。"""
+    collected: dict[str, str] = Field(default_factory=dict)
+
+
+class InspirationCreateCollectedRequest(BaseModel):
+    """无状态创建项目：前端直接传 collected + target_words，不依赖 session。"""
+    collected: dict[str, str] = Field(default_factory=dict)
+    target_words: int = Field(default=100000, ge=10000, le=10000000)
+    outline: str | None = None
+
+
 @router.post("/start")
 async def start_inspiration_session():
     wizard = get_inspiration_wizard()
@@ -53,35 +65,56 @@ async def process_inspiration_step(
 
 
 @router.post("/{session_id}/generate")
-async def generate_inspiration_outline(session_id: str):
+async def generate_inspiration_outline(
+    session_id: str,
+    request: InspirationGenerateRequest | None = None,
+):
+    """生成大纲。无状态：优先用请求体的 collected，回退 session（兼容旧前端）。"""
     wizard = get_inspiration_wizard()
     try:
+        if request and request.collected:
+            # 无状态：前端传 collected，不依赖 session（容器重启也不丢）
+            return await wizard.generate_outline_from_collected(
+                request.collected, session_id=session_id,
+            )
+        # 回退：从 session 取（旧前端兼容）
         return await wizard.generate_outline(session_id)
     except KeyError:
-        raise HTTPException(status_code=404, detail="Inspiration session not found")
-    except Exception as exc:
-        logger.error(
-            "inspiration_outline_failed",
-            session_id=session_id,
-            error=str(exc),
+        raise HTTPException(
+            status_code=404,
+            detail="Inspiration session not found（请刷新页面重新开始，或在前端传 collected 数据）",
         )
+    except Exception as exc:
+        logger.error("inspiration_outline_failed", session_id=session_id, error=str(exc))
         raise HTTPException(status_code=500, detail="Failed to generate outline")
 
 
 @router.post("/{session_id}/create")
 async def create_inspiration_project(
     session_id: str,
-    request: InspirationCreateRequest | None = None,
+    request: InspirationCreateCollectedRequest | None = None,
     current_user: User = Depends(get_current_user),
 ):
+    """创建项目。无状态：优先用请求体的 collected，回退 session（兼容旧前端）。"""
     wizard = get_inspiration_wizard()
-    target_words = request.target_words if request else 100000
     try:
+        if request and request.collected:
+            # 无状态：前端传 collected + target_words + outline
+            return await wizard.create_project_from_collected(
+                request.collected,
+                target_words=request.target_words,
+                owner_id=current_user.id,
+                outline=request.outline,
+            )
+        # 回退：从 session 取（旧前端兼容）
         return await wizard.create_project(
-            session_id, target_words=target_words, owner_id=current_user.id,
+            session_id, owner_id=current_user.id,
         )
     except KeyError:
-        raise HTTPException(status_code=404, detail="Inspiration session not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Inspiration session not found（请刷新页面重新开始，或在前端传 collected 数据）",
+        )
     except Exception as exc:
         logger.error("inspiration_create_failed", session_id=session_id, error=str(exc))
         raise HTTPException(status_code=500, detail="Failed to create project")

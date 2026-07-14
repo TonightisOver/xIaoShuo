@@ -131,28 +131,51 @@ class InspirationWizard:
         }
 
     async def generate_outline(self, session_id: str) -> dict[str, Any]:
+        """从 session 生成大纲（兼容旧调用，session 过期会 KeyError）。"""
         session = self._get_session(session_id)
-        prompt = self._build_outline_prompt(session["collected"])
+        return await self.generate_outline_from_collected(
+            session["collected"], session_id=session_id,
+        )
+
+    async def generate_outline_from_collected(
+        self, collected: dict[str, str], session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """无状态生成大纲：直接用前端传来的 collected 数据，不依赖 session。
+
+        彻底解决容器重启/-session 过期导致 /generate 404 的问题。
+        """
+        prompt = self._build_outline_prompt(collected)
         outline = await get_llm_client().generate(
             prompt,
             temperature=0.6,
             max_tokens=2500,
         )
-        session["outline"] = outline
-        session["updated_at"] = datetime.now(UTC).isoformat()
+        # 若有 session，顺便缓存 outline（非关键）
+        if session_id and session_id in self._sessions:
+            self._sessions[session_id]["outline"] = outline
+            self._sessions[session_id]["updated_at"] = datetime.now(UTC).isoformat()
         return {
-            "session_id": session_id,
             "outline": outline,
-            "collected": deepcopy(session["collected"]),
+            "collected": deepcopy(collected),
         }
 
     async def create_project(
         self, session_id: str, target_words: int = 100000,
         owner_id: int | None = None,
     ) -> dict[str, Any]:
+        """从 session 创建项目（兼容旧调用）。"""
         session = self._get_session(session_id)
-        collected = session["collected"]
-        idea = self._project_idea(collected, session.get("outline"))
+        return await self.create_project_from_collected(
+            session["collected"], target_words=target_words,
+            owner_id=owner_id, outline=session.get("outline"),
+        )
+
+    async def create_project_from_collected(
+        self, collected: dict[str, str], target_words: int = 100000,
+        owner_id: int | None = None, outline: str | None = None,
+    ) -> dict[str, Any]:
+        """无状态创建项目：直接用前端传来的 collected 数据，不依赖 session。"""
+        idea = self._project_idea(collected, outline)
         novel_type = collected.get("genre") or "未分类"
         title = collected.get("title")
 
@@ -163,10 +186,7 @@ class InspirationWizard:
             title=title,
             owner_id=owner_id,
         )
-        session["novel_id"] = novel_id
-        session["updated_at"] = datetime.now(UTC).isoformat()
         return {
-            "session_id": session_id,
             "novel_id": novel_id,
             "status": "draft",
             "title": title,
