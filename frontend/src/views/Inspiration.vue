@@ -448,14 +448,29 @@ async function advanceStep(text) {
 
 async function generateOutline() {
   if (outlineGenerating.value) return
+  if (!sessionId.value) {
+    alert('会话未初始化，请刷新页面重试')
+    return
+  }
   outlineGenerating.value = true
   try {
     const res = await fetch(`/api/v1/inspiration/${sessionId.value}/generate`, {
       method: 'POST',
+      headers: { ...authHeaders() },
     })
-    if (!res.ok) throw new Error('大纲生成失败')
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      // 细化错误：404=session 过期(容器重启/超时)，需重新开始；其他显示后端 detail
+      if (res.status === 404) {
+        throw new Error('会话已过期（可能因服务重启），请刷新页面重新开始灵感向导')
+      }
+      throw new Error(err.detail || `大纲生成失败（HTTP ${res.status}）`)
+    }
     const data = await res.json()
     outlineText.value = data.outline || ''
+    if (!outlineText.value) {
+      alert('大纲为空，请重试或调整创意后重新生成')
+    }
   } catch (e) {
     alert(e.message || '大纲生成失败，请重试。')
   } finally {
