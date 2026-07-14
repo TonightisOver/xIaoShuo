@@ -39,8 +39,11 @@
             <span>剧情与写作合规告警</span>
           </h3>
 
-          <div v-if="allWarnings.length === 0" class="text-xs text-emerald-400 bg-emerald-950/20 border border-emerald-900 rounded-xl p-4 flex items-center gap-2">
-            ✅ 暂无严重质量告警，全书逻辑及推进节奏状态极佳。
+          <div v-if="allWarnings.length === 0 && !hasUnverified" class="text-xs text-emerald-400 bg-emerald-950/20 border border-emerald-900 rounded-xl p-4 flex items-center gap-2">
+            ✅ 暂无严重质量告警，全书逻辑及推进节奏状态良好。
+          </div>
+          <div v-else-if="hasUnverified" class="text-xs text-amber-300 bg-amber-950/20 border border-amber-900/50 rounded-xl p-4 flex items-center gap-2">
+            ⚠️ 部分章节质量未评估（生成失败或评审异常），以下数据不完整。
           </div>
 
           <div v-else class="space-y-2">
@@ -158,6 +161,11 @@ export default {
       return 'bg-rose-500'
     }
 
+    const hasUnverified = computed(() => {
+      if (!report.value || !report.value.volume_reports) return false
+      return report.value.volume_reports.some(v => v.has_unverified)
+    })
+
     const allWarnings = computed(() => {
       if (!report.value || !report.value.volume_reports) return []
       const list = []
@@ -218,6 +226,7 @@ export default {
       scoreColorClass,
       scoreProgressClass,
       allWarnings,
+      hasUnverified,
       fillerChapters,
       stalledChapters,
       getSuggestion,
