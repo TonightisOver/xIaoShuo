@@ -80,6 +80,8 @@ class Settings(BaseSettings):
     # Encryption
     LLM_ENCRYPTION_KEY: str = ""
     ADMIN_TOKEN: str = "change-this-admin-token"
+    # 注册时 username 匹配此值的用户自动标记 is_admin=True（管理 LLM 配置等敏感操作）
+    ADMIN_USERNAME: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

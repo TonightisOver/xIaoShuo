@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from secrets import compare_digest
 
-from fastapi import Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 
 from src.core.auth_models import User
 from src.core.security.users import get_session_user
@@ -64,4 +64,21 @@ async def get_current_user(
             detail="Invalid or expired session token",
         )
     return user
+
+
+async def require_admin_user(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """要求当前登录用户是 admin（is_admin=True）。
+
+    用于 LLM 配置等敏感操作：普通用户 403，admin 用户允许。
+    与 require_admin（ADMIN_TOKEN）互补——require_admin 给运维脚本，
+    require_admin_user 给前端登录的 admin 用户。
+    """
+    if not getattr(current_user, "is_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
+    return current_user
 

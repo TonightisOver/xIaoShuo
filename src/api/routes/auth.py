@@ -48,9 +48,12 @@ async def register(req: AuthRequest):
                 detail="Username already exists",
             )
 
-        # Create user
+        # Create user（若 username 匹配 ADMIN_USERNAME 环境变量，标记为 admin）
+        import os
+        admin_username = os.getenv("ADMIN_USERNAME", "").strip()
+        is_admin = bool(admin_username) and req.username == admin_username
         hashed = hash_password(req.password)
-        new_user = User(username=req.username, hashed_password=hashed)
+        new_user = User(username=req.username, hashed_password=hashed, is_admin=is_admin)
         session.add(new_user)
         await session.commit()
         await session.refresh(new_user)

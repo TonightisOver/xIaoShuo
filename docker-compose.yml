@@ -32,6 +32,7 @@ services:
       DEEPSEEK_MODEL_FLASH: ${DEEPSEEK_MODEL_FLASH:-deepseek-v4-flash}
       LLM_ENCRYPTION_KEY: ${LLM_ENCRYPTION_KEY}
       ADMIN_TOKEN: ${ADMIN_TOKEN}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # HITL 真 interrupt/resume（需持久化 checkpointer）
       HITL_AUTO_APPROVE: ${HITL_AUTO_APPROVE:-true}
