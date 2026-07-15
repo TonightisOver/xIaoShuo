@@ -37,6 +37,21 @@ async def persist_single_chapter(
     await persist_generated_chapters(novel_id, [chapter_data], chapter_data.get("volume_number"))
 
 
+async def _persist_quality_for_gate(
+    novel_id: str, chapter_number: int, scores: dict, warnings: list
+) -> None:
+    """gate 的质量评分持久化回调。
+
+    简化实现：仅记录日志。逐章评分持久化由后续扩展（更新 ChapterVersion.quality_scores）。
+    当前不阻断——卷级报告已能处理 None 评分。
+    """
+    logger.info(
+        "gate_quality_scores",
+        novel_id=novel_id, chapter=chapter_number,
+        overall=scores.get("overall"),
+    )
+
+
 def _normalize_outline_chapter(
     chapter: dict[str, Any],
     fallback: dict[str, Any],
@@ -527,13 +542,20 @@ async def generate_volume_chapters(
             previous_chapter = prev_context or "这是本卷第一章"
         else:
             last_result = generated_chapters[-1] if generated_chapters else {}
-            last_content = last_result.get("content", "")
             # 构建更丰富的衔接上下文：标题 + 结尾段落
             parts = []
             if last_result.get("title"):
                 parts.append(f"上一章：《{last_result['title']}》")
-            if last_content:
-                parts.append(f"结尾段落：\n{last_content[-400:]}")
+            last_delta = last_result.get("state_delta")
+            if last_delta and not last_delta.get("_unverified"):
+                from src.core.quality.state_delta import merge_delta_for_context
+                merged = merge_delta_for_context(last_delta, {})
+                if merged:
+                    parts.append(merged)
+            else:
+                last_content = last_result.get("content", "")
+                if last_content:
+                    parts.append(f"结尾段落：\n{last_content[-400:]}")
             if ch_outline.get("plot"):
                 parts.append(f"本章需要推进：{ch_outline['plot']}")
             previous_chapter = "\n".join(parts) if parts else "续写"
@@ -587,7 +609,50 @@ async def generate_volume_chapters(
             chapter_result["volume_number"] = volume_number
             generated_chapters.append(chapter_result)
             generated_word_count += chapter_result.get("word_count", 0)
+            # === 质量门禁漏斗：抽取state_delta → L0 → L1 → L2 → L3 ===
+            # ⚠️ L3 改善时 auto_improve_chapter 已 activate 候选并写回 Chapter.content。
+            # 若此后 persist_single_chapter 用 chapter_result.content 落库，会覆盖候选。
+            # → L3 改善(rewrite_improved=True)时跳过 persist_single_chapter。
+            persisted_by_gate = False
             if not chapter_result.get("generation_failed"):
+                try:
+                    from src.api.services.rewrite_loop_service import RewriteLoopService
+                    from src.core.quality.gate import (
+                        GatePersistCallbacks,
+                        run_quality_gate,
+                    )
+
+                    gate_callbacks = GatePersistCallbacks(
+                        update_state_delta=manager.update_state_delta,
+                        update_quality_status=manager.update_quality_status,
+                        persist_quality_scores=_persist_quality_for_gate,
+                        detect_bible_conflicts=None,
+                    )
+                    gate_result = await run_quality_gate(
+                        novel_id=novel_id,
+                        chapter_number=global_ch_num,
+                        chapter_result=chapter_result,
+                        chapter_outline=ch_outline,
+                        novel_type=getattr(request, "novel_type", "网络小说"),
+                        idea=getattr(request, "idea", ""),
+                        world_setting=world_str,
+                        characters=chars_str,
+                        persist_callbacks=gate_callbacks,
+                        rewrite_service=RewriteLoopService(),
+                        chapter_index_in_volume=i,
+                    )
+                    chapter_result["quality_status"] = gate_result.quality_status
+                    chapter_result["quality_scores"] = gate_result.quality_scores
+                    chapter_result["state_delta"] = gate_result.state_delta
+                    if gate_result.rewrite_improved:
+                        persisted_by_gate = True
+                except Exception as gate_err:
+                    logger.warning(
+                        "quality_gate_failed_non_fatal",
+                        novel_id=novel_id, chapter=global_ch_num, error=str(gate_err),
+                    )
+            # === 漏斗结束 ===
+            if not chapter_result.get("generation_failed") and not persisted_by_gate:
                 await persist_single_chapter(novel_id, chapter_result)
 
             # Sync chapter_type to DB
@@ -627,34 +692,142 @@ async def generate_volume_quality_report(
     volume_number: int,
     chapters: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Generate quality report for a volume.
+    """Generate quality report for a volume based on real L0 rule checks.
 
-    Returns:
-        Quality report dict
+    不再返回固定 0.7 假分。失败/异常章节标记为 unverified，告警非空。
+    真实的多维 LLM 评分由 quality_check 节点逐章持久化，此处汇总已存评分 +
+    对每章跑 L0 规则门禁。
     """
+    from src.api.services.novel_manager import get_novel_manager
+    from src.core.quality.rules import run_l0_rules
+
     total_word_count = sum(ch.get("word_count", 0) for ch in chapters)
     chapter_count = len(chapters)
 
-    # Simple quality metrics
-    avg_scores = {
-        "advancement": 0.7,
-        "character_consistency": 0.7,
-        "world_consistency": 0.7,
-        "pacing": 0.7,
-        "conflict": 0.7,
-        "foreshadowing": 0.7,
-        "dialogue_quality": 0.7,
-        "emotional_impact": 0.7,
-    }
+    warnings: list[dict[str, Any]] = []
+    unverified_chapters: list[dict[str, Any]] = []
+    filler_chapters: list[dict[str, Any]] = []
+    stalled_chapters: list[dict[str, Any]] = []
+
+    # 计算本卷平均字数用于灌水判断
+    avg_word = (total_word_count / chapter_count) if chapter_count else 0
+
+    # 收集已持久化的逐章评分（若存在）
+    persisted_scores: dict[int, dict[str, float]] = {}
+    try:
+        manager = get_novel_manager()
+        for ch in chapters:
+            ch_num = ch.get("chapter")
+            if not ch_num:
+                continue
+            scores = await _get_persisted_chapter_scores(manager, novel_id, ch_num)
+            if scores:
+                persisted_scores[ch_num] = scores
+    except Exception:
+        # 评分获取失败不应阻断报告生成
+        pass
+
+    dimension_keys = [
+        "advancement", "character_consistency", "world_consistency",
+        "pacing", "conflict", "foreshadowing", "dialogue_quality",
+        "emotional_impact",
+    ]
+
+    for ch in chapters:
+        ch_num = ch.get("chapter")
+        content = ch.get("content", "") or ""
+        word_count = ch.get("word_count", 0) or len(content)
+        title = ch.get("title", f"第{ch_num}章")
+
+        # 1. 失败章 → unverified + 告警
+        if ch.get("generation_failed") or ch.get("paused"):
+            reason = "paused" if ch.get("paused") and not ch.get("generation_failed") else "generation_failed"
+            unverified_chapters.append({"chapter": ch_num, "title": title, "reason": reason})
+            warn_type = "paused" if ch.get("paused") and not ch.get("generation_failed") else "generation_failed"
+            warn_msg = f"第{ch_num}章" + ("已暂停，质量未评估" if reason == "paused" else "生成失败，质量未评估")
+            warnings.append({
+                "chapter": ch_num, "title": title,
+                "severity": "error", "type": warn_type,
+                "message": warn_msg,
+            })
+            continue
+
+        # 2. L0 规则门禁
+        l0 = run_l0_rules(
+            content=content,
+            word_count=word_count,
+            avg_word_count=avg_word,
+            chapter_outline=ch.get("outline") or ch.get("plot"),
+            chapter_number=ch_num,
+        )
+        for v in l0.get("violations", []):
+            warnings.append({
+                "chapter": ch_num, "title": title,
+                "severity": v.get("severity", "warning"),
+                "type": v.get("type"),
+                "message": v.get("message"),
+            })
+        if l0.get("filler_flag"):
+            filler_chapters.append({"chapter": ch_num, "title": title, "score": l0.get("filler_score", 0)})
+        if l0.get("stalled_flag"):
+            stalled_chapters.append({"chapter": ch_num, "title": title})
+
+    # 汇总分数：仅基于已持久化的真实评分，未评估的维度不伪造
+    has_unverified = bool(unverified_chapters)
+    if persisted_scores:
+        dim_sums: dict[str, list[float]] = {k: [] for k in dimension_keys}
+        for sc in persisted_scores.values():
+            for k in dimension_keys:
+                v = sc.get(k)
+                if isinstance(v, (int, float)):
+                    dim_sums[k].append(float(v))
+        # 只包含已评估维度（有真实值），未评估维度不出现在 dict 中
+        # 下游 .get(dim, 0) 对缺失 key 返回 0，区分"未评估"与"评了 0 分"由 dim 是否在 dict 决定
+        avg_scores = {
+            k: round(sum(v) / len(v), 4)
+            for k, v in dim_sums.items() if v
+        }
+        if avg_scores:
+            avg_quality_score = round(sum(avg_scores.values()) / len(avg_scores), 4)
+        else:
+            avg_quality_score = None
+    else:
+        # 无任何持久化评分：avg_scores 为空 dict，avg_quality_score 为 None
+        avg_scores = {}
+        avg_quality_score = None
 
     return {
         "volume_number": volume_number,
         "chapter_count": chapter_count,
         "total_word_count": total_word_count,
         "avg_scores": avg_scores,
-        "avg_quality_score": sum(avg_scores.values()) / len(avg_scores),
-        "warnings": [],
-        "filler_chapters": [],
-        "stalled_chapters": [],
+        "avg_quality_score": avg_quality_score,
+        "has_unverified": has_unverified,
+        "unverified_chapters": unverified_chapters,
+        "warnings": warnings,
+        "filler_chapters": filler_chapters,
+        "stalled_chapters": stalled_chapters,
     }
+
+
+async def _get_persisted_chapter_scores(
+    manager, novel_id: str, chapter_number: int
+) -> dict[str, float] | None:
+    """从持久层获取单章已存评分。优先读多维 quality_scores，回退单数 quality_score。
+
+    无评分/异常返回 None，触发"未评估"语义，绝不伪造 0.7。
+    """
+    try:
+        versions = await manager.list_chapter_versions(novel_id, chapter_number)
+        for v in versions:
+            multi = v.get("quality_scores")
+            if isinstance(multi, dict) and multi:
+                # 复数多维：直接返回（key 应含 advancement 等维度）
+                return {k: float(val) for k, val in multi.items() if isinstance(val, (int, float))}
+            qs = v.get("quality_score")
+            if isinstance(qs, (int, float)):
+                return {"overall": float(qs)}
+        return None
+    except Exception:
+        return None
 

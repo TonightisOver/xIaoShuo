@@ -127,21 +127,21 @@ export default {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: radial-gradient(circle at top left, #1a1b2f, #0f1015);
-  font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  color: #e2e8f0;
+  background: radial-gradient(circle at top left, #2c2416, #141009);
+  font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #5c4f3d;
 }
 
 .glass-card {
   width: 100%;
   max-width: 420px;
   padding: 40px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px rgba(255, 255, 255, 0.08) solid;
+  background: rgba(253, 251, 247, 0.92);
+  border: 1px solid rgba(217, 208, 194, 0.6);
   border-radius: 20px;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 15px 35px rgba(44, 36, 22, 0.12);
 }
 
 .header {
@@ -153,22 +153,21 @@ export default {
   font-size: 32px;
   font-weight: 800;
   letter-spacing: -0.5px;
-  background: linear-gradient(135deg, #6366f1, #a855f7);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: #2c2416;
+  font-family: "Noto Serif SC", "Source Han Serif SC", serif;
   margin: 0 0 8px 0;
 }
 
 .subtitle {
   font-size: 14px;
-  color: #94a3b8;
+  color: #8a7a64;
   margin: 0;
 }
 
 .tabs {
   display: flex;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px rgba(255, 255, 255, 0.05) solid;
+  background: rgba(247, 245, 241, 0.6);
+  border: 1px solid rgba(217, 208, 194, 0.5);
   border-radius: 12px;
   padding: 4px;
   margin-bottom: 25px;
@@ -179,7 +178,7 @@ export default {
   padding: 10px;
   border: none;
   background: none;
-  color: #94a3b8;
+  color: #8a7a64;
   font-size: 14px;
   font-weight: 600;
   border-radius: 8px;
@@ -188,13 +187,13 @@ export default {
 }
 
 .tab-btn:hover {
-  color: #f1f5f9;
+  color: #3d3327;
 }
 
 .tab-btn.active {
-  background: rgba(99, 102, 241, 0.2);
-  border: 1px rgba(99, 102, 241, 0.4) solid;
-  color: #a5b4fc;
+  background: rgba(168, 50, 74, 0.1);
+  border: 1px solid rgba(168, 50, 74, 0.4);
+  color: #8a273a;
 }
 
 .form {
@@ -214,30 +213,30 @@ export default {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #94a3b8;
+  color: #8a7a64;
 }
 
 .input-group input {
   padding: 12px 16px;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px rgba(255, 255, 255, 0.1) solid;
+  background: rgba(253, 251, 247, 0.8);
+  border: 1px solid rgba(217, 208, 194, 0.7);
   border-radius: 10px;
-  color: #f1f5f9;
+  color: #3d3327;
   font-size: 15px;
   outline: none;
   transition: all 0.2s ease;
 }
 
 .input-group input:focus {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  border-color: #d94e6f;
+  box-shadow: 0 0 0 3px rgba(168, 50, 74, 0.15);
 }
 
 .error-msg {
   font-size: 14px;
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px rgba(239, 68, 68, 0.2) solid;
+  color: #8a273a;
+  background: rgba(253, 242, 244, 0.7);
+  border: 1px solid rgba(245, 184, 196, 0.6);
   border-radius: 8px;
   padding: 10px 14px;
 }
@@ -248,20 +247,21 @@ export default {
   align-items: center;
   margin-top: 10px;
   padding: 14px;
-  background: linear-gradient(135deg, #6366f1, #a855f7);
+  background: #2c2416;
   border: none;
   border-radius: 10px;
-  color: white;
+  color: #fdfbf7;
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+  box-shadow: 0 4px 15px rgba(44, 36, 22, 0.25);
 }
 
 .submit-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
+  background: #a8324a;
+  box-shadow: 0 6px 20px rgba(168, 50, 74, 0.35);
 }
 
 .submit-btn:active {
@@ -277,8 +277,8 @@ export default {
 .spinner {
   width: 20px;
   height: 20px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
+  border: 2px solid rgba(253, 251, 247, 0.3);
+  border-top-color: #fdfbf7;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }

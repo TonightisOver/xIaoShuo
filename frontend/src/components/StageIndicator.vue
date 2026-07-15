@@ -1,17 +1,18 @@
 <template>
-  <div class="space-y-6 font-sans">
+  <div class="space-y-6 font-sans animate-fade-up">
     <!-- Grid layout of stages to prevent squeezing and enhance legibility -->
     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
       <div
         v-for="(stage, i) in stages"
         :key="stage.id"
         :class="[
-          'rounded-xl p-3 border flex items-center gap-3 transition-all duration-300 shadow-sm',
+          'rounded-xl p-3 border flex items-center gap-3 transition-all duration-300 shadow-sm animate-fade-up-stagger',
           stageStatus(stage.id) === 'done' ? 'bg-emerald-50/70 border-emerald-100 text-emerald-800' :
           stageStatus(stage.id) === 'active' ? 'bg-purple-50/80 border-purple-200 text-purple-900 ring-2 ring-purple-500/60 ring-offset-1 font-semibold shadow-md shadow-purple-500/5' :
           stageStatus(stage.id) === 'failed' ? 'bg-rose-50 border-rose-200 text-rose-800 ring-2 ring-rose-500/60 ring-offset-1 font-semibold shadow-md' :
-          'bg-neutral-50/40 border-neutral-100/60 text-neutral-400'
+          'bg-paper-50/40 border-ink-100/60 text-ink-400'
         ]"
+        :style="{ animationDelay: `${Math.min(i,8)*60}ms` }"
       >
         <!-- Status Indicator Icon/Number -->
         <div
@@ -20,7 +21,7 @@
             stageStatus(stage.id) === 'done' ? 'bg-emerald-500 text-white' :
             stageStatus(stage.id) === 'active' ? 'bg-purple-600 text-white animate-pulse' :
             stageStatus(stage.id) === 'failed' ? 'bg-rose-600 text-white' :
-            'bg-neutral-200 text-neutral-500'
+            'bg-ink-200 text-ink-500'
           ]"
         >
           <svg v-if="stageStatus(stage.id) === 'done'" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
@@ -31,39 +32,39 @@
           </svg>
           <span v-else>{{ i + 1 }}</span>
         </div>
-        
+
         <!-- Label -->
         <span class="text-xs md:text-sm font-semibold leading-tight">{{ stage.label }}</span>
       </div>
     </div>
 
     <!-- Active Stage Spotlight Card -->
-    <div 
+    <div
       :class="[
         'rounded-2xl border p-5 shadow-sm transition-all duration-300',
-        status === 'failed' ? 'bg-rose-50/40 border-rose-200/80 shadow-rose-500/5' : 'bg-white/80 backdrop-blur-md border-[#e5e5ea]'
+        status === 'failed' ? 'bg-rose-50/40 border-rose-200/80 shadow-rose-500/5' : 'bg-paper-50/80 backdrop-blur-md border-ink-100'
       ]"
     >
       <div class="flex items-center gap-2.5 mb-2.5">
         <span class="flex h-3 w-3 relative">
-          <span 
+          <span
             :class="[
               'animate-ping absolute inline-flex h-full w-full rounded-full opacity-75',
               status === 'failed' ? 'bg-rose-400' : 'bg-purple-400'
             ]"
           ></span>
-          <span 
+          <span
             :class="[
               'relative inline-flex rounded-full h-3 w-3',
               status === 'failed' ? 'bg-rose-600' : 'bg-purple-600'
             ]"
           ></span>
         </span>
-        <h3 class="text-sm font-bold text-[#1d1d1f] tracking-tight">
+        <h3 class="text-sm font-bold text-ink-700 tracking-tight animate-fade-in">
           {{ activeDetail.title }}
         </h3>
       </div>
-      <p class="text-xs md:text-sm text-neutral-600 leading-relaxed font-sans">
+      <p class="text-xs md:text-sm text-ink-600 leading-relaxed font-sans">
         {{ activeDetail.description }}
       </p>
     </div>
@@ -164,7 +165,7 @@ const activeDetail = computed(() => {
       description: `创作引擎在此步骤执行时遭遇了异常阻断。请检查下方“实时创作控制台”中以红字标出的详细报错信息，重新核查或补足您的小说世界观、人物卡设定，然后重新启动生成任务。`
     }
   }
-  
+
   if (props.status === 'completed') {
     return {
       title: '生成流程全部顺利完成！',
@@ -181,9 +182,9 @@ const activeDetail = computed(() => {
 function stageStatus(id) {
   const currentIdx = stages.findIndex(s => s.id === props.currentStage)
   const thisIdx = stages.findIndex(s => s.id === id)
-  
+
   if (props.status === 'completed') return 'done'
-  
+
   if (thisIdx < currentIdx) return 'done'
   if (thisIdx === currentIdx) {
     return props.status === 'failed' ? 'failed' : 'active'

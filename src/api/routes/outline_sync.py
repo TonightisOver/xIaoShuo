@@ -1,10 +1,13 @@
 """大纲同步 API 路由"""
 
 import structlog
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.api.services.outline_sync_service import get_outline_sync_service
+from src.core.auth_models import User
+from src.core.security.auth import get_current_user
+from src.api.owner_guard import verify_novel_owner
 
 logger = structlog.get_logger(__name__)
 
@@ -29,7 +32,8 @@ class BatchRequest(BaseModel):
 
 
 @router.post("/{novel_id}/outlines/sync/analyze")
-async def analyze_impact(novel_id: str, req: AnalyzeRequest):
+async def analyze_impact(novel_id: str, req: AnalyzeRequest, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_outline_sync_service()
     suggestions = await service.analyze_impact(
         novel_id=novel_id,
@@ -45,10 +49,12 @@ async def analyze_impact(novel_id: str, req: AnalyzeRequest):
 @router.get("/{novel_id}/outlines/sync/suggestions")
 async def list_suggestions(
     novel_id: str,
+    current_user: User = Depends(get_current_user),
     status: str | None = Query(None),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ):
+    await verify_novel_owner(novel_id, current_user)
     service = get_outline_sync_service()
     suggestions = await service.get_suggestions(
         novel_id, status=status, limit=limit, offset=offset
@@ -57,7 +63,8 @@ async def list_suggestions(
 
 
 @router.put("/{novel_id}/outlines/sync/suggestions/{suggestion_id}/accept")
-async def accept_suggestion(novel_id: str, suggestion_id: int):
+async def accept_suggestion(novel_id: str, suggestion_id: int, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_outline_sync_service()
     ok = await service.accept_suggestion(suggestion_id)
     if not ok:
@@ -69,7 +76,8 @@ async def accept_suggestion(novel_id: str, suggestion_id: int):
 
 
 @router.put("/{novel_id}/outlines/sync/suggestions/{suggestion_id}/reject")
-async def reject_suggestion(novel_id: str, suggestion_id: int):
+async def reject_suggestion(novel_id: str, suggestion_id: int, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_outline_sync_service()
     ok = await service.reject_suggestion(suggestion_id)
     if not ok:
@@ -81,14 +89,16 @@ async def reject_suggestion(novel_id: str, suggestion_id: int):
 
 
 @router.post("/{novel_id}/outlines/sync/suggestions/batch")
-async def batch_action(novel_id: str, req: BatchRequest):
+async def batch_action(novel_id: str, req: BatchRequest, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_outline_sync_service()
     count = await service.batch_action(req.ids, req.action)
     return {"processed": count, "total": len(req.ids)}
 
 
 @router.post("/{novel_id}/outlines/sync/reverse")
-async def reverse_sync(novel_id: str, req: ReverseRequest):
+async def reverse_sync(novel_id: str, req: ReverseRequest, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_outline_sync_service()
     result = await service.detect_deviation(novel_id, req.chapter_number)
     if "error" in result:
@@ -97,7 +107,8 @@ async def reverse_sync(novel_id: str, req: ReverseRequest):
 
 
 @router.get("/{novel_id}/outlines/sync/status")
-async def sync_status(novel_id: str):
+async def sync_status(novel_id: str, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_outline_sync_service()
     chapters = await service.get_sync_status(novel_id)
     return {"chapters": chapters}

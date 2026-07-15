@@ -31,8 +31,12 @@ async def test_start_inspiration_session(client):
 
 
 async def test_process_step_sends_previous_context_to_llm(client):
+    """结构化输出：LLM 返回 {reply, suggestions}，上下文逐步累积传给 LLM。"""
     llm = Mock()
-    llm.generate = AsyncMock(side_effect=["标题回复", "简介回复"])
+    llm.generate = AsyncMock(side_effect=[
+        '{"reply": "好创意！我们来起个书名吧。", "suggestions": ["《梦境编译器》", "《现实调试员》", "《编译人生》"]}',
+        '{"reply": "书名很棒！接下来写一句话简介。", "suggestions": ["程序员用代码改写梦境", "梦里的 bug 会变成现实", "他能调试所有人的梦"]}',
+    ])
 
     with patch("src.api.services.inspiration_service.get_llm_client", return_value=llm):
         start = await client.post("/api/v1/inspiration/start")
@@ -48,14 +52,65 @@ async def test_process_step_sends_previous_context_to_llm(client):
         )
 
     assert first.status_code == 200
-    assert first.json()["next_step"] == "title"
-    assert first.json()["options"]
+    first_data = first.json()
+    assert first_data["next_step"] == "title"
+    # LLM 生成的具体候选透出为 options
+    assert first_data["options"] == ["《梦境编译器》", "《现实调试员》", "《编译人生》"]
+    assert first_data["ai_reply"] == "好创意！我们来起个书名吧。"
+
     assert second.status_code == 200
     assert second.json()["next_step"] == "description"
 
+    # 第二步的 prompt 应包含之前收集的全部上下文
     second_prompt = llm.generate.call_args_list[1].args[0]
     assert "一个程序员发现梦境能编译现实" in second_prompt
     assert "梦境编译器" in second_prompt
+
+
+async def test_process_step_falls_back_on_malformed_llm_output(client):
+    """LLM 返回非 JSON 时降级：静态建议 + 通用回复，服务不 500。"""
+    llm = Mock()
+    llm.generate = AsyncMock(return_value="这不是 JSON 格式的回复")
+
+    with patch("src.api.services.inspiration_service.get_llm_client", return_value=llm):
+        start = await client.post("/api/v1/inspiration/start")
+        session_id = start.json()["session_id"]
+        response = await client.post(
+            f"/api/v1/inspiration/{session_id}/step",
+            json={"step": "idea", "user_input": "主角能与旧物对话"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["next_step"] == "title"
+    assert data["ai_reply"]  # 降级回复非空
+    assert data["options"]   # 静态建议非空
+
+
+async def test_genre_step_uses_fixed_type_list(client):
+    """theme→genre 步骤：候选固定为标准类型表，不由 LLM 生成。"""
+    llm = Mock()
+    llm.generate = AsyncMock(return_value="很好，请选择类型。")
+
+    with patch("src.api.services.inspiration_service.get_llm_client", return_value=llm):
+        start = await client.post("/api/v1/inspiration/start")
+        session_id = start.json()["session_id"]
+        wizard = get_inspiration_wizard()
+        wizard._sessions[session_id]["current_step"] = "theme"
+        wizard._sessions[session_id]["collected"] = {
+            "idea": "x", "title": "y", "description": "z",
+        }
+
+        response = await client.post(
+            f"/api/v1/inspiration/{session_id}/step",
+            json={"step": "theme", "user_input": "成长与代价"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["next_step"] == "genre"
+    assert "玄幻" in data["options"]
+    assert "都市" in data["options"]
 
 
 async def test_generate_outline_stores_collected_data(client):
@@ -104,3 +159,53 @@ async def test_create_project_uses_novel_manager(client):
     kwargs = manager.create_novel.await_args.kwargs
     assert kwargs["title"] == "废土王令"
     assert kwargs["novel_type"] == "科幻"
+
+
+async def test_generate_outline_stateless_with_collected_in_body(client):
+    """无状态生成大纲：请求体传 collected，不依赖 session（容器重启也不丢）。"""
+    llm = Mock()
+    llm.generate = AsyncMock(return_value="无状态大纲内容")
+
+    with patch("src.api.services.inspiration_service.get_llm_client", return_value=llm):
+        # 不 start session，直接传 collected
+        response = await client.post(
+            "/api/v1/inspiration/nostate/generate",
+            json={"collected": {"idea": "快递员发现命运碎片", "title": "命运快件"}},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["outline"] == "无状态大纲内容"
+    assert data["collected"]["title"] == "命运快件"
+    prompt = llm.generate.call_args_list[-1].args[0]
+    assert "命运快件" in prompt
+
+
+async def test_create_project_stateless_with_collected_in_body(client):
+    """无状态创建项目：请求体传 collected + target_words，不依赖 session。"""
+    manager = Mock()
+    manager.create_novel = AsyncMock(return_value="novel-stateless")
+
+    with patch(
+        "src.api.services.inspiration_service.get_novel_manager",
+        return_value=manager,
+    ):
+        response = await client.post(
+            "/api/v1/inspiration/nostate/create",
+            json={
+                "collected": {"idea": "x", "title": "测试书", "genre": "玄幻"},
+                "target_words": 50000,
+                "outline": "大纲文本",
+            },
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["novel_id"] == "novel-stateless"
+    assert data["title"] == "测试书"
+    assert data["novel_type"] == "玄幻"
+    manager.create_novel.assert_awaited_once()
+    kwargs = manager.create_novel.await_args.kwargs
+    assert kwargs["target_words"] == 50000
+    assert kwargs["title"] == "测试书"
+    assert kwargs["novel_type"] == "玄幻"

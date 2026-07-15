@@ -1,22 +1,22 @@
 <template>
   <div class="max-w-6xl mx-auto px-6 py-8">
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 animate-fade-up">
       <div>
-        <h1 class="text-2xl font-bold text-neutral-900 flex items-center gap-2">
+        <h1 class="heading-serif text-2xl flex items-center gap-2.5">
           <span>我的书架</span>
-          <span class="text-xs font-medium bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded">
-            {{ total }} 本
+          <span class="seal text-[10px] px-1.5 py-0.5 animate-fade-in">
+            {{ total }}
           </span>
         </h1>
-        <p class="text-neutral-500 mt-1 text-sm">管理与监控你的 AI 小说创作项目</p>
+        <p class="text-ink-400 mt-1.5 text-sm">管理与监控你的 AI 小说创作项目</p>
       </div>
       <div class="flex items-center gap-2">
         <select v-model="typeFilter" class="input w-36 text-sm">
           <option value="">全部类型</option>
           <option v-for="t in types" :key="t" :value="t">{{ t }}</option>
         </select>
-        <router-link to="/inspiration" class="btn-secondary text-sm inline-flex items-center gap-1.5 bg-gradient-to-r from-accent-500/5 to-indigo-500/5 hover:from-accent-500/10 hover:to-indigo-500/10 text-accent-700 border-accent-200">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5 text-accent-600">
+        <router-link to="/inspiration" class="btn-secondary text-sm inline-flex items-center gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5 text-vermilion-500">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 21l8.982-11.795H13.82l.93-5.205L5.772 15.904h4.041z" />
           </svg>
           <span>灵感模式</span>
@@ -26,19 +26,19 @@
 
     <!-- Loading -->
     <div v-if="loading" class="flex flex-col items-center justify-center py-32 space-y-3">
-      <div class="w-8 h-8 border-3 border-accent-500 border-t-transparent rounded-full animate-spin"></div>
-      <p class="text-sm text-neutral-400">加载中...</p>
+      <div class="w-8 h-8 border-3 border-ink-200 border-t-vermilion-500 rounded-full animate-spin"></div>
+      <p class="text-sm text-ink-400">加载中...</p>
     </div>
 
     <!-- Empty -->
-    <div v-else-if="novels.length === 0" class="text-center py-20 card p-8">
-      <div class="w-14 h-14 mx-auto mb-5 rounded-xl bg-neutral-100 flex items-center justify-center">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-7 h-7 text-neutral-400">
+    <div v-else-if="novels.length === 0" class="text-center py-20 card p-8 animate-fade-up">
+      <div class="w-14 h-14 mx-auto mb-5 rounded-xl bg-paper-200 flex items-center justify-center">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-7 h-7 text-ink-300">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
         </svg>
       </div>
-      <p class="text-neutral-800 text-lg font-semibold mb-1">书架空空如也</p>
-      <p class="text-neutral-500 text-sm mb-6">尚未创建任何小说项目</p>
+      <p class="heading-serif text-lg mb-1">书架空空如也</p>
+      <p class="text-ink-400 text-sm mb-6">尚未创建任何小说项目</p>
       <div class="flex items-center justify-center gap-3">
         <router-link to="/create" class="btn-primary inline-flex items-center gap-1.5">
           <span>创建第一本小说</span>
@@ -46,8 +46,8 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
         </router-link>
-        <router-link to="/inspiration" class="btn-secondary inline-flex items-center gap-1.5 bg-gradient-to-r from-accent-500/10 to-indigo-500/10 border-accent-200 text-accent-700 hover:from-accent-500/20 hover:to-indigo-500/20">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-accent-600">
+        <router-link to="/inspiration" class="btn-secondary inline-flex items-center gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-vermilion-500">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 21l8.982-11.795H13.82l.93-5.205L5.772 15.904h4.041z" />
           </svg>
           <span>灵感向导</span>
@@ -58,9 +58,10 @@
     <!-- Book Grid -->
     <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       <div
-        v-for="novel in novels"
+        v-for="(novel, idx) in novels"
         :key="novel.novel_id"
-        class="card p-4 flex gap-4 group hover:border-neutral-300 hover:shadow-md transition-all duration-200"
+        class="card shine-on-hover p-4 flex gap-4 group hover:border-ink-200 hover:shadow-lg hover:-translate-y-1 animate-fade-up-stagger"
+        :style="{ animationDelay: `${Math.min(idx, 8) * 60}ms` }"
       >
         <!-- Book Cover -->
         <div class="shrink-0 w-20 aspect-[3/4] rounded-lg overflow-hidden flex flex-col relative select-none">
@@ -80,23 +81,23 @@
           <div class="space-y-1.5">
             <div class="flex items-center justify-between gap-2">
               <span :class="'badge-' + statusClass(novel.status)">{{ statusLabel(novel.status) }}</span>
-              <span class="text-[10px] text-neutral-400">{{ formatDate(novel.updated_at) }}</span>
+              <span class="text-[10px] text-ink-300">{{ formatDate(novel.updated_at) }}</span>
             </div>
-            <h3 class="font-semibold text-neutral-800 text-sm line-clamp-1">{{ novel.title }}</h3>
-            <p class="text-xs text-neutral-500 line-clamp-2 leading-relaxed">
+            <h3 class="font-serif font-bold text-ink-600 text-sm line-clamp-1 group-hover:text-vermilion-600 transition-colors">{{ novel.title }}</h3>
+            <p class="text-xs text-ink-400 line-clamp-2 leading-relaxed">
               {{ novel.idea || '暂无简介' }}
             </p>
           </div>
 
-          <div class="flex items-center justify-between border-t border-neutral-100 pt-2.5 mt-2">
-            <p class="text-[10px] text-neutral-400">
+          <div class="flex items-center justify-between border-t border-ink-100 pt-2.5 mt-2">
+            <p class="text-[10px] text-ink-300">
               {{ (novel.target_words / 10000).toFixed(0) }} 万字目标
             </p>
             <div class="flex items-center gap-2">
               <router-link
                 v-if="novel.status === 'generating' && novel.active_task_id"
                 :to="`/task/${novel.active_task_id}`"
-                class="text-[11px] font-medium text-accent-600 hover:text-accent-700 flex items-center gap-1"
+                class="text-[11px] font-medium text-vermilion-500 hover:text-vermilion-600 flex items-center gap-1"
                 @click.stop
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3 h-3 animate-spin">
@@ -107,7 +108,7 @@
               <router-link
                 v-else
                 :to="`/novels/${novel.novel_id}`"
-                class="text-[11px] font-medium text-accent-600 hover:text-accent-700 flex items-center gap-0.5"
+                class="text-[11px] font-medium text-vermilion-500 hover:text-vermilion-600 flex items-center gap-0.5"
               >
                 <span>管理</span>
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3 h-3">
@@ -116,7 +117,7 @@
               </router-link>
               <button
                 @click.prevent="deleteNovel(novel.novel_id)"
-                class="text-neutral-300 hover:text-red-500 text-[10px] ml-1 transition-colors"
+                class="text-ink-300 hover:text-vermilion-500 text-[10px] ml-1 transition-colors"
               >
                 删除
               </button>
@@ -129,7 +130,7 @@
     <!-- Pagination -->
     <div v-if="total > limit" class="flex justify-center mt-10 gap-3 items-center">
       <button class="btn-secondary text-xs" :disabled="offset === 0" @click="offset -= limit">上一页</button>
-      <span class="text-xs text-neutral-500">
+      <span class="text-xs text-ink-400">
         {{ Math.floor(offset / limit) + 1 }} / {{ Math.ceil(total / limit) }}
       </span>
       <button class="btn-secondary text-xs" :disabled="offset + limit >= total" @click="offset += limit">下一页</button>

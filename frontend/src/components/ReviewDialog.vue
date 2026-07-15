@@ -136,6 +136,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { authHeaders } from '../composables/useApi.js'
 
 const props = defineProps({
   taskId: { type: [String, Number], required: true },
@@ -181,13 +182,13 @@ async function submitDecision(status, instructionsValue) {
   submitting.value = true
   error.value = null
   try {
-    const body = { status }
+    const body = { approval_status: status }
     if (instructionsValue) {
-      body.instructions = instructionsValue
+      body.revision_instructions = instructionsValue
     }
     const res = await fetch(`/api/v1/tasks/${props.taskId}/review`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(body),
     })
     if (!res.ok) {
@@ -226,7 +227,7 @@ function handleRevise() {
     alert('请输入修改意见后再提交')
     return
   }
-  submitDecision('revise', instructions.value)
+  submitDecision('revision', instructions.value)
 }
 
 function handleCancel() {

@@ -1,9 +1,9 @@
 <template>
-  <div class="conflict-panel">
+  <div class="conflict-panel animate-fade-up">
     <!-- Header -->
     <div class="flex items-center justify-between mb-4">
       <div class="flex items-center gap-2">
-        <h2 class="text-base font-bold text-neutral-800">一致性冲突记录</h2>
+        <h2 class="text-base font-bold text-ink-700 heading-serif">一致性冲突记录</h2>
         <span
           v-if="conflicts.length"
           class="text-[11px] bg-red-50 text-red-600 px-2 py-0.5 rounded-md font-medium border border-red-100"
@@ -36,18 +36,19 @@
     </div>
 
     <!-- Empty -->
-    <div v-else-if="!conflicts.length" class="text-center py-12 text-neutral-400 text-sm bg-neutral-50 rounded-xl border border-neutral-200">
+    <div v-else-if="!conflicts.length" class="text-center py-12 text-ink-400 text-sm bg-paper-50 rounded-xl border border-ink-200 animate-fade-in">
       <p class="text-lg mb-1">✅</p>
       <p>暂无一致性冲突记录</p>
-      <p class="text-xs mt-1 text-neutral-400">知识图谱各章节实体状态一致，未检测到矛盾。</p>
+      <p class="text-xs mt-1 text-ink-400">知识图谱各章节实体状态一致，未检测到矛盾。</p>
     </div>
 
     <!-- Conflict list -->
     <div v-else class="space-y-3">
       <div
-        v-for="item in conflicts"
+        v-for="(item, idx) in conflicts"
         :key="item.chapter_number + '-' + (item.version_number || 0)"
-        class="card p-4 rounded-xl border border-red-100 bg-red-50/30 hover:bg-red-50/60 transition-colors"
+        class="card p-4 rounded-xl border border-red-100 bg-red-50/30 hover:bg-red-50/60 transition-colors animate-fade-up-stagger shine-on-hover"
+        :style="{ animationDelay: `${Math.min(idx,8)*60}ms` }"
       >
         <!-- Header -->
         <div class="flex items-start justify-between gap-3 mb-2">
@@ -63,7 +64,7 @@
               v{{ item.version_number }}
             </span>
           </div>
-          <span v-if="item.created_at" class="text-[10px] text-neutral-400 whitespace-nowrap">
+          <span v-if="item.created_at" class="text-[10px] text-ink-400 whitespace-nowrap">
             {{ formatDate(item.created_at) }}
           </span>
         </div>
@@ -73,7 +74,7 @@
           <div
             v-for="(c, i) in item.conflicts"
             :key="i"
-            class="flex items-start gap-2 p-2.5 rounded-lg bg-white border border-red-100"
+            class="flex items-start gap-2 p-2.5 rounded-lg bg-paper-50 border border-red-100"
           >
             <span class="text-red-500 mt-0.5 shrink-0">
               <svg viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5">
@@ -81,13 +82,13 @@
               </svg>
             </span>
             <div class="flex-1 min-w-0 text-xs">
-              <p class="text-neutral-700 leading-relaxed">
+              <p class="text-ink-500 leading-relaxed">
                 <span class="font-semibold text-red-600">{{ c.entity_name || c.entity_id || '未知实体' }}</span>
                 <span v-if="c.attribute"> / {{ c.attribute }}</span>
                 <span>：</span>
                 <span>{{ c.detail || c.message || describeConflict(c) }}</span>
               </p>
-              <p v-if="c.expected || c.actual" class="text-neutral-400 mt-0.5 space-x-3">
+              <p v-if="c.expected || c.actual" class="text-ink-400 mt-0.5 space-x-3">
                 <span v-if="c.expected">预期：<span class="text-emerald-600 font-medium">{{ c.expected }}</span></span>
                 <span v-if="c.actual">实际：<span class="text-red-500 font-medium">{{ c.actual }}</span></span>
               </p>
@@ -98,7 +99,7 @@
           </div>
         </div>
 
-        <div v-else class="ml-4 text-xs text-neutral-500 italic">
+        <div v-else class="ml-4 text-xs text-ink-500 italic">
           冲突详情未记录
         </div>
       </div>

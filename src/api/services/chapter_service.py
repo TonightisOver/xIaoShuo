@@ -112,6 +112,51 @@ class ChapterService:
             ch.updated_at = datetime.now(UTC)
         return True
 
+    async def update_state_delta(
+        self, novel_id: str, chapter_number: int, state_delta: dict
+    ) -> bool:
+        """更新章节的结构化状态增量（state_delta），不改变 chapter.status。
+
+        Returns:
+            True 若章节存在并更新成功，False 若章节不存在
+        """
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(Chapter).where(
+                    Chapter.novel_id == novel_id,
+                    Chapter.chapter_number == chapter_number,
+                ).order_by(Chapter.id.desc()).limit(1)
+            )
+            ch = result.scalar_one_or_none()
+            if not ch:
+                return False
+            ch.state_delta = state_delta
+            ch.updated_at = datetime.now(UTC)
+            await session.commit()
+            return True
+
+    async def update_quality_status(
+        self, novel_id: str, chapter_number: int, status: str
+    ) -> bool:
+        """更新章节的质量门禁状态（quality_status），不改变 chapter.status。
+
+        quality_status 取值: verified / unverified / consistency_blocked / failed
+        """
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(Chapter).where(
+                    Chapter.novel_id == novel_id,
+                    Chapter.chapter_number == chapter_number,
+                ).order_by(Chapter.id.desc()).limit(1)
+            )
+            ch = result.scalar_one_or_none()
+            if not ch:
+                return False
+            ch.quality_status = status
+            ch.updated_at = datetime.now(UTC)
+            await session.commit()
+            return True
+
     async def delete_chapter(self, novel_id: str, chapter_number: int) -> bool:
         async with get_db_session() as session:
             result = await session.execute(
@@ -157,7 +202,12 @@ class ChapterService:
         user_notes: str | None = None,
         is_active: bool = False,
     ) -> int:
-        """创建章节版本快照，同时更新 Chapter.content 和 Chapter.word_count。"""
+        """创建章节版本快照。
+
+        仅当 is_active=True 时，才清零同章其它版本的 is_active 并把内容写回
+        Chapter.content / Chapter.word_count；is_active=False 只创建快照，
+        不触碰当前活跃正文（供候选择优比较后再决定是否激活）。
+        """
         async with get_db_session() as session:
             ch_res = await session.execute(
                 select(Chapter)
@@ -200,11 +250,17 @@ class ChapterService:
                 created_at=datetime.now(UTC),
             )
             session.add(version)
-
-            ch.content = content
-            ch.word_count = word_count
-            ch.updated_at = datetime.now(UTC)
-
+            if is_active:
+                await session.execute(
+                    ChapterVersion.__table__.update()
+                    .where(ChapterVersion.novel_id == novel_id,
+                           ChapterVersion.chapter_number == chapter_number,
+                           ChapterVersion.version_number != new_version)
+                    .values(is_active=False)
+                )
+                ch.content = content
+                ch.word_count = word_count
+                ch.updated_at = datetime.now(UTC)
             await session.flush()
             return new_version
 
@@ -227,6 +283,7 @@ class ChapterService:
                     "source": v.source,
                     "rewrite_instruction": v.rewrite_instruction,
                     "quality_score": v.quality_score,
+                    "quality_scores": v.quality_scores,
                     "model_name": v.model_name,
                     "is_active": v.is_active,
                     "created_at": v.created_at,

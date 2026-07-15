@@ -43,7 +43,7 @@ def _make_version_row(
 ) -> MagicMock:
     row = MagicMock(spec=["id", "novel_id", "chapter_number", "version_number",
                           "content", "word_count", "source", "rewrite_instruction",
-                          "quality_score", "model_name", "prompt_summary",
+                          "quality_score", "quality_scores", "model_name", "prompt_summary",
                           "diff_from_previous", "kg_conflicts", "user_notes",
                           "is_active", "created_at"])
     row.id = id_
@@ -55,6 +55,7 @@ def _make_version_row(
     row.source = source
     row.rewrite_instruction = None
     row.quality_score = None
+    row.quality_scores = None
     row.model_name = None
     row.prompt_summary = None
     row.diff_from_previous = None

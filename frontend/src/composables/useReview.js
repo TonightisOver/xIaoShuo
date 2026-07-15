@@ -8,8 +8,10 @@ import { useApi } from './useApi.js'
  *   GET  /api/v1/tasks/{taskId}/review        获取当前任务的审核数据
  *   POST /api/v1/tasks/{taskId}/review         提交审核决策
  *
- * 提交 payload 形如：
- *   { status: 'approved' | 'rejected' | 'revise', instructions?: string }
+ * 提交 payload 形如（与后端 ReviewRequest 契约对齐）：
+ *   { approval_status: 'approved' | 'rejected' | 'revision', revision_instructions?: string }
+ *
+ * 注意：枚举值是 'revision'（不是 'revise'）；意见字段是 revision_instructions。
  */
 export function useReview() {
   const { apiGet, apiPost } = useApi()
@@ -45,15 +47,15 @@ export function useReview() {
    * 提交审核决策。
    * @param {string|number} taskId
    * @param {object} payload  { status, instructions }
-   *   - status: 'approved' | 'rejected' | 'revise'
+   *   - status: 'approved' | 'rejected' | 'revision'（注意是 revision 不是 revise）
    *   - instructions: 可选，驳回/修改时的人工意见
    * @returns {Promise<object>}
    */
   async function submitReview(taskId, payload) {
     if (!taskId) throw new Error('taskId is required')
     const body = {
-      status: payload?.status,
-      instructions: payload?.instructions ?? '',
+      approval_status: payload?.status,
+      revision_instructions: payload?.instructions ?? '',
     }
     submitting.value = true
     error.value = null

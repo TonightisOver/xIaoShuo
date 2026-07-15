@@ -178,6 +178,10 @@ async def generate_novel_background(
             task_id, initial_state, stage_offset=0, total_stages=len(STAGE_ORDER),
         )
 
+        # HITL interrupt：pipeline 暂停等待人工审核，不 complete，等 review API resume
+        if isinstance(result, dict) and result.get("_interrupted_for_review"):
+            return  # 任务保持 running/waiting_for_review，由 resume_pipeline 续跑
+
         await task_manager.complete_task(task_id, result)
 
         if novel_id:
@@ -283,44 +287,138 @@ async def _run_langgraph_pipeline(
     }
 
     result: dict[str, Any] = {}
-    try:
-        config = {"configurable": configurable}
-        async for event in graph.astream(initial_state, config=config):
-            for node_name, state_update in event.items():
-                result = state_update
-                if node_name in STAGE_ORDER:
-                    node_idx = STAGE_ORDER.index(node_name)
-                else:
-                    node_idx = -1
-                if node_idx < 0:
-                    continue
-                percentage = _full_generate_percentage(stage_offset + node_idx, total_stages)
+    # 追踪已完成的最多章节数与重生成轮次，避免 regenerate 时 progress 倒退误导用户
+    max_completed_chapters = 0
+    last_regeneration_round = 0
+    last_total_chapters = 0
+    interrupted_for_review = False
+    config = {"configurable": configurable}
+    async for event in graph.astream(initial_state, config=config):
+        # LangGraph interrupt：astream 产出 {'__interrupt__': ...} 后正常结束
+        if "__interrupt__" in event:
+            interrupted_for_review = True
+            logger.info("pipeline_interrupted_for_review", task_id=task_id)
+            break
+        for node_name, state_update in event.items():
+            result = state_update
+            if node_name in STAGE_ORDER:
+                node_idx = STAGE_ORDER.index(node_name)
+            else:
+                node_idx = -1
+            if node_idx < 0:
+                continue
+            percentage = _full_generate_percentage(stage_offset + node_idx, total_stages)
 
-                progress_data = {
-                    "current_stage": node_name,
-                    "completed_chapters": len(state_update.get("chapters", [])),
-                    "total_chapters": len(state_update.get("chapter_outlines", [])),
-                    "percentage": percentage,
-                }
-                await task_manager.update_status(
-                    task_id, "running", progress=progress_data,
-                )
+            completed = len(state_update.get("chapters", []))
+            total = len(state_update.get("chapter_outlines", []))
+            regen_round = state_update.get("_regeneration_count", 0)
+
+            # regenerate（quality_check 回 chapter_generation）时，章节会重新生成，
+            # completed 可能暂时下降。保留历史 max，避免 progress 倒退；
+            # 同时用 regeneration_round 标注当前是第几轮质量优化。
+            if regen_round > last_regeneration_round:
+                last_regeneration_round = regen_round
+                max_completed_chapters = 0  # 新一轮重置基准（重生成会覆盖旧章节）
+            if completed > max_completed_chapters:
+                max_completed_chapters = completed
+            if total > 0:
+                last_total_chapters = total
+
+            progress_data = {
+                "current_stage": node_name,
+                "completed_chapters": max_completed_chapters,
+                "total_chapters": last_total_chapters,
+                "percentage": percentage,
+            }
+            if last_regeneration_round > 0 and node_name == "chapter_generation":
+                progress_data["regeneration_round"] = last_regeneration_round
+                progress_data["current_stage"] = "chapter_generation_optimizing"
+            await task_manager.update_status(
+                task_id, "running", progress=progress_data,
+            )
+            await event_bus.publish(ProgressEvent(
+                task_id=task_id,
+                event_type=EventType.STAGE_COMPLETE,
+                data=progress_data,
+            ))
+            if 0 <= node_idx < len(STAGE_ORDER) - 1:
+                next_stage = STAGE_ORDER[node_idx + 1]
                 await event_bus.publish(ProgressEvent(
                     task_id=task_id,
-                    event_type=EventType.STAGE_COMPLETE,
-                    data=progress_data,
+                    event_type=EventType.STAGE_START,
+                    data={"stage": next_stage, "percentage": percentage},
                 ))
-                if 0 <= node_idx < len(STAGE_ORDER) - 1:
-                    next_stage = STAGE_ORDER[node_idx + 1]
-                    await event_bus.publish(ProgressEvent(
-                        task_id=task_id,
-                        event_type=EventType.STAGE_START,
-                        data={"stage": next_stage, "percentage": percentage},
-                    ))
-    finally:
-        pass  # No callback registry cleanup needed; callback is local
+
+    # 若因 HITL interrupt 暂停，标记 task 为 waiting_for_review（不 complete）
+    if interrupted_for_review:
+        task_manager = get_task_manager()
+        await task_manager.update_status(
+            task_id, "running",
+            progress={"current_stage": "human_review", "waiting_for_review": True},
+        )
+        await _emit_progress(
+            task_id, EventType.STAGE_START,
+            {"stage": "human_review", "percentage": _full_generate_percentage(stage_offset + 5, total_stages)},
+        )
+        logger.info("pipeline_paused_for_human_review", task_id=task_id)
+        return {"_interrupted_for_review": True}
 
     return result
+
+
+async def resume_pipeline(task_id: str, decision: dict[str, Any]) -> None:
+    """恢复因 HITL interrupt 暂停的生成流水线。
+
+    用相同 thread_id 的 config + Command(resume=decision) 重新 astream，
+    LangGraph 从 checkpointer 恢复状态，human_review 节点的 interrupt() 返回 decision。
+
+    Args:
+        task_id: 任务 ID（即 LangGraph thread_id）
+        decision: 审核决策，如 {"approval_status": "approved"} 或
+                  {"approval_status": "revision", "revision_instructions": "..."}
+    """
+    from langgraph.types import Command
+
+    task_manager = get_task_manager()
+    event_bus = get_event_bus()
+    graph = create_novel_graph()
+
+    configurable: dict[str, Any] = {"thread_id": task_id}
+    config = {"configurable": configurable}
+
+    result: dict[str, Any] = {}
+    try:
+        async for event in graph.astream(Command(resume=decision), config=config):
+            if "__interrupt__" in event:
+                # 再次 interrupt（如 revision 后又触发审核）——继续等待
+                logger.info("pipeline_re_interrupted_after_resume", task_id=task_id)
+                await task_manager.update_status(
+                    task_id, "running",
+                    progress={"current_stage": "human_review", "waiting_for_review": True},
+                )
+                return
+            for node_name, state_update in event.items():
+                result = state_update
+
+        # resume 完成，持久化结果
+        novel_id = None
+        task_data = await task_manager.get_task(task_id)
+        if task_data:
+            novel_id = task_data.get("novel_id")
+
+        await task_manager.complete_task(task_id, result)
+        if novel_id:
+            await _persist_to_novel(novel_id, result)
+        await _emit_progress(
+            task_id, EventType.COMPLETED,
+            {"percentage": 100, "current_stage": "completed"},
+        )
+        logger.info("pipeline_resumed_completed", task_id=task_id)
+
+    except Exception as e:
+        logger.exception("pipeline_resume_failed", task_id=task_id)
+        await task_manager.fail_task(task_id, str(e))
+        await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
 
 
 async def generate_novel_full_background(
@@ -866,6 +964,8 @@ async def generate_long_form_background(
         # Stage 2: Generate volume by volume
         global_chapter_start = 1
         all_chapters_generated = []
+        failed_volumes: list[int] = []
+        unverified_volumes: list[int] = []
 
         for vol_num in range(1, total_volumes + 1):
             # Update progress
@@ -940,6 +1040,9 @@ async def generate_long_form_background(
                     chapters=vol_chapters,
                 )
 
+                if quality_report.get("has_unverified"):
+                    unverified_volumes.append(vol_num)
+
                 # Update progress
                 await progress_service.update_volume_status(
                     novel_id=novel_id,
@@ -964,6 +1067,7 @@ async def generate_long_form_background(
                     volume_number=vol_num,
                     error=str(vol_error),
                 )
+                failed_volumes.append(vol_num)
                 await progress_service.update_volume_status(
                     novel_id=novel_id,
                     volume_number=vol_num,
@@ -973,12 +1077,20 @@ async def generate_long_form_background(
                 # Continue to next volume
                 continue
 
-        # Final completion
+        # Final completion — distinguish volume-level statuses
+        if failed_volumes and not all_chapters_generated:
+            final_status = "failed"
+        elif failed_volumes:
+            final_status = "partially_completed"
+        elif unverified_volumes:
+            final_status = "completed_with_unverified_quality"
+        else:
+            final_status = "completed"
         await task_manager.complete_task(task_id, {
             "novel_id": novel_id,
             "total_volumes": total_volumes,
             "total_chapters": len(all_chapters_generated),
-        })
+        }, status=final_status)
 
         await _emit_progress(
             task_id, EventType.COMPLETED,

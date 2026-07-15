@@ -1,10 +1,13 @@
 """故事线/人物弧光/场景 API 路由"""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.api.services.ai_generation_service import get_ai_generation_service
 from src.api.services.storyline_service import get_storyline_service
+from src.core.auth_models import User
+from src.core.security.auth import get_current_user
+from src.api.owner_guard import verify_novel_owner
 
 router = APIRouter(prefix="/api/v1/projects", tags=["storylines"])
 
@@ -39,20 +42,23 @@ class LinkCharacterRequest(BaseModel):
 # --- Storylines ---
 
 @router.get("/{novel_id}/storylines")
-async def list_storylines(novel_id: str):
+async def list_storylines(novel_id: str, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_storyline_service()
     return await service.list_storylines(novel_id)
 
 
 @router.post("/{novel_id}/storylines", status_code=201)
-async def create_storyline(novel_id: str, request: StorylineRequest):
+async def create_storyline(novel_id: str, request: StorylineRequest, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_storyline_service()
     sl_id = await service.create_storyline(novel_id, **request.model_dump())
     return {"id": sl_id, "status": "created"}
 
 
 @router.put("/{novel_id}/storylines/{sl_id}")
-async def update_storyline(novel_id: str, sl_id: int, request: StorylineRequest):
+async def update_storyline(novel_id: str, sl_id: int, request: StorylineRequest, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_storyline_service()
     updated = await service.update_storyline(sl_id, novel_id=novel_id, **request.model_dump())
     if not updated:
@@ -61,7 +67,8 @@ async def update_storyline(novel_id: str, sl_id: int, request: StorylineRequest)
 
 
 @router.delete("/{novel_id}/storylines/{sl_id}")
-async def delete_storyline(novel_id: str, sl_id: int):
+async def delete_storyline(novel_id: str, sl_id: int, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_storyline_service()
     deleted = await service.delete_storyline(sl_id, novel_id=novel_id)
     if not deleted:
@@ -70,7 +77,8 @@ async def delete_storyline(novel_id: str, sl_id: int):
 
 
 @router.post("/{novel_id}/storylines/{sl_id}/characters")
-async def link_character_to_storyline(novel_id: str, sl_id: int, request: LinkCharacterRequest):
+async def link_character_to_storyline(novel_id: str, sl_id: int, request: LinkCharacterRequest, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_storyline_service()
     try:
         await service.add_character_to_storyline(sl_id, request.character_id, novel_id, request.role_in_line)
@@ -82,20 +90,23 @@ async def link_character_to_storyline(novel_id: str, sl_id: int, request: LinkCh
 # --- Character Arcs ---
 
 @router.get("/{novel_id}/character-arcs")
-async def list_character_arcs(novel_id: str):
+async def list_character_arcs(novel_id: str, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_storyline_service()
     return await service.list_character_arcs(novel_id)
 
 
 @router.post("/{novel_id}/character-arcs", status_code=201)
-async def create_character_arc(novel_id: str, request: CharacterArcRequest):
+async def create_character_arc(novel_id: str, request: CharacterArcRequest, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_storyline_service()
     arc_id = await service.create_character_arc(novel_id, **request.model_dump())
     return {"id": arc_id, "status": "created"}
 
 
 @router.put("/{novel_id}/character-arcs/{arc_id}")
-async def update_character_arc(novel_id: str, arc_id: int, request: CharacterArcRequest):
+async def update_character_arc(novel_id: str, arc_id: int, request: CharacterArcRequest, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_storyline_service()
     updated = await service.update_character_arc(arc_id, novel_id=novel_id, **request.model_dump())
     if not updated:
@@ -104,7 +115,8 @@ async def update_character_arc(novel_id: str, arc_id: int, request: CharacterArc
 
 
 @router.delete("/{novel_id}/character-arcs/{arc_id}")
-async def delete_character_arc(novel_id: str, arc_id: int):
+async def delete_character_arc(novel_id: str, arc_id: int, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_storyline_service()
     deleted = await service.delete_character_arc(arc_id, novel_id=novel_id)
     if not deleted:
@@ -115,20 +127,23 @@ async def delete_character_arc(novel_id: str, arc_id: int):
 # --- Scenes ---
 
 @router.get("/{novel_id}/scenes")
-async def list_scenes(novel_id: str):
+async def list_scenes(novel_id: str, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_storyline_service()
     return await service.list_scenes(novel_id)
 
 
 @router.post("/{novel_id}/scenes", status_code=201)
-async def create_scene(novel_id: str, request: SceneRequest):
+async def create_scene(novel_id: str, request: SceneRequest, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_storyline_service()
     scene_id = await service.create_scene(novel_id, **request.model_dump())
     return {"id": scene_id, "status": "created"}
 
 
 @router.put("/{novel_id}/scenes/{scene_id}")
-async def update_scene(novel_id: str, scene_id: int, request: SceneRequest):
+async def update_scene(novel_id: str, scene_id: int, request: SceneRequest, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_storyline_service()
     updated = await service.update_scene(scene_id, novel_id=novel_id, **request.model_dump())
     if not updated:
@@ -137,7 +152,8 @@ async def update_scene(novel_id: str, scene_id: int, request: SceneRequest):
 
 
 @router.delete("/{novel_id}/scenes/{scene_id}")
-async def delete_scene(novel_id: str, scene_id: int):
+async def delete_scene(novel_id: str, scene_id: int, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_storyline_service()
     deleted = await service.delete_scene(scene_id, novel_id=novel_id)
     if not deleted:
@@ -148,13 +164,15 @@ async def delete_scene(novel_id: str, scene_id: int):
 # --- Relations ---
 
 @router.get("/{novel_id}/relations")
-async def get_relations(novel_id: str):
+async def get_relations(novel_id: str, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_storyline_service()
     return await service.get_relations(novel_id)
 
 
 @router.post("/{novel_id}/storylines/from-conversation/{conv_id}")
-async def generate_storylines_from_conversation(novel_id: str, conv_id: int):
+async def generate_storylines_from_conversation(novel_id: str, conv_id: int, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_ai_generation_service()
     try:
         created = await service.generate_from_conversation(novel_id, conv_id)
@@ -164,21 +182,24 @@ async def generate_storylines_from_conversation(novel_id: str, conv_id: int):
 
 
 @router.post("/{novel_id}/storylines/generate-ai")
-async def generate_storylines_ai(novel_id: str):
+async def generate_storylines_ai(novel_id: str, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_ai_generation_service()
     created = await service.generate_storylines_ai(novel_id)
     return {"status": "generated", "storylines": created, "count": len(created)}
 
 
 @router.post("/{novel_id}/character-arcs/generate-ai")
-async def generate_arcs_ai(novel_id: str):
+async def generate_arcs_ai(novel_id: str, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_ai_generation_service()
     created = await service.generate_arcs_ai(novel_id)
     return {"status": "generated", "arcs": created, "count": len(created)}
 
 
 @router.post("/{novel_id}/scenes/generate-ai")
-async def generate_scenes_ai(novel_id: str):
+async def generate_scenes_ai(novel_id: str, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_ai_generation_service()
     created = await service.generate_scenes_ai(novel_id)
     return {"status": "generated", "scenes": created, "count": len(created)}

@@ -45,6 +45,37 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-ada-002"
     EMBEDDING_DIM: int = 1536
     EMBEDDING_BASE_URL: str | None = None  # 默认 None 时使用 DEEPSEEK_BASE_URL
+    # DeepSeek API 不提供 embedding 接口（/v1/embeddings 返回 404），默认关闭
+    # 实体 embedding 生成与语义检索；retrieve_context 降级为精确匹配（已足够）。
+    # 仅当配置了支持 embedding 的供应商（如 OpenAI/智谱）时设为 True 启用向量检索。
+    EMBEDDING_ENABLED: bool = False
+
+    # HITL 人工审核
+    # True：human_review 节点自动通过（不 interrupt），管线端到端跑通
+    # False：启用真 interrupt() 阻塞等待人工决策（已实现，配合持久化 checkpointer + resume 路径）
+    HITL_AUTO_APPROVE: bool = True
+
+    # 质量优化循环
+    # quality_check 后若 overall < QUALITY_THRESHOLD 且重试次数 < MAX_REGENERATION_ATTEMPTS，
+    # 回到 chapter_generation 重新生成（提升质量）。设 QUALITY_LOOP_ENABLED=False 可跳过
+    # 直接进入审核（追求速度/节省 token 时用）。
+    QUALITY_LOOP_ENABLED: bool = True
+    QUALITY_THRESHOLD: float = 0.7  # 质量达标线，低于此值触发重生成（LLM 给分偏严，0.8 常误触发）
+    MAX_REGENERATION_ATTEMPTS: int = 2  # 最多重生成次数（避免无限循环/浪费 token）
+
+    # 质量门禁成本模式：economy(成本优先) / balanced(均衡) / high(质量优先)
+    QUALITY_MODE: str = "balanced"
+    # 【预留】L2 LLM 评审抽检比例(0-1)。当前 should_invoke_l2 用固定取模(%3/%5)，
+    # 本配置预留给未来按比例随机抽检策略接入；当前未使用，调整它不会改变抽检行为。
+    QUALITY_SAMPLE_RATIO: float = 0.2
+    # 单章最大 L3 改写次数（避免无限循环）
+    QUALITY_MAX_REWRITE_PER_CHAPTER: int = 2
+    # 单章评审 Token 预算上限（达到即转人工）
+    QUALITY_TOKEN_BUDGET_PER_CHAPTER: int = 20000
+    # 关键章节类型（开篇/高潮/反转/卷末/结局）必审 L2
+    QUALITY_CRITICAL_CHAPTER_TYPES: list[str] = [
+        "opening", "climax", "twist", "volume_end", "ending", "key_milestone",
+    ]
 
     # Encryption
     LLM_ENCRYPTION_KEY: str = ""

@@ -1,6 +1,6 @@
 <template>
-  <div v-if="activeTaskId" class="task-monitor-wrap">
-    <div class="task-card">
+  <div v-if="activeTaskId" class="task-monitor-wrap animate-fade-up">
+    <div class="task-card card shine-on-hover">
       <div class="card-header">
         <div class="header-left">
           <div class="pulse-indicator" :class="taskStatus"></div>
@@ -183,13 +183,7 @@ export default {
 }
 
 .task-card {
-  background: rgba(15, 17, 26, 0.85);
-  border: 1px rgba(255, 255, 255, 0.08) solid;
-  border-radius: 16px;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   padding: 16px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(99, 102, 241, 0.15);
   animation: slideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -221,7 +215,7 @@ export default {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background-color: #6366f1;
+  background-color: var(--vermilion-500, #e85d3a);
 }
 
 .pulse-indicator.running {
@@ -244,7 +238,7 @@ export default {
   to {
     transform: scale(1.3);
     opacity: 1;
-    box-shadow: 0 0 8px #6366f1;
+    box-shadow: 0 0 8px var(--vermilion-500, #e85d3a);
   }
 }
 
@@ -253,13 +247,13 @@ export default {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #94a3b8;
+  color: var(--ink-400, #9b9587);
 }
 
 .close-btn {
   background: none;
   border: none;
-  color: #64748b;
+  color: var(--ink-400, #9b9587);
   cursor: pointer;
   padding: 2px;
   border-radius: 4px;
@@ -267,8 +261,8 @@ export default {
 }
 
 .close-btn:hover {
-  color: #f1f5f9;
-  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink-700, #2d2a26);
+  background: var(--ink-100, #ece9e1);
 }
 
 .stage-info {
@@ -281,7 +275,7 @@ export default {
 .stage-name {
   font-size: 14px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--ink-700, #2d2a26);
   max-width: 80%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -291,12 +285,12 @@ export default {
 .progress-pct {
   font-size: 13px;
   font-weight: 700;
-  color: #a5b4fc;
+  color: var(--vermilion-500, #e85d3a);
 }
 
 .progress-bar-bg {
   height: 6px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--ink-100, #ece9e1);
   border-radius: 3px;
   overflow: hidden;
   margin-bottom: 10px;
@@ -304,14 +298,14 @@ export default {
 
 .progress-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, #6366f1, #a855f7);
+  background: var(--vermilion-500, #e85d3a);
   border-radius: 3px;
   transition: width 0.4s ease;
 }
 
 .status-msg {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--ink-400, #9b9587);
   margin: 0;
   line-height: 1.4;
 }
@@ -327,7 +321,7 @@ export default {
 .card-footer {
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px rgba(255, 255, 255, 0.06) solid;
+  border-top: 1px var(--ink-100, #ece9e1) solid;
 }
 
 .console-link {
@@ -337,12 +331,12 @@ export default {
   gap: 6px;
   font-size: 12px;
   font-weight: 600;
-  color: #a5b4fc;
+  color: var(--vermilion-500, #e85d3a);
   text-decoration: none;
   transition: color 0.2s ease;
 }
 
 .console-link:hover {
-  color: #c7d2fe;
+  color: var(--vermilion-600, #c94a2a);
 }
 </style>

@@ -265,6 +265,20 @@ class NovelManager:
         """获取章节，代理到 ChapterService。"""
         return await get_chapter_service().get_chapter(novel_id, chapter_number)
 
+    async def update_state_delta(self, novel_id: str, chapter_number: int,
+                                state_delta: dict) -> bool:
+        """更新章节结构化状态增量，代理到 ChapterService。"""
+        return await get_chapter_service().update_state_delta(
+            novel_id=novel_id, chapter_number=chapter_number, state_delta=state_delta
+        )
+
+    async def update_quality_status(self, novel_id: str, chapter_number: int,
+                                     status: str) -> bool:
+        """更新章节质量门禁状态，代理到 ChapterService。"""
+        return await get_chapter_service().update_quality_status(
+            novel_id=novel_id, chapter_number=chapter_number, status=status
+        )
+
     async def get_chapter_tail(self, novel_id: str, limit: int = 1) -> list[dict]:
         """获取最后的章节，代理到 ChapterService。"""
         return await get_chapter_service().get_chapter_tail(novel_id, limit)

@@ -41,35 +41,54 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
     chapters = state.get("chapters", [])
     last_chapter = chapters[-1] if chapters else None
 
-    # 默认评分矩阵 (用于异常优雅降级兜底)
-    default_scores = {
-        "overall": 0.82,
-        "advancement": 0.80,
-        "conflict": 0.80,
-        "character_consistency": 0.85,
-        "world_consistency": 0.85,
-        "foreshadowing": 0.80,
-        "pacing": 0.80,
-        "readability": 0.85,
-        "trope_alignment": 0.80,
+    # 评估失败的兜底：标记为 unverified，overall=None，绝不伪造合格分
+    unverified_scores = {
+        "overall": None,
+        "advancement": None,
+        "conflict": None,
+        "character_consistency": None,
+        "world_consistency": None,
+        "foreshadowing": None,
+        "pacing": None,
+        "readability": None,
+        "trope_alignment": None,
         "consistency": 1.0,
+        "status": "unverified",
     }
 
     if not last_chapter:
-        logger.warning("No chapters generated yet, using default scores")
+        logger.warning("No chapters generated yet, using unverified scores")
         return {
             **state,
-            "quality_scores": default_scores,
+            "quality_scores": {**unverified_scores, "consistency_blocked": False},
             "current_stage": "quality_check_completed",
             "kg_continuity_report": None,
+            "l0_results": [],
         }
 
     chapter_content = last_chapter.get("content", "")
     chapter_title = last_chapter.get("title", f"第{len(chapters)}章")
     chapter_number = last_chapter.get("chapter", len(chapters))
 
+    # NOTE: L0 预筛结果暂仅收集入 state（l0_results），供卷级报告与后续运行时拦截编排使用。
+    # 当前不在此节点拦截章节（运行时编排属后续 Task，见计划 §已知局限 2）。
+    from src.core.quality.rules import run_l0_rules
+
+    l0_all: list[dict] = []
+    avg_wc = sum(len(c.get("content", "")) for c in chapters) / max(len(chapters), 1)
+    for idx, ch in enumerate(chapters):
+        l0 = run_l0_rules(
+            content=ch.get("content", ""),
+            word_count=ch.get("word_count"),
+            avg_word_count=avg_wc,
+            chapter_outline=ch.get("plot") or ch.get("outline"),
+            chapter_number=ch.get("chapter", idx + 1),
+        )
+        l0_all.append(l0)
+
     # 2. 知识图谱一致性检查 (via injected kg_service)
     consistency_score = 1.0
+    consistency_blocked = False
     settings = get_settings()
     consistency_warnings = []
     kg_continuity_report = None
@@ -110,10 +129,13 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
                     verdict = kg_continuity_report.get("verdict", "pass")
                     if verdict == "block":
                         consistency_score = 0.3
+                        consistency_blocked = True  # 硬门禁：无论 overall 多少都不通过
                     elif verdict == "warn":
                         consistency_score = 0.8
+                        consistency_blocked = False
                     else:
                         consistency_score = 1.0
+                        consistency_blocked = False
                 else:
                     conflicts = await kg_service.check_consistency(
                         novel_id=novel_id,
@@ -124,6 +146,7 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
                     error_count = sum(1 for c in conflicts if c.get("severity") == "error")
                     if error_count > 0:
                         consistency_score = max(0.3, 1.0 - error_count * 0.2)
+                        consistency_blocked = True  # 硬门禁：严重一致性冲突，无论 overall 多少都不通过
             except Exception as e:
                 logger.warning(f"Consistency check failed: {e}")
 
@@ -144,6 +167,7 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
                 )
                 if bible_errors > 0:
                     consistency_score = max(0.3, consistency_score - bible_errors * 0.1)
+                    consistency_blocked = True  # 硬门禁：StoryBible 严重冲突（人物/设定矛盾），无论 overall 多少都不通过
         except Exception as e:
             logger.warning(f"StoryBible conflict detection failed: {e}")
 
@@ -204,6 +228,9 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
         # 装配多维评分指标数据（含 consistency 维度）
         quality_scores = result.to_scores_dict()
         quality_scores["consistency"] = consistency_score
+        if consistency_blocked:
+            quality_scores["consistency_blocked"] = True
+            quality_scores["status"] = "consistency_blocked"
 
         logger.info(
             "Quality evaluation completed successfully "
@@ -232,6 +259,7 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
             "revision_requests": revision_requests,
             "current_stage": "quality_check_completed",
             "kg_continuity_report": kg_continuity_report,
+            "l0_results": l0_all,
         }
 
     except Exception as e:
@@ -242,21 +270,22 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
         )
 
     # 4. 触发兜底优雅降级，防止主生成流程中断或死锁
-    default_scores["consistency"] = consistency_score
+    unverified_scores["consistency"] = consistency_score
 
     # 即使降级也持久化默认评分
     if persist_quality_fn and novel_id and last_chapter:
         await persist_quality_fn(
             novel_id,
             last_chapter.get("chapter", 0),
-            default_scores,
+            unverified_scores,
             consistency_warnings,
         )
 
     return {
         **state,
-        "quality_scores": default_scores,
+        "quality_scores": {**unverified_scores, "consistency_blocked": consistency_blocked},
         "consistency_warnings": consistency_warnings,
         "current_stage": "quality_check_completed",
         "kg_continuity_report": kg_continuity_report,
+        "l0_results": l0_all,
     }

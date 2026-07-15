@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -15,9 +15,18 @@ from src.api.models.db_models import (
     CharacterCareer,
     Novel,
 )
-from src.api.services.career_service import generate_career_system
+from src.api.services.career_service import (
+    delete_career,
+    generate_career_system,
+    list_character_career_assignments,
+    save_character_career_assignment,
+    upsert_careers,
+)
+from src.core.auth_models import User
 from src.core.database import get_db_session
 from src.core.llm.client import get_llm_client
+from src.core.security.auth import get_current_user
+from src.api.owner_guard import verify_novel_owner
 
 logger = structlog.get_logger(__name__)
 
@@ -44,6 +53,29 @@ class CareerUpdateRequest(BaseModel):
 class AssignCareerRequest(BaseModel):
     career_id: int
     current_stage: int = Field(default=1, ge=1)
+
+
+class CareerBulkSaveRequest(BaseModel):
+    """Frontend contract: the entire career list is POSTed as a JSON array.
+
+    Fastapi cannot bind a bare top-level JSON array to a pydantic model, so we
+    accept the raw body via a list[dict] parameter in the route instead. This
+    model is kept for documentation/introspection only.
+    """
+
+    careers: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CharacterCareerAssignmentRequest(BaseModel):
+    """Frontend contract for POST /{novel_id}/characters/careers.
+
+    career_id may be an int or a string pseudo-id (or empty), and stage_index
+    is a 0-based index into the career's stages array.
+    """
+
+    character_id: int
+    career_id: Any = None
+    stage_index: int = 0
 
 
 def _career_to_dict(career: CareerSystem) -> dict[str, Any]:
@@ -95,8 +127,11 @@ async def _get_project_context(novel_id: str) -> dict[str, Any] | None:
 
 @router.post("/{novel_id}/careers/generate", status_code=201)
 async def generate_careers(
-    novel_id: str, request: CareerGenerateRequest | None = None
+    novel_id: str,
+    request: CareerGenerateRequest | None = None,
+    current_user: User = Depends(get_current_user),
 ):
+    await verify_novel_owner(novel_id, current_user)
     request = request or CareerGenerateRequest()
     project_context = await _get_project_context(novel_id)
     if not project_context:
@@ -139,7 +174,10 @@ async def generate_careers(
 
 
 @router.get("/{novel_id}/careers")
-async def list_careers(novel_id: str):
+async def list_careers(
+    novel_id: str, current_user: User = Depends(get_current_user)
+):
+    await verify_novel_owner(novel_id, current_user)
     async with get_db_session() as session:
         novel_result = await session.execute(
             select(Novel.novel_id).where(Novel.novel_id == novel_id)
@@ -155,10 +193,37 @@ async def list_careers(novel_id: str):
         return [_career_to_dict(career) for career in result.scalars().all()]
 
 
+@router.post("/{novel_id}/careers")
+async def bulk_save_careers(
+    novel_id: str,
+    careers: list[dict[str, Any]],
+    current_user: User = Depends(get_current_user),
+):
+    """Bulk upsert the full career list (frontend saveCareersToStore contract).
+
+    The body is a bare JSON array of career objects. De-duplication is by name
+    within the novel. Frontend pseudo-ids (non-numeric strings) are ignored for
+    matching; rows are matched/created by name and stable integer ids returned.
+    """
+    await verify_novel_owner(novel_id, current_user)
+    async with get_db_session() as session:
+        novel_result = await session.execute(
+            select(Novel.novel_id).where(Novel.novel_id == novel_id)
+        )
+        if not novel_result.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail="Novel not found")
+
+    return await upsert_careers(novel_id, careers)
+
+
 @router.put("/{novel_id}/careers/{career_id}")
 async def update_career(
-    novel_id: str, career_id: int, request: CareerUpdateRequest
+    novel_id: str,
+    career_id: int,
+    request: CareerUpdateRequest,
+    current_user: User = Depends(get_current_user),
 ):
+    await verify_novel_owner(novel_id, current_user)
     updates = request.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -181,10 +246,75 @@ async def update_career(
         return {"status": "updated"}
 
 
+@router.delete("/{novel_id}/careers/{career_id}")
+async def delete_career_endpoint(
+    novel_id: str,
+    career_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a single career (frontend deleteCareer contract).
+
+    career_id may be a non-numeric frontend pseudo-id (LocalStorage-only
+    career). Such deletes are idempotent no-ops since no DB row exists.
+    """
+    await verify_novel_owner(novel_id, current_user)
+    removed = await delete_career(novel_id, career_id)
+    return {"status": "deleted" if removed else "noop", "id": career_id}
+
+
+@router.get("/{novel_id}/characters/careers")
+async def list_character_careers(
+    novel_id: str, current_user: User = Depends(get_current_user)
+):
+    """Return character-career assignments (frontend loadAssignments contract).
+
+    Output: [{ character_id, career_id, stage_index }] where stage_index is a
+    0-based index into the career's stages array.
+    """
+    await verify_novel_owner(novel_id, current_user)
+    async with get_db_session() as session:
+        novel_result = await session.execute(
+            select(Novel.novel_id).where(Novel.novel_id == novel_id)
+        )
+        if not novel_result.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail="Novel not found")
+    return await list_character_career_assignments(novel_id)
+
+
+@router.post("/{novel_id}/characters/careers", status_code=201)
+async def save_character_career(
+    novel_id: str,
+    request: CharacterCareerAssignmentRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Save a character-career assignment (frontend saveAssignment contract).
+
+    Body: { character_id, career_id, stage_index }. An empty/non-numeric
+    career_id clears the assignment. stage_index is a 0-based array index.
+    """
+    await verify_novel_owner(novel_id, current_user)
+    async with get_db_session() as session:
+        novel_result = await session.execute(
+            select(Novel.novel_id).where(Novel.novel_id == novel_id)
+        )
+        if not novel_result.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail="Novel not found")
+    return await save_character_career_assignment(
+        novel_id=novel_id,
+        character_id=request.character_id,
+        career_id=request.career_id,
+        stage_index=request.stage_index,
+    )
+
+
 @router.post("/{novel_id}/characters/{char_id}/careers", status_code=201)
 async def assign_character_career(
-    novel_id: str, char_id: int, request: AssignCareerRequest
+    novel_id: str,
+    char_id: int,
+    request: AssignCareerRequest,
+    current_user: User = Depends(get_current_user),
 ):
+    await verify_novel_owner(novel_id, current_user)
     async with get_db_session() as session:
         char_result = await session.execute(
             select(Character).where(

@@ -253,8 +253,13 @@ async def generate_chapter_stream(
     target_words: int | None = None,
     blueprint: dict | None = None,
     story_bible_context: str | None = None,
+    pause_checker: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
-    """Generate a single chapter using streaming for body text."""
+    """Generate a single chapter using streaming for body text.
+
+    Args:
+        pause_checker: 可选的异步回调，返回 True 表示任务被暂停，应中止本章生成。
+    """
     try:
         return await asyncio.wait_for(
             _generate_single_chapter_inner(
@@ -272,6 +277,7 @@ async def generate_chapter_stream(
                 story_bible_context=story_bible_context,
                 on_token=on_token,
                 on_complete=on_complete,
+                pause_checker=pause_checker,
             ),
             timeout=CHAPTER_TIMEOUT_SECONDS,
         )
@@ -306,6 +312,7 @@ async def _generate_single_chapter_inner(
     story_bible_context: str | None = None,
     on_token: Callable[[str, str], Awaitable[None]] | None = None,
     on_complete: Callable[[str], Awaitable[None]] | None = None,
+    pause_checker: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """生成单章内容。
 
@@ -313,6 +320,7 @@ async def _generate_single_chapter_inner(
         target_words: Target word count for long-form mode (None for standard mode)
         blueprint: 预生成的章节蓝图（可选，传入则跳过蓝图生成/查询）
         story_bible_context: 故事圣经约束文本（由调用方查询后传入）
+        pause_checker: 可选的异步回调，返回 True 表示任务被暂停，应中止本章生成。
 
     Returns:
         {"chapter": int, "title": str, "content": str, "word_count": int,
@@ -325,13 +333,13 @@ async def _generate_single_chapter_inner(
             from src.core.config import get_settings
             settings = get_settings()
             use_subagent = settings.KG_SUBAGENT_ENABLED
-            
+
             raw_kg_context = await kg_service.retrieve_context(
                 novel_id=novel_id,
                 chapter_outline=chapter_outline,
                 raw_format=use_subagent
             )
-            
+
             if use_subagent:
                 from src.core.agents.memory_curator import MemoryCuratorAgent
                 curator = MemoryCuratorAgent()
@@ -344,7 +352,7 @@ async def _generate_single_chapter_inner(
                 story_bible_context = "（已整合进活态知识图谱上下文中）"
             else:
                 kg_context = raw_kg_context
-                
+
         except Exception as e:
             logger.warning("kg_context_retrieval_failed", error=str(e))
 
@@ -354,6 +362,19 @@ async def _generate_single_chapter_inner(
 
     # 3. 结构化蓝图（由调用方传入）或降级到 LLM 规划
     chapter_num = chapter_outline.get("chapter", 0)
+
+    # === 暂停检查（生成前）===
+    if pause_checker is not None and await pause_checker():
+        logger.info("chapter_generation_paused_before_start", chapter=chapter_num)
+        return {
+            "chapter": chapter_num,
+            "title": chapter_outline.get("title", f"第{chapter_num}章"),
+            "content": "",
+            "word_count": 0,
+            "paused": True,
+            "generation_failed": False,
+        }
+
     blueprint_constraint: str | None = None
 
     if blueprint:
@@ -422,9 +443,21 @@ async def _generate_single_chapter_inner(
         gen_max_tokens = 8000
     if on_token:
         content = ""
+        token_count = 0
         async for token in client.stream_generate(prompt, use_flash=True):
             content += token
             await on_token(token, content)
+            token_count += 1
+            if pause_checker is not None and token_count % 50 == 0 and await pause_checker():
+                logger.info("chapter_generation_paused_mid_stream", chapter=chapter_num)
+                return {
+                    "chapter": chapter_num,
+                    "title": chapter_outline.get("title", f"第{chapter_num}章"),
+                    "content": content,
+                    "word_count": len(content),
+                    "paused": True,
+                    "generation_failed": False,
+                }
     else:
         content = await client.generate(prompt, max_tokens=gen_max_tokens, use_flash=True)
 

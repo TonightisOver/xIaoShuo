@@ -1321,13 +1321,21 @@ async def _generate_entity_embedding(
 ) -> list[float] | None:
     """为实体生成 embedding 向量，用于 RAG 语义检索。
 
+    仅当 ``settings.EMBEDDING_ENABLED=True`` 时调用 embedding API。默认 False
+    （DeepSeek 不提供 embedding 接口，调用必 404）；此时返回 None，retrieve_context
+    降级为精确匹配检索（基于实体名/别名，对中文小说足够）。
+
+    配置了支持 embedding 的供应商（OpenAI/智谱等）时，设 EMBEDDING_ENABLED=True
+    并配 EMBEDDING_BASE_URL/EMBEDDING_MODEL 即可启用向量语义检索。
+
     失败时返回 None（记日志），不阻断实体创建——精确匹配检索仍可用。
-    调用方应在创建实体后异步赋值 embedding 字段。
 
     Returns:
-        embedding 向量，或 None（API 失败或功能未启用时）。
+        embedding 向量，或 None（功能未启用或 API 失败时）。
     """
     settings = get_settings()
+    if not getattr(settings, "EMBEDDING_ENABLED", False):
+        return None  # 默认关闭，避免 DeepSeek 404 噪音
     if not settings.KNOWLEDGE_GRAPH_ENABLED:
         return None
     text = _build_entity_embedding_text(name, entity_type, aliases, attributes)

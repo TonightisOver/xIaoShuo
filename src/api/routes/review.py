@@ -7,10 +7,13 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from src.api.services.novel_generator import resume_pipeline
 from src.api.services.task_manager import get_task_manager
+from src.core.auth_models import User
+from src.core.security.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -51,14 +54,21 @@ class ReviewDataResponse(BaseModel):
 
 
 @router.post("/{task_id}/review", response_model=ReviewResponse)
-async def submit_review(task_id: str, request: ReviewRequest) -> ReviewResponse:
+async def submit_review(
+    task_id: str,
+    request: ReviewRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+) -> ReviewResponse:
     """提交人工审核决策
 
     接受审核结果并更新 LangGraph 状态，使流水线继续或被修正。
+    approved/revision 触发 resume_pipeline 续跑；rejected 终止任务。
 
     Args:
         task_id: 任务 ID
         request: 审核决策
+        background_tasks: FastAPI 后台任务（用于 resume pipeline）
 
     Returns:
         审核决策处理结果
@@ -94,9 +104,20 @@ async def submit_review(task_id: str, request: ReviewRequest) -> ReviewResponse:
             instructions=request.revision_instructions,
         )
 
+        # approved/revision：后台 resume pipeline（LangGraph Command(resume=decision)）
+        # rejected：标记任务失败，不 resume
+        if request.approval_status == "rejected":
+            await task_manager.fail_task(task_id, "用户驳回审核")
+        else:
+            decision = {
+                "approval_status": request.approval_status,
+                "revision_instructions": request.revision_instructions,
+            }
+            background_tasks.add_task(resume_pipeline, task_id, decision)
+
         status_text_map = {
             "approved": "已通过，流水线将继续",
-            "rejected": "已拒绝，流水线将终止",
+            "rejected": "已拒绝，流水线已终止",
             "revision": "已要求修改，将根据意见调整",
         }
 
@@ -111,7 +132,7 @@ async def submit_review(task_id: str, request: ReviewRequest) -> ReviewResponse:
 
 
 @router.get("/{task_id}/review", response_model=ReviewDataResponse)
-async def get_review_data(task_id: str) -> ReviewDataResponse:
+async def get_review_data(task_id: str, current_user: User = Depends(get_current_user)) -> ReviewDataResponse:
     """获取当前待审核数据
 
     返回任务当前是否在 human_review 阶段等待人工审核。

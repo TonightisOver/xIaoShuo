@@ -65,6 +65,13 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("Database initialized")
 
+    # 初始化持久化 checkpointer（HITL interrupt/resume 必需，sqlite 模式持久化 graph 状态）
+    from src.core.langgraph.checkpointer import (
+        setup_persistent_checkpointer,
+        teardown_persistent_checkpointer,
+    )
+    await setup_persistent_checkpointer()
+
     # 恢复服务重启时被中断的任务（孤儿 running 任务标记为 failed）
     from src.api.services.task_manager import get_task_manager
     recovered = await get_task_manager().recover_interrupted_tasks()
@@ -134,6 +141,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("xIaoShuo API shutting down...")
+    await teardown_persistent_checkpointer()
     await close_db()
     logger.info("Database connections closed")
 
@@ -190,10 +198,20 @@ if FRONTEND_DIR.exists():
 
     @app.get("/{path:path}")
     async def serve_frontend(path: str):
-        """Serve frontend SPA — fallback to index.html for client-side routing"""
-        file = FRONTEND_DIR / path
-        if file.exists() and file.is_file():
-            return FileResponse(file)
+        """Serve frontend SPA — fallback to index.html for client-side routing.
+
+        安全：解析路径后校验仍在 FRONTEND_DIR 内，防止目录穿越
+        （如 /../../pyproject.toml 读取服务端任意文件）。
+        """
+        # 解析为绝对路径并校验仍在 FRONTEND_DIR 内（防穿越）
+        target = (FRONTEND_DIR / path).resolve()
+        try:
+            target.relative_to(FRONTEND_DIR.resolve())
+        except ValueError:
+            # 路径逃出 FRONTEND_DIR，拒绝（返回 index.html 而非泄露文件）
+            return FileResponse(FRONTEND_DIR / "index.html")
+        if target.is_file():
+            return FileResponse(target)
         return FileResponse(FRONTEND_DIR / "index.html")
 else:
 

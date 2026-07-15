@@ -193,6 +193,9 @@ class VolumeQualityReport(BaseModel):
     stalled_chapters: list[int] = Field(
         default_factory=list, description="主线停滞章节号"
     )
+    has_unverified: bool = Field(
+        default=False, description="本卷是否含未评估章节（生成失败或从未评分）"
+    )
 
 
 class QualityReport(BaseModel):

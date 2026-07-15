@@ -3,12 +3,15 @@
 from typing import Literal
 
 import structlog
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.api.models.responses import ChapterResponse, StatusResponse
 from src.api.services.chapter_service import get_chapter_service
 from src.api.services.novel_manager import get_novel_manager
+from src.core.auth_models import User
+from src.core.security.auth import get_current_user
+from src.api.owner_guard import verify_novel_owner
 
 logger = structlog.get_logger(__name__)
 
@@ -66,7 +69,8 @@ class GenerateChaptersRequest(BaseModel):
 # --- Chapter CRUD ---
 
 @router.get("/{novel_id}/chapters")
-async def list_chapters(novel_id: str):
+async def list_chapters(novel_id: str, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     novel = await get_novel_manager().get_novel(novel_id)
     if not novel:
         raise HTTPException(status_code=404, detail="Novel not found")
@@ -76,7 +80,8 @@ async def list_chapters(novel_id: str):
 
 
 @router.get("/{novel_id}/chapters/{chapter_number}", response_model=ChapterResponse)
-async def get_chapter(novel_id: str, chapter_number: int):
+async def get_chapter(novel_id: str, chapter_number: int, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_chapter_service()
     chapter = await service.get_chapter(novel_id, chapter_number)
     if not chapter:
@@ -85,7 +90,8 @@ async def get_chapter(novel_id: str, chapter_number: int):
 
 
 @router.put("/{novel_id}/chapters/{chapter_number}", response_model=StatusResponse)
-async def update_chapter(novel_id: str, chapter_number: int, request: ChapterUpdateRequest):
+async def update_chapter(novel_id: str, chapter_number: int, request: ChapterUpdateRequest, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_chapter_service()
     updated = await service.update_chapter(
         novel_id, chapter_number, **request.model_dump(exclude_none=True)
@@ -96,15 +102,17 @@ async def update_chapter(novel_id: str, chapter_number: int, request: ChapterUpd
 
 
 @router.delete("/{novel_id}/chapters/cleanup")
-async def cleanup_failed_chapters(novel_id: str, min_words: int = Query(default=100, ge=1)):
+async def cleanup_failed_chapters(novel_id: str, min_words: int = Query(default=100, ge=1), current_user: User = Depends(get_current_user)):
     """批量删除生成失败的章节（word_count < min_words）"""
+    await verify_novel_owner(novel_id, current_user)
     service = get_chapter_service()
     deleted_count = await service.delete_failed_chapters(novel_id, min_words=min_words)
     return {"deleted_count": deleted_count}
 
 
 @router.delete("/{novel_id}/chapters/{chapter_number}")
-async def delete_chapter(novel_id: str, chapter_number: int):
+async def delete_chapter(novel_id: str, chapter_number: int, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_chapter_service()
     deleted = await service.delete_chapter(novel_id, chapter_number)
     if not deleted:
@@ -115,8 +123,9 @@ async def delete_chapter(novel_id: str, chapter_number: int):
 # --- Chapter AI Rewrite ---
 
 @router.post("/{novel_id}/chapters/{chapter_number}/rewrite")
-async def rewrite_chapter_segment(novel_id: str, chapter_number: int, request: RewriteRequest):
+async def rewrite_chapter_segment(novel_id: str, chapter_number: int, request: RewriteRequest, current_user: User = Depends(get_current_user)):
     """对章节中选中的文本片段进行 AI 改写。"""
+    await verify_novel_owner(novel_id, current_user)
     service = get_chapter_service()
     chapter = await service.get_chapter(novel_id, chapter_number)
     if not chapter:
@@ -161,8 +170,9 @@ async def rewrite_chapter_segment(novel_id: str, chapter_number: int, request: R
 # --- Chapter Version Management ---
 
 @router.get("/{novel_id}/chapters/{chapter_number}/versions")
-async def list_chapter_versions(novel_id: str, chapter_number: int):
+async def list_chapter_versions(novel_id: str, chapter_number: int, current_user: User = Depends(get_current_user)):
     """返回章节版本列表（不含 content）。"""
+    await verify_novel_owner(novel_id, current_user)
     service = get_chapter_service()
     chapter = await service.get_chapter(novel_id, chapter_number)
     if not chapter:
@@ -172,9 +182,10 @@ async def list_chapter_versions(novel_id: str, chapter_number: int):
 
 @router.get("/{novel_id}/chapters/{chapter_number}/versions/compare")
 async def compare_chapter_versions(
-    novel_id: str, chapter_number: int, v1: int, v2: int
+    novel_id: str, chapter_number: int, v1: int, v2: int, current_user: User = Depends(get_current_user)
 ):
     """对比两个版本的内容差异。"""
+    await verify_novel_owner(novel_id, current_user)
     service = get_chapter_service()
     result = await service.compare_chapter_versions(novel_id, chapter_number, v1, v2)
     if result is None:
@@ -183,8 +194,9 @@ async def compare_chapter_versions(
 
 
 @router.get("/{novel_id}/chapters/{chapter_number}/versions/{version_number}")
-async def get_chapter_version(novel_id: str, chapter_number: int, version_number: int):
+async def get_chapter_version(novel_id: str, chapter_number: int, version_number: int, current_user: User = Depends(get_current_user)):
     """返回单个版本完整内容。"""
+    await verify_novel_owner(novel_id, current_user)
     service = get_chapter_service()
     chapter = await service.get_chapter(novel_id, chapter_number)
     if not chapter:
@@ -196,8 +208,9 @@ async def get_chapter_version(novel_id: str, chapter_number: int, version_number
 
 
 @router.post("/{novel_id}/chapters/{chapter_number}/versions", status_code=201)
-async def create_chapter_version_route(novel_id: str, chapter_number: int, request: CreateVersionRequest):
+async def create_chapter_version_route(novel_id: str, chapter_number: int, request: CreateVersionRequest, current_user: User = Depends(get_current_user)):
     """手动创建章节版本快照。"""
+    await verify_novel_owner(novel_id, current_user)
     service = get_chapter_service()
     chapter = await service.get_chapter(novel_id, chapter_number)
     if not chapter:
@@ -213,8 +226,9 @@ async def create_chapter_version_route(novel_id: str, chapter_number: int, reque
 
 
 @router.post("/{novel_id}/chapters/{chapter_number}/versions/{version_number}/rollback")
-async def rollback_chapter_version(novel_id: str, chapter_number: int, version_number: int):
+async def rollback_chapter_version(novel_id: str, chapter_number: int, version_number: int, current_user: User = Depends(get_current_user)):
     """回滚到指定版本。"""
+    await verify_novel_owner(novel_id, current_user)
     service = get_chapter_service()
     chapter = await service.get_chapter(novel_id, chapter_number)
     if not chapter:
@@ -226,8 +240,9 @@ async def rollback_chapter_version(novel_id: str, chapter_number: int, version_n
 
 
 @router.post("/{novel_id}/chapters/{chapter_number}/versions/{version_number}/activate")
-async def activate_chapter_version(novel_id: str, chapter_number: int, version_number: int):
+async def activate_chapter_version(novel_id: str, chapter_number: int, version_number: int, current_user: User = Depends(get_current_user)):
     """将指定版本设为活跃版本（更新章节正文为该版本内容）。"""
+    await verify_novel_owner(novel_id, current_user)
     service = get_chapter_service()
     result = await service.activate_chapter_version(novel_id, chapter_number, version_number)
     if result is None:
@@ -236,8 +251,9 @@ async def activate_chapter_version(novel_id: str, chapter_number: int, version_n
 
 
 @router.post("/{novel_id}/fix-volume-numbers")
-async def fix_volume_numbers(novel_id: str):
+async def fix_volume_numbers(novel_id: str, current_user: User = Depends(get_current_user)):
     """根据卷的章节范围为已有章节补充 volume_number。"""
+    await verify_novel_owner(novel_id, current_user)
     service = get_chapter_service()
     fixed_count = await service.fix_volume_numbers(novel_id)
     return {"status": "fixed", "chapters_updated": fixed_count}
@@ -246,8 +262,9 @@ async def fix_volume_numbers(novel_id: str):
 # --- Blueprint API ---
 
 @router.get("/{novel_id}/chapters/{chapter_number}/blueprint")
-async def get_blueprint(novel_id: str, chapter_number: int):
+async def get_blueprint(novel_id: str, chapter_number: int, current_user: User = Depends(get_current_user)):
     """获取章节蓝图"""
+    await verify_novel_owner(novel_id, current_user)
     from src.api.services.blueprint_service import BlueprintService
 
     service = BlueprintService()
@@ -259,9 +276,10 @@ async def get_blueprint(novel_id: str, chapter_number: int):
 
 @router.put("/{novel_id}/chapters/{chapter_number}/blueprint")
 async def update_blueprint(
-    novel_id: str, chapter_number: int, request: BlueprintUpdateRequest
+    novel_id: str, chapter_number: int, request: BlueprintUpdateRequest, current_user: User = Depends(get_current_user)
 ):
     """用户手动编辑蓝图"""
+    await verify_novel_owner(novel_id, current_user)
     from src.api.services.blueprint_service import BlueprintService
 
     service = BlueprintService()
@@ -276,8 +294,9 @@ async def update_blueprint(
     "/{novel_id}/chapters/{chapter_number}/blueprint/generate",
     status_code=201,
 )
-async def generate_blueprint(novel_id: str, chapter_number: int):
+async def generate_blueprint(novel_id: str, chapter_number: int, current_user: User = Depends(get_current_user)):
     """触发 LLM 生成蓝图（不触发章节生成）"""
+    await verify_novel_owner(novel_id, current_user)
     from sqlalchemy import select
 
     from src.api.models.db_models import Outline
@@ -310,9 +329,10 @@ async def generate_blueprint(novel_id: str, chapter_number: int):
 
 @router.post("/{novel_id}/chapters/{chapter_number}/targeted-rewrite")
 async def targeted_rewrite_chapter(
-    novel_id: str, chapter_number: int, request: TargetedRewriteRequest
+    novel_id: str, chapter_number: int, request: TargetedRewriteRequest, current_user: User = Depends(get_current_user)
 ):
     """定向改写章节"""
+    await verify_novel_owner(novel_id, current_user)
     from src.api.services.novel_context_service import NovelContextBuilder
     from src.core.database import get_db_session
     from src.core.llm.chapter_rewriter import (
@@ -397,9 +417,10 @@ async def targeted_rewrite_chapter(
 
 @router.post("/{novel_id}/chapters/{chapter_number}/auto-improve")
 async def auto_improve_chapter(
-    novel_id: str, chapter_number: int, request: AutoImproveRequest
+    novel_id: str, chapter_number: int, request: AutoImproveRequest, current_user: User = Depends(get_current_user)
 ):
     """自动改善闭环"""
+    await verify_novel_owner(novel_id, current_user)
     from src.api.services.rewrite_loop_service import RewriteLoopService
 
     service = get_chapter_service()

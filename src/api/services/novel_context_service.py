@@ -22,6 +22,7 @@ from src.api.models.db_models import (
     Storyline,
     WorldSetting,
 )
+from src.core.quality.state_delta import merge_delta_for_context
 from src.core.validation import get_style_instruction
 
 logger = structlog.get_logger(__name__)
@@ -150,7 +151,7 @@ class NovelContextBuilder:
         if outline and outline.content:
             ctx.chapter_outline = json.dumps(outline.content, ensure_ascii=False)
 
-        # Previous chapter summary (first 300 chars)
+        # Previous chapter summary: 优先用结构化 state_delta，回退正文截取（兼容历史章）
         if chapter_number > 1:
             prev_res = await session.execute(
                 select(Chapter).where(
@@ -159,10 +160,15 @@ class NovelContextBuilder:
                 )
             )
             prev_ch = prev_res.scalar_one_or_none()
-            if prev_ch and prev_ch.content:
-                ctx.prev_chapter_summary = prev_ch.content[:300]
+            if prev_ch:
+                if prev_ch.state_delta:
+                    ctx.prev_chapter_summary = merge_delta_for_context(
+                        prev_ch.state_delta, {}
+                    )
+                elif prev_ch.content:
+                    ctx.prev_chapter_summary = prev_ch.content[:300]
 
-        # Next chapter summary (first 300 chars)
+        # Next chapter summary: 优先用 state_delta，回退正文截取
         next_res = await session.execute(
             select(Chapter).where(
                 Chapter.novel_id == novel_id,
@@ -170,8 +176,13 @@ class NovelContextBuilder:
             )
         )
         next_ch = next_res.scalar_one_or_none()
-        if next_ch and next_ch.content:
-            ctx.next_chapter_summary = next_ch.content[:300]
+        if next_ch:
+            if next_ch.state_delta:
+                ctx.next_chapter_summary = merge_delta_for_context(
+                    {}, next_ch.state_delta
+                )
+            elif next_ch.content:
+                ctx.next_chapter_summary = next_ch.content[:300]
 
         # Characters
         chars_res = await session.execute(

@@ -2,7 +2,7 @@
   <div class="annotated-text relative leading-relaxed">
     <button
       v-if="annotations.length"
-      class="mb-2 text-xs px-2 py-1 rounded border border-neutral-200 bg-white/60 text-neutral-500 hover:bg-neutral-50 transition"
+      class="mb-2 text-xs px-2 py-1 rounded border border-ink-200 bg-paper-50/60 text-ink-500 hover:bg-paper-100 transition"
       @click="showAnnotations = !showAnnotations"
     >
       {{ showAnnotations ? '隐藏标注' : '显示标注' }} ({{ annotations.length }})
@@ -22,13 +22,13 @@
     <!-- Tooltip -->
     <div
       v-if="hovered"
-      class="fixed z-50 max-w-xs rounded-lg border border-neutral-200 bg-white/95 shadow-lg backdrop-blur px-3 py-2 text-xs"
+      class="fixed z-50 max-w-xs rounded-lg border border-ink-200 bg-paper-50/95 shadow-lg backdrop-blur px-3 py-2 text-xs animate-fade-in"
       :style="tooltipStyle"
     >
       <div class="font-semibold mb-1" :class="typeTextClass(hovered.type)">
         {{ typeLabel(hovered.type) }}：{{ hovered.label }}
       </div>
-      <div class="text-neutral-600">{{ hovered.description }}</div>
+      <div class="text-ink-600">{{ hovered.description }}</div>
     </div>
   </div>
 </template>
@@ -83,7 +83,7 @@ const typeMap = {
 }
 
 function typeClasses(type) {
-  return typeMap[type]?.classes || 'bg-neutral-100'
+  return typeMap[type]?.classes || 'bg-paper-100'
 }
 function typeTextClass(type) {
   const map = {
@@ -92,7 +92,7 @@ function typeTextClass(type) {
     plot_point: 'text-blue-700',
     character_event: 'text-green-700',
   }
-  return map[type] || 'text-neutral-700'
+  return map[type] || 'text-ink-600'
 }
 function typeLabel(type) {
   return typeMap[type]?.label || type

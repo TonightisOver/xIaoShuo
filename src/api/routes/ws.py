@@ -4,10 +4,12 @@ import asyncio
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from src.api.services.progress_event_bus import EventType, get_event_bus
 from src.api.services.task_manager import get_task_manager
+from src.core.auth_models import User
+from src.core.security.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -16,7 +18,7 @@ HEARTBEAT_INTERVAL = 30.0
 
 
 @router.websocket("/ws/tasks/{task_id}")
-async def task_progress_ws(websocket: WebSocket, task_id: str):
+async def task_progress_ws(websocket: WebSocket, task_id: str, current_user: User = Depends(get_current_user)):
     task_manager = get_task_manager()
     task = await task_manager.get_task(task_id)
 

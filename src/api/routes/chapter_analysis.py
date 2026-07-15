@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from src.core.auth_models import User
 from src.core.llm.client import get_llm_client
+from src.core.security.auth import get_current_user
+from src.api.owner_guard import verify_novel_owner
 
 router = APIRouter(prefix="/api/v1/projects", tags=["chapter-analysis"])
 
 
 @router.get("/{novel_id}/chapters/{chapter_number}/analysis")
-async def get_chapter_analysis(novel_id: str, chapter_number: int):
+async def get_chapter_analysis(novel_id: str, chapter_number: int, current_user: User = Depends(get_current_user)):
     """Analyze chapter content and return structured annotations."""
+    await verify_novel_owner(novel_id, current_user)
     from src.api.services.chapter_analysis_service import (
         analyze_chapter_content,
         get_analysis_summary,

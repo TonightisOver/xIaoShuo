@@ -1,12 +1,12 @@
 <template>
-  <div class="knowledge-graph">
+  <div class="knowledge-graph animate-fade-up">
     <!-- Toolbar -->
     <div class="flex items-center justify-between gap-4 mb-4">
       <div class="flex items-center gap-2">
-        <h2 class="text-base font-bold text-neutral-800">实体关系知识图谱</h2>
+        <h2 class="text-base font-bold text-ink-700 heading-serif">实体关系知识图谱</h2>
         <span
           v-if="entities.length"
-          class="text-[11px] bg-purple-50 text-purple-600 px-2 py-0.5 rounded-md font-medium border border-purple-100"
+          class="text-[11px] bg-paper-100 text-vermilion-600 px-2 py-0.5 rounded-md font-medium border border-ink-100"
         >
           {{ entities.length }} 节点 / {{ triples.length }} 关系
         </span>
@@ -37,12 +37,12 @@
     </div>
 
     <!-- Error -->
-    <div v-else-if="error" class="text-center py-12 text-red-500 text-sm bg-red-50 rounded-xl border border-red-100">
+    <div v-else-if="error" class="text-center py-12 text-red-500 text-sm bg-red-50 rounded-xl border border-red-100 animate-fade-in">
       {{ error }}
     </div>
 
     <!-- Empty -->
-    <div v-else-if="!entities.length" class="text-center py-12 text-neutral-400 text-sm bg-neutral-50 rounded-xl border border-neutral-200">
+    <div v-else-if="!entities.length" class="text-center py-12 text-ink-400 text-sm bg-paper-50 rounded-xl border border-ink-200 animate-fade-in">
       暂无知识图谱数据。请先生成章节内容后触发知识抽取。
     </div>
 
@@ -50,11 +50,11 @@
     <div
       v-else
       ref="cyContainer"
-      class="cy-canvas w-full min-h-[500px] rounded-xl border border-neutral-200 bg-white overflow-hidden relative"
+      class="cy-canvas w-full min-h-[500px] rounded-xl border border-ink-200 bg-paper-50 overflow-hidden relative animate-fade-in"
     ></div>
 
     <!-- Legend -->
-    <div class="flex flex-wrap gap-4 mt-3 px-4 py-2.5 rounded-lg bg-white border border-neutral-200 text-xs text-neutral-600">
+    <div class="flex flex-wrap gap-4 mt-3 px-4 py-2.5 rounded-lg bg-paper-50 border border-ink-200 text-xs text-ink-600">
       <span class="flex items-center gap-1.5">
         <span class="w-3 h-3 rounded-full bg-blue-500"></span> 人物
       </span>
@@ -68,7 +68,7 @@
         <span class="w-3 h-3 rounded-full bg-purple-500"></span> 物品
       </span>
       <span class="flex items-center gap-1.5">
-        <span class="w-3 h-3 border border-neutral-300 bg-white"></span> 其他
+        <span class="w-3 h-3 border border-ink-300 bg-paper-50"></span> 其他
       </span>
     </div>
   </div>

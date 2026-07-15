@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from src.api.models.db_models import Chapter
 from src.core.database import get_db_session
+from src.core.quality.rules import run_l0_rules
 
 logger = structlog.get_logger(__name__)
 
@@ -85,45 +86,28 @@ class FillerDetectionService:
     def _calculate_filler_score(
         self, chapter: Chapter, avg_word_count: float
     ) -> float:
-        """Calculate filler score for a chapter (0-1, higher = more likely filler).
+        """Calculate filler score.
 
-        Args:
-            chapter: Chapter object
-            avg_word_count: Average word count across all chapters
-
-        Returns:
-            Filler score between 0 and 1
+        以 L0 规则门禁（段落重复/句式复用/字数）的内容打分为基础，
+        叠加 chapter_type=="filler" 这一显式标记信号（+0.5），
+        使被明确标记为灌水的章节即便正文够长也能被检出。
         """
-        score = 0.0
-        factors = 0
+        content = chapter.content or ""
+        l0 = run_l0_rules(
+            content=content,
+            word_count=chapter.word_count,
+            avg_word_count=avg_word_count,
+            chapter_outline=None,
+            chapter_number=chapter.chapter_number,
+        )
+        score = l0.get("filler_score", 0.0)
 
-        # Factor 1: Word count analysis
-        if avg_word_count > 0:
-            word_ratio = chapter.word_count / avg_word_count
-            if word_ratio < SHORT_CHAPTER_RATIO:
-                score += 0.4  # Very short chapter
-                factors += 1
-            elif word_ratio < 0.7:
-                score += 0.2
-                factors += 1
-
-        # Factor 2: Chapter type (if available)
+        # 显式 filler 标记是 L0 看不到的 DB 信号，叠加进分数。
+        # 加成 0.6 确保正文再长的 filler 标记章也能越过 detect_filler_chapters 的 >0.5 阈值。
         if chapter.chapter_type == "filler":
-            score += 0.5
-            factors += 1
+            score += 0.6
 
-        # Factor 3: Quality score (from chapter version)
-        # In production, would query ChapterVersion for quality_score
-        # For now, use word count as proxy
-        if chapter.word_count < 1000:
-            score += 0.3
-            factors += 1
-
-        # Normalize
-        if factors > 0:
-            score = min(1.0, score / factors * 1.5)
-
-        return score
+        return min(1.0, score)
 
     def _get_filler_reasons(
         self, chapter: Chapter, avg_word_count: float

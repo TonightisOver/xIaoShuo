@@ -1,10 +1,12 @@
 """Book import API routes."""
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 
 from src.api.services.book_import_service import get_book_import_service
+from src.core.auth_models import User
 from src.core.llm.client import get_llm_client
+from src.core.security.auth import get_current_user
 
 logger = structlog.get_logger(__name__)
 
@@ -15,6 +17,7 @@ router = APIRouter(prefix="/api/v1/projects/import-book", tags=["book-import"])
 async def import_book(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
 ):
     if file.filename and not file.filename.lower().endswith(".txt"):
         raise HTTPException(status_code=400, detail="Only TXT files are supported")
@@ -37,7 +40,7 @@ async def import_book(
 
 
 @router.get("/{task_id}/status")
-async def get_import_status(task_id: str):
+async def get_import_status(task_id: str, current_user: User = Depends(get_current_user)):
     service = get_book_import_service()
     try:
         return service.get_status(task_id)
@@ -46,7 +49,7 @@ async def get_import_status(task_id: str):
 
 
 @router.post("/{task_id}/apply")
-async def apply_import(task_id: str):
+async def apply_import(task_id: str, current_user: User = Depends(get_current_user)):
     service = get_book_import_service()
     try:
         return await service.apply_task(task_id)

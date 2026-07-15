@@ -1,11 +1,14 @@
 """角色管理路由"""
 
 import structlog
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from src.api.services.character_service import get_character_service
 from src.api.services.novel_manager import get_novel_manager
+from src.core.auth_models import User
+from src.core.security.auth import get_current_user
+from src.api.owner_guard import verify_novel_owner
 
 logger = structlog.get_logger(__name__)
 
@@ -30,23 +33,31 @@ async def _verify_novel_exists(novel_id: str) -> None:
 
 
 @router.get("/{novel_id}/characters")
-async def list_characters(novel_id: str):
-    await _verify_novel_exists(novel_id)
+async def list_characters(
+    novel_id: str, current_user: User = Depends(get_current_user)
+):
+    await verify_novel_owner(novel_id, current_user)
     service = get_character_service()
     return await service.list_characters(novel_id)
 
 
 @router.post("/{novel_id}/characters", status_code=201)
-async def create_character(novel_id: str, request: CharacterRequest):
-    await _verify_novel_exists(novel_id)
+async def create_character(
+    novel_id: str, request: CharacterRequest,
+    current_user: User = Depends(get_current_user),
+):
+    await verify_novel_owner(novel_id, current_user)
     service = get_character_service()
     char_id = await service.create_character(novel_id, **request.model_dump(exclude_none=True))
     return {"id": char_id, "status": "created"}
 
 
 @router.put("/{novel_id}/characters/{char_id}")
-async def update_character(novel_id: str, char_id: int, request: CharacterRequest):
-    await _verify_novel_exists(novel_id)
+async def update_character(
+    novel_id: str, char_id: int, request: CharacterRequest,
+    current_user: User = Depends(get_current_user),
+):
+    await verify_novel_owner(novel_id, current_user)
     service = get_character_service()
     updated = await service.update_character(novel_id, char_id, **request.model_dump(exclude_none=True))
     if not updated:
@@ -55,8 +66,11 @@ async def update_character(novel_id: str, char_id: int, request: CharacterReques
 
 
 @router.delete("/{novel_id}/characters/{char_id}")
-async def delete_character(novel_id: str, char_id: int):
-    await _verify_novel_exists(novel_id)
+async def delete_character(
+    novel_id: str, char_id: int,
+    current_user: User = Depends(get_current_user),
+):
+    await verify_novel_owner(novel_id, current_user)
     service = get_character_service()
     deleted = await service.delete_character(novel_id, char_id)
     if not deleted:
