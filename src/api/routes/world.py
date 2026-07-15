@@ -1,11 +1,14 @@
 """世界观/力量体系管理 API 路由"""
 
 import structlog
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from src.api.services.novel_manager import get_novel_manager
 from src.api.services.world_service import get_world_service
+from src.core.auth_models import User
+from src.core.security.auth import get_current_user
+from src.api.owner_guard import verify_novel_owner
 
 logger = structlog.get_logger(__name__)
 
@@ -34,8 +37,10 @@ async def _verify_novel_exists(novel_id: str) -> None:
 
 
 @router.get("/{novel_id}/world")
-async def get_world_setting(novel_id: str):
-    await _verify_novel_exists(novel_id)
+async def get_world_setting(
+    novel_id: str, current_user: User = Depends(get_current_user)
+):
+    await verify_novel_owner(novel_id, current_user)
     service = get_world_service()
     ws = await service.get_world_setting(novel_id)
     if not ws:
@@ -45,23 +50,31 @@ async def get_world_setting(novel_id: str):
 
 
 @router.put("/{novel_id}/world")
-async def update_world_setting(novel_id: str, request: WorldSettingRequest):
-    await _verify_novel_exists(novel_id)
+async def update_world_setting(
+    novel_id: str, request: WorldSettingRequest,
+    current_user: User = Depends(get_current_user),
+):
+    await verify_novel_owner(novel_id, current_user)
     service = get_world_service()
     await service.upsert_world_setting(novel_id, **request.model_dump(exclude_none=True))
     return {"status": "updated"}
 
 
 @router.get("/{novel_id}/power-systems")
-async def list_power_systems(novel_id: str):
-    await _verify_novel_exists(novel_id)
+async def list_power_systems(
+    novel_id: str, current_user: User = Depends(get_current_user)
+):
+    await verify_novel_owner(novel_id, current_user)
     service = get_world_service()
     return await service.list_power_systems(novel_id)
 
 
 @router.post("/{novel_id}/power-systems", status_code=201)
-async def create_power_system(novel_id: str, request: PowerSystemRequest):
-    await _verify_novel_exists(novel_id)
+async def create_power_system(
+    novel_id: str, request: PowerSystemRequest,
+    current_user: User = Depends(get_current_user),
+):
+    await verify_novel_owner(novel_id, current_user)
     service = get_world_service()
     ps_id = await service.create_power_system(
         novel_id, name=request.name,
@@ -71,8 +84,11 @@ async def create_power_system(novel_id: str, request: PowerSystemRequest):
 
 
 @router.put("/{novel_id}/power-systems/{ps_id}")
-async def update_power_system(novel_id: str, ps_id: int, request: PowerSystemRequest):
-    await _verify_novel_exists(novel_id)
+async def update_power_system(
+    novel_id: str, ps_id: int, request: PowerSystemRequest,
+    current_user: User = Depends(get_current_user),
+):
+    await verify_novel_owner(novel_id, current_user)
     service = get_world_service()
     updated = await service.update_power_system(
         novel_id, ps_id, name=request.name,
@@ -84,8 +100,11 @@ async def update_power_system(novel_id: str, ps_id: int, request: PowerSystemReq
 
 
 @router.delete("/{novel_id}/power-systems/{ps_id}")
-async def delete_power_system(novel_id: str, ps_id: int):
-    await _verify_novel_exists(novel_id)
+async def delete_power_system(
+    novel_id: str, ps_id: int,
+    current_user: User = Depends(get_current_user),
+):
+    await verify_novel_owner(novel_id, current_user)
     service = get_world_service()
     deleted = await service.delete_power_system(novel_id, ps_id)
     if not deleted:

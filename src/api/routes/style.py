@@ -2,10 +2,12 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from src.core.auth_models import User
 from src.core.llm.client import get_llm_client
+from src.core.security.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +31,7 @@ class GenerateStyleRequest(BaseModel):
 
 
 @router.post("/generate")
-async def generate_style(request: GenerateStyleRequest):
+async def generate_style(request: GenerateStyleRequest, current_user: User = Depends(get_current_user)):
     try:
         client = get_llm_client()
         prompt = STYLE_GENERATION_PROMPT.format(description=request.description)

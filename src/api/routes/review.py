@@ -7,11 +7,13 @@
 
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.api.services.novel_generator import resume_pipeline
 from src.api.services.task_manager import get_task_manager
+from src.core.auth_models import User
+from src.core.security.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,7 @@ async def submit_review(
     task_id: str,
     request: ReviewRequest,
     background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
 ) -> ReviewResponse:
     """提交人工审核决策
 
@@ -129,7 +132,7 @@ async def submit_review(
 
 
 @router.get("/{task_id}/review", response_model=ReviewDataResponse)
-async def get_review_data(task_id: str) -> ReviewDataResponse:
+async def get_review_data(task_id: str, current_user: User = Depends(get_current_user)) -> ReviewDataResponse:
     """获取当前待审核数据
 
     返回任务当前是否在 human_review 阶段等待人工审核。

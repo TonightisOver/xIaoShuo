@@ -9,6 +9,18 @@ import pytest
 from pydantic import ValidationError
 
 
+@pytest.fixture(autouse=True)
+def _mock_owner_guard():
+    """Mock verify_novel_owner（测试不校验真实 owner，直接通过）。
+
+    P0-2 加了 owner 鉴权后，端点测试需要 mock 它避免查真实 DB。
+    """
+    async def _pass(novel_id, current_user):
+        return {"novel_id": novel_id, "owner_id": current_user.id}
+    with patch("src.api.routes.chapters.verify_novel_owner", side_effect=_pass):
+        yield
+
+
 def _make_mock_session():
     session = AsyncMock()
     session.add = MagicMock()
@@ -345,6 +357,11 @@ def _make_app():
     app = FastAPI()
     app.include_router(chapters_router)
     app.include_router(projects_router)
+
+    # 继承 conftest 的 get_current_user override（mock 认证）
+    from src.api.main import app as main_app
+    app.dependency_overrides = main_app.dependency_overrides
+
     return TestClient(app)
 
 

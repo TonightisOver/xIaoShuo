@@ -2,10 +2,13 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.api.services.conversation_service import get_conversation_service
+from src.core.auth_models import User
+from src.core.security.auth import get_current_user
+from src.api.owner_guard import verify_novel_owner
 
 logger = logging.getLogger(__name__)
 
@@ -21,20 +24,23 @@ class SendMessageRequest(BaseModel):
 
 
 @router.post("/{novel_id}/conversations", status_code=201)
-async def create_conversation(novel_id: str, request: CreateConversationRequest):
+async def create_conversation(novel_id: str, request: CreateConversationRequest, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_conversation_service()
     conv_id = await service.create_conversation(novel_id, request.topic)
     return {"id": conv_id, "status": "active"}
 
 
 @router.get("/{novel_id}/conversations")
-async def list_conversations(novel_id: str):
+async def list_conversations(novel_id: str, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_conversation_service()
     return await service.list_conversations(novel_id)
 
 
 @router.get("/{novel_id}/conversations/{conv_id}")
-async def get_conversation(novel_id: str, conv_id: int):
+async def get_conversation(novel_id: str, conv_id: int, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_conversation_service()
     conv = await service.get_conversation(conv_id, novel_id)
     if not conv:
@@ -43,7 +49,8 @@ async def get_conversation(novel_id: str, conv_id: int):
 
 
 @router.post("/{novel_id}/conversations/{conv_id}/messages")
-async def send_message(novel_id: str, conv_id: int, request: SendMessageRequest):
+async def send_message(novel_id: str, conv_id: int, request: SendMessageRequest, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_conversation_service()
     try:
         response = await service.send_message(conv_id, request.content, novel_id)
@@ -56,7 +63,8 @@ async def send_message(novel_id: str, conv_id: int, request: SendMessageRequest)
 
 
 @router.post("/{novel_id}/conversations/{conv_id}/conclude")
-async def conclude_conversation(novel_id: str, conv_id: int):
+async def conclude_conversation(novel_id: str, conv_id: int, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_conversation_service()
     try:
         result = await service.conclude_conversation(conv_id, novel_id)
@@ -71,7 +79,8 @@ class ApplySuggestionRequest(BaseModel):
 
 
 @router.post("/{novel_id}/conversations/{conv_id}/apply-suggestion")
-async def apply_suggestion(novel_id: str, conv_id: int, request: ApplySuggestionRequest):
+async def apply_suggestion(novel_id: str, conv_id: int, request: ApplySuggestionRequest, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     from src.api.services.novel_manager import get_novel_manager
 
     manager = get_novel_manager()
@@ -116,7 +125,8 @@ class ConfirmMessageRequest(BaseModel):
 
 
 @router.post("/{novel_id}/conversations/{conv_id}/messages/{msg_id}/confirm")
-async def confirm_message(novel_id: str, conv_id: int, msg_id: int, request: ConfirmMessageRequest):
+async def confirm_message(novel_id: str, conv_id: int, msg_id: int, request: ConfirmMessageRequest, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_conversation_service()
     try:
         result = await service.confirm_message(conv_id, msg_id, request.confirm_as, novel_id)
@@ -126,7 +136,8 @@ async def confirm_message(novel_id: str, conv_id: int, msg_id: int, request: Con
 
 
 @router.post("/{novel_id}/conversations/{conv_id}/generate-outline")
-async def generate_outline_from_conversation(novel_id: str, conv_id: int):
+async def generate_outline_from_conversation(novel_id: str, conv_id: int, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_conversation_service()
     try:
         result = await service.generate_outline_from_conv(novel_id, conv_id)

@@ -3,7 +3,7 @@
 import uuid
 from datetime import UTC
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 from sqlalchemy import and_, delete, select
 
@@ -14,7 +14,10 @@ from src.api.models.db_models import (
     KnowledgeTriple,
 )
 from src.api.services.knowledge_graph_service import get_knowledge_graph_service
+from src.core.auth_models import User
 from src.core.database import get_db_session
+from src.core.security.auth import get_current_user
+from src.api.owner_guard import verify_novel_owner
 
 router = APIRouter(
     prefix="/api/v1/projects/{novel_id}/knowledge-graph",
@@ -110,8 +113,10 @@ async def list_entities(
     novel_id: str,
     entity_type: str | None = Query(None),
     name: str | None = Query(None),
+    current_user: User = Depends(get_current_user),
 ):
     """查询实体列表"""
+    await verify_novel_owner(novel_id, current_user)
     async with get_db_session() as session:
         stmt = select(KnowledgeEntity).where(KnowledgeEntity.novel_id == novel_id)
         if entity_type:
@@ -124,8 +129,9 @@ async def list_entities(
 
 
 @router.get("/entities/{entity_id}", response_model=EntityResponse)
-async def get_entity(novel_id: str, entity_id: str):
+async def get_entity(novel_id: str, entity_id: str, current_user: User = Depends(get_current_user)):
     """查询单个实体详情"""
+    await verify_novel_owner(novel_id, current_user)
     async with get_db_session() as session:
         result = await session.execute(
             select(KnowledgeEntity).where(and_(
@@ -140,8 +146,9 @@ async def get_entity(novel_id: str, entity_id: str):
 
 
 @router.get("/entities/{entity_id}/history", response_model=list[StateSnapshotResponse])
-async def get_entity_history(novel_id: str, entity_id: str):
+async def get_entity_history(novel_id: str, entity_id: str, current_user: User = Depends(get_current_user)):
     """查询单个实体的历史状态演化轨迹"""
+    await verify_novel_owner(novel_id, current_user)
     async with get_db_session() as session:
         # Check if entity exists and is in the current novel project
         ent_result = await session.execute(
@@ -179,8 +186,9 @@ async def get_entity_history(novel_id: str, entity_id: str):
 
 
 @router.post("/entities", response_model=EntityResponse, status_code=201)
-async def create_entity(novel_id: str, body: EntityCreate):
+async def create_entity(novel_id: str, body: EntityCreate, current_user: User = Depends(get_current_user)):
     """手动创建实体"""
+    await verify_novel_owner(novel_id, current_user)
     entity_id = str(uuid.uuid4())
     async with get_db_session() as session:
         entity = KnowledgeEntity(
@@ -208,8 +216,9 @@ async def create_entity(novel_id: str, body: EntityCreate):
 
 
 @router.put("/entities/{entity_id}", response_model=EntityResponse)
-async def update_entity(novel_id: str, entity_id: str, body: EntityUpdate):
+async def update_entity(novel_id: str, entity_id: str, body: EntityUpdate, current_user: User = Depends(get_current_user)):
     """手动修正实体"""
+    await verify_novel_owner(novel_id, current_user)
     async with get_db_session() as session:
         result = await session.execute(
             select(KnowledgeEntity).where(and_(
@@ -234,8 +243,9 @@ async def update_entity(novel_id: str, entity_id: str, body: EntityUpdate):
 
 
 @router.delete("/entities/{entity_id}", status_code=204)
-async def delete_entity(novel_id: str, entity_id: str):
+async def delete_entity(novel_id: str, entity_id: str, current_user: User = Depends(get_current_user)):
     """删除实体（级联删除关联三元组）"""
+    await verify_novel_owner(novel_id, current_user)
     async with get_db_session() as session:
         result = await session.execute(
             select(KnowledgeEntity).where(and_(
@@ -264,8 +274,10 @@ async def list_triples(
     object_id: str | None = Query(None),
     predicate: str | None = Query(None),
     chapter: int | None = Query(None),
+    current_user: User = Depends(get_current_user),
 ):
     """查询三元组列表"""
+    await verify_novel_owner(novel_id, current_user)
     async with get_db_session() as session:
         stmt = select(KnowledgeTriple).where(KnowledgeTriple.novel_id == novel_id)
         if subject_id:
@@ -292,8 +304,9 @@ async def list_triples(
 
 
 @router.post("/triples", status_code=201)
-async def create_triple(novel_id: str, body: TripleCreate):
+async def create_triple(novel_id: str, body: TripleCreate, current_user: User = Depends(get_current_user)):
     """手动创建三元组"""
+    await verify_novel_owner(novel_id, current_user)
     triple_id = str(uuid.uuid4())
     async with get_db_session() as session:
         triple = KnowledgeTriple(
@@ -308,8 +321,9 @@ async def create_triple(novel_id: str, body: TripleCreate):
 
 
 @router.put("/triples/{triple_id}")
-async def update_triple(novel_id: str, triple_id: str, body: TripleUpdate):
+async def update_triple(novel_id: str, triple_id: str, body: TripleUpdate, current_user: User = Depends(get_current_user)):
     """修正三元组"""
+    await verify_novel_owner(novel_id, current_user)
     async with get_db_session() as session:
         result = await session.execute(
             select(KnowledgeTriple).where(and_(
@@ -331,8 +345,9 @@ async def update_triple(novel_id: str, triple_id: str, body: TripleUpdate):
 
 
 @router.delete("/triples/{triple_id}", status_code=204)
-async def delete_triple(novel_id: str, triple_id: str):
+async def delete_triple(novel_id: str, triple_id: str, current_user: User = Depends(get_current_user)):
     """删除三元组（标记 status=deleted）"""
+    await verify_novel_owner(novel_id, current_user)
     async with get_db_session() as session:
         result = await session.execute(
             select(KnowledgeTriple).where(and_(
@@ -350,8 +365,9 @@ async def delete_triple(novel_id: str, triple_id: str):
 # --- Extraction Endpoints ---
 
 @router.post("/extract/{chapter_number}")
-async def extract_chapter(novel_id: str, chapter_number: int):
+async def extract_chapter(novel_id: str, chapter_number: int, current_user: User = Depends(get_current_user)):
     """手动触发单章抽取"""
+    await verify_novel_owner(novel_id, current_user)
     from src.api.models.db_models import Chapter
 
     async with get_db_session() as session:
@@ -374,8 +390,9 @@ async def extract_chapter(novel_id: str, chapter_number: int):
 
 
 @router.post("/extract-all")
-async def extract_all(novel_id: str):
+async def extract_all(novel_id: str, current_user: User = Depends(get_current_user)):
     """全量重新抽取"""
+    await verify_novel_owner(novel_id, current_user)
     from src.api.models.db_models import Chapter
 
     async with get_db_session() as session:
@@ -417,8 +434,9 @@ async def extract_all(novel_id: str):
 
 
 @router.get("/extraction-logs")
-async def list_extraction_logs(novel_id: str):
+async def list_extraction_logs(novel_id: str, current_user: User = Depends(get_current_user)):
     """查询抽取日志"""
+    await verify_novel_owner(novel_id, current_user)
     async with get_db_session() as session:
         result = await session.execute(
             select(KnowledgeExtractionLog)
@@ -438,8 +456,9 @@ async def list_extraction_logs(novel_id: str):
 
 
 @router.get("/logs")
-async def list_knowledge_graph_logs(novel_id: str):
+async def list_knowledge_graph_logs(novel_id: str, current_user: User = Depends(get_current_user)):
     """获取知识图谱抽取日志列表（最新优先，最多 100 条）"""
+    await verify_novel_owner(novel_id, current_user)
     async with get_db_session() as session:
         result = await session.execute(
             select(KnowledgeExtractionLog)
@@ -463,8 +482,9 @@ async def list_knowledge_graph_logs(novel_id: str):
 
 
 @router.get("/conflicts")
-async def list_kg_conflicts(novel_id: str):
+async def list_kg_conflicts(novel_id: str, current_user: User = Depends(get_current_user)):
     """获取一致性检查冲突记录（从 ChapterVersion.kg_conflicts 字段查询）"""
+    await verify_novel_owner(novel_id, current_user)
     from src.api.models.db_models import ChapterVersion
 
     async with get_db_session() as session:
@@ -490,8 +510,9 @@ async def list_kg_conflicts(novel_id: str):
 
 
 @router.get("/visualization", response_model=VisualizationResponse)
-async def get_visualization(novel_id: str):
+async def get_visualization(novel_id: str, current_user: User = Depends(get_current_user)):
     """获取可视化数据（nodes + edges 格式）"""
+    await verify_novel_owner(novel_id, current_user)
     async with get_db_session() as session:
         # Nodes
         ent_result = await session.execute(
@@ -533,8 +554,9 @@ async def get_visualization(novel_id: str):
 
 
 @router.post("/consistency-check/{chapter_number}", response_model=ConsistencyResult)
-async def run_consistency_check(novel_id: str, chapter_number: int):
+async def run_consistency_check(novel_id: str, chapter_number: int, current_user: User = Depends(get_current_user)):
     """手动触发一致性检查"""
+    await verify_novel_owner(novel_id, current_user)
     from datetime import datetime
 
     from src.api.models.db_models import Chapter
@@ -560,8 +582,9 @@ async def run_consistency_check(novel_id: str, chapter_number: int):
 
 
 @router.get("/three-layer")
-async def get_three_layer_graph(novel_id: str, min_frequency: int = Query(default=2, ge=1)):
+async def get_three_layer_graph(novel_id: str, min_frequency: int = Query(default=2, ge=1), current_user: User = Depends(get_current_user)):
     """获取三层关系图谱数据"""
+    await verify_novel_owner(novel_id, current_user)
     service = get_knowledge_graph_service()
     data = await service.get_three_layer_graph(novel_id, min_frequency=min_frequency)
     return data

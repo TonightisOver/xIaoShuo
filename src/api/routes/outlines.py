@@ -2,11 +2,14 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from src.api.services.novel_manager import get_novel_manager
 from src.api.services.outline_service import get_outline_service
+from src.core.auth_models import User
+from src.core.security.auth import get_current_user
+from src.api.owner_guard import verify_novel_owner
 
 logger = logging.getLogger(__name__)
 
@@ -38,13 +41,15 @@ class ChapterOutlineRequest(BaseModel):
 
 
 @router.get("/{novel_id}/outlines")
-async def get_outline_tree(novel_id: str):
+async def get_outline_tree(novel_id: str, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_outline_service()
     return await service.get_outline_tree(novel_id)
 
 
 @router.get("/{novel_id}/outlines/master")
-async def get_master_outline(novel_id: str):
+async def get_master_outline(novel_id: str, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_outline_service()
     outline = await service.get_master_outline(novel_id)
     if not outline:
@@ -53,7 +58,8 @@ async def get_master_outline(novel_id: str):
 
 
 @router.put("/{novel_id}/outlines/master")
-async def update_master_outline(novel_id: str, request: MasterOutlineRequest):
+async def update_master_outline(novel_id: str, request: MasterOutlineRequest, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_outline_service()
     content = request.model_dump(exclude_none=True)
     await service.upsert_master_outline(novel_id, content)
@@ -61,7 +67,8 @@ async def update_master_outline(novel_id: str, request: MasterOutlineRequest):
 
 
 @router.post("/{novel_id}/outlines/generate-volumes")
-async def generate_volume_outlines(novel_id: str):
+async def generate_volume_outlines(novel_id: str, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     manager = get_novel_manager()
     novel = await manager.get_novel(novel_id)
     if not novel:
@@ -78,7 +85,8 @@ async def generate_volume_outlines(novel_id: str):
 
 
 @router.post("/{novel_id}/outlines/generate-chapters/{volume_number}")
-async def generate_chapter_outlines(novel_id: str, volume_number: int):
+async def generate_chapter_outlines(novel_id: str, volume_number: int, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_outline_service()
     try:
         chapters = await service.generate_chapter_outlines(novel_id, volume_number)
@@ -88,7 +96,8 @@ async def generate_chapter_outlines(novel_id: str, volume_number: int):
 
 
 @router.put("/{novel_id}/outlines/volume/{volume_number}")
-async def update_volume_outline(novel_id: str, volume_number: int, request: VolumeOutlineRequest):
+async def update_volume_outline(novel_id: str, volume_number: int, request: VolumeOutlineRequest, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_outline_service()
     content = request.model_dump(exclude_none=True)
     await service.upsert_volume_outline(novel_id, volume_number, content)
@@ -96,7 +105,8 @@ async def update_volume_outline(novel_id: str, volume_number: int, request: Volu
 
 
 @router.put("/{novel_id}/outlines/chapter/{chapter_number}")
-async def update_chapter_outline(novel_id: str, chapter_number: int, request: ChapterOutlineRequest):
+async def update_chapter_outline(novel_id: str, chapter_number: int, request: ChapterOutlineRequest, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_outline_service()
     content = request.model_dump(exclude_none=True)
     await service.upsert_chapter_outline(novel_id, 0, chapter_number, content)
@@ -104,7 +114,8 @@ async def update_chapter_outline(novel_id: str, chapter_number: int, request: Ch
 
 
 @router.post("/{novel_id}/outlines/generate-master")
-async def generate_master_outline(novel_id: str):
+async def generate_master_outline(novel_id: str, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_outline_service()
     try:
         content = await service.generate_master_from_novel(novel_id)
@@ -114,7 +125,8 @@ async def generate_master_outline(novel_id: str):
 
 
 @router.post("/{novel_id}/outlines/from-conversation/{conv_id}")
-async def generate_master_from_conversation(novel_id: str, conv_id: int):
+async def generate_master_from_conversation(novel_id: str, conv_id: int, current_user: User = Depends(get_current_user)):
+    await verify_novel_owner(novel_id, current_user)
     service = get_outline_service()
     try:
         content = await service.generate_master_from_conversation(novel_id, conv_id)
