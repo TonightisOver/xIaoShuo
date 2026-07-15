@@ -1,10 +1,50 @@
 #!/bin/bash
 # xIaoShuo 一键部署脚本（Ubuntu）
-# 用法: bash deploy.sh
+# 用法:
+#   bash deploy.sh          # 首次安装 / 更新到最新版（自动判断）
+#   bash deploy.sh --update # 强制更新模式：git pull + 重建容器
 
 set -e
 
+PROJECT_DIR=/opt/xiaoshuo
+
 echo "=== xIaoShuo 部署开始 ==="
+
+# ── 更新模式：/opt/xiaoshuo 已是 git 仓库 → pull + 重建 ──
+if [ "$1" = "--update" ] || { [ -d "$PROJECT_DIR/.git" ] && [ -f "$PROJECT_DIR/docker-compose.yml" ]; }; then
+    echo ">>> 更新模式：更新已部署项目"
+    cd "$PROJECT_DIR"
+
+    # 检查本地有无未提交改动（避免 pull 冲突覆盖）
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        echo "!!! 检测到本地有未提交改动，已暂存（stash）避免冲突"
+        git stash
+    fi
+
+    echo ">>> 拉取最新代码..."
+    git fetch origin
+    git pull --rebase origin master || git pull origin master
+
+    echo ">>> 重建并重启容器..."
+    docker compose up -d --build
+
+    echo ">>> 等待 API 就绪..."
+    for i in $(seq 1 30); do
+        if curl -sf http://127.0.0.1:8000/api/v1/health >/dev/null 2>&1; then
+            echo "✅ 部署完成，服务健康"
+            curl -s http://127.0.0.1:8000/api/v1/health
+            echo ""
+            echo "访问: http://$(hostname -I | awk '{print $1}'):7000"
+            exit 0
+        fi
+        sleep 2
+    done
+    echo "⚠️ API 未在 60s 内就绪，查看日志: docker compose logs -f api"
+    exit 1
+fi
+
+# ── 首次安装模式 ──
+echo ">>> 首次安装模式"
 
 # 1. 安装 Docker（如果未安装）
 if ! command -v docker &> /dev/null; then
@@ -23,7 +63,6 @@ else
 fi
 
 # 2. 创建项目目录
-PROJECT_DIR=/opt/xiaoshuo
 mkdir -p $PROJECT_DIR
 cd $PROJECT_DIR
 
