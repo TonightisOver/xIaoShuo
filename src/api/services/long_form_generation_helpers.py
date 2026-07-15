@@ -37,6 +37,21 @@ async def persist_single_chapter(
     await persist_generated_chapters(novel_id, [chapter_data], chapter_data.get("volume_number"))
 
 
+async def _persist_quality_for_gate(
+    novel_id: str, chapter_number: int, scores: dict, warnings: list
+) -> None:
+    """gate 的质量评分持久化回调。
+
+    简化实现：仅记录日志。逐章评分持久化由后续扩展（更新 ChapterVersion.quality_scores）。
+    当前不阻断——卷级报告已能处理 None 评分。
+    """
+    logger.info(
+        "gate_quality_scores",
+        novel_id=novel_id, chapter=chapter_number,
+        overall=scores.get("overall"),
+    )
+
+
 def _normalize_outline_chapter(
     chapter: dict[str, Any],
     fallback: dict[str, Any],
@@ -527,13 +542,20 @@ async def generate_volume_chapters(
             previous_chapter = prev_context or "这是本卷第一章"
         else:
             last_result = generated_chapters[-1] if generated_chapters else {}
-            last_content = last_result.get("content", "")
             # 构建更丰富的衔接上下文：标题 + 结尾段落
             parts = []
             if last_result.get("title"):
                 parts.append(f"上一章：《{last_result['title']}》")
-            if last_content:
-                parts.append(f"结尾段落：\n{last_content[-400:]}")
+            last_delta = last_result.get("state_delta")
+            if last_delta and not last_delta.get("_unverified"):
+                from src.core.quality.state_delta import merge_delta_for_context
+                merged = merge_delta_for_context(last_delta, {})
+                if merged:
+                    parts.append(merged)
+            else:
+                last_content = last_result.get("content", "")
+                if last_content:
+                    parts.append(f"结尾段落：\n{last_content[-400:]}")
             if ch_outline.get("plot"):
                 parts.append(f"本章需要推进：{ch_outline['plot']}")
             previous_chapter = "\n".join(parts) if parts else "续写"
@@ -587,7 +609,50 @@ async def generate_volume_chapters(
             chapter_result["volume_number"] = volume_number
             generated_chapters.append(chapter_result)
             generated_word_count += chapter_result.get("word_count", 0)
+            # === 质量门禁漏斗：抽取state_delta → L0 → L1 → L2 → L3 ===
+            # ⚠️ L3 改善时 auto_improve_chapter 已 activate 候选并写回 Chapter.content。
+            # 若此后 persist_single_chapter 用 chapter_result.content 落库，会覆盖候选。
+            # → L3 改善(rewrite_improved=True)时跳过 persist_single_chapter。
+            persisted_by_gate = False
             if not chapter_result.get("generation_failed"):
+                try:
+                    from src.api.services.rewrite_loop_service import RewriteLoopService
+                    from src.core.quality.gate import (
+                        GatePersistCallbacks,
+                        run_quality_gate,
+                    )
+
+                    gate_callbacks = GatePersistCallbacks(
+                        update_state_delta=manager.update_state_delta,
+                        update_quality_status=manager.update_quality_status,
+                        persist_quality_scores=_persist_quality_for_gate,
+                        detect_bible_conflicts=None,
+                    )
+                    gate_result = await run_quality_gate(
+                        novel_id=novel_id,
+                        chapter_number=global_ch_num,
+                        chapter_result=chapter_result,
+                        chapter_outline=ch_outline,
+                        novel_type=getattr(request, "novel_type", "网络小说"),
+                        idea=getattr(request, "idea", ""),
+                        world_setting=world_str,
+                        characters=chars_str,
+                        persist_callbacks=gate_callbacks,
+                        rewrite_service=RewriteLoopService(),
+                        chapter_index_in_volume=i,
+                    )
+                    chapter_result["quality_status"] = gate_result.quality_status
+                    chapter_result["quality_scores"] = gate_result.quality_scores
+                    chapter_result["state_delta"] = gate_result.state_delta
+                    if gate_result.rewrite_improved:
+                        persisted_by_gate = True
+                except Exception as gate_err:
+                    logger.warning(
+                        "quality_gate_failed_non_fatal",
+                        novel_id=novel_id, chapter=global_ch_num, error=str(gate_err),
+                    )
+            # === 漏斗结束 ===
+            if not chapter_result.get("generation_failed") and not persisted_by_gate:
                 await persist_single_chapter(novel_id, chapter_result)
 
             # Sync chapter_type to DB
