@@ -112,6 +112,51 @@ class ChapterService:
             ch.updated_at = datetime.now(UTC)
         return True
 
+    async def update_state_delta(
+        self, novel_id: str, chapter_number: int, state_delta: dict
+    ) -> bool:
+        """更新章节的结构化状态增量（state_delta），不改变 chapter.status。
+
+        Returns:
+            True 若章节存在并更新成功，False 若章节不存在
+        """
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(Chapter).where(
+                    Chapter.novel_id == novel_id,
+                    Chapter.chapter_number == chapter_number,
+                ).order_by(Chapter.id.desc()).limit(1)
+            )
+            ch = result.scalar_one_or_none()
+            if not ch:
+                return False
+            ch.state_delta = state_delta
+            ch.updated_at = datetime.now(UTC)
+            await session.commit()
+            return True
+
+    async def update_quality_status(
+        self, novel_id: str, chapter_number: int, status: str
+    ) -> bool:
+        """更新章节的质量门禁状态（quality_status），不改变 chapter.status。
+
+        quality_status 取值: verified / unverified / consistency_blocked / failed
+        """
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(Chapter).where(
+                    Chapter.novel_id == novel_id,
+                    Chapter.chapter_number == chapter_number,
+                ).order_by(Chapter.id.desc()).limit(1)
+            )
+            ch = result.scalar_one_or_none()
+            if not ch:
+                return False
+            ch.quality_status = status
+            ch.updated_at = datetime.now(UTC)
+            await session.commit()
+            return True
+
     async def delete_chapter(self, novel_id: str, chapter_number: int) -> bool:
         async with get_db_session() as session:
             result = await session.execute(
