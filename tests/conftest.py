@@ -51,12 +51,12 @@ def pytest_configure(config):
     from src.core.security.auth import get_current_user
 
     async def mock_get_current_user():
-        user = User(id=1, username="test_user", hashed_password="mocked_password")
+        user = User(id=1, username="test_user", hashed_password="mocked_password", is_admin=True)
         try:
             async with get_db_session() as session:
                 db_user = await session.get(User, 1)
                 if not db_user:
-                    session.add(User(id=1, username="test_user", hashed_password="mocked_password"))
+                    session.add(User(id=1, username="test_user", hashed_password="mocked_password", is_admin=True))
         except Exception:
             pass
         return user

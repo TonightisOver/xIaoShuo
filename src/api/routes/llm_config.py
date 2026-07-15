@@ -13,7 +13,7 @@ from sqlalchemy import select, update
 from src.api.models.db_models import LLMConfig
 from src.core.database import get_db_session
 from src.core.llm.token_tracker import get_token_tracker
-from src.core.security.auth import get_current_user
+from src.core.security.auth import require_admin_user
 
 logger = structlog.get_logger(__name__)
 
@@ -21,7 +21,7 @@ router = APIRouter(
     prefix="/api/v1/llm",
     tags=["llm"],
     # GET 端点（list/token-stats）不需要 auth，只返回脱敏数据
-    # POST/PUT/DELETE 端点用 get_current_user 认证（登录用户即可改 LLM 配置）
+    # POST/PUT/DELETE 端点用 require_admin_user 认证（仅 admin 用户可改 LLM 配置）
 )
 
 
@@ -120,7 +120,7 @@ async def list_configs() -> list[LLMConfigResponse]:
 
 
 @router.post("/configs", response_model=LLMConfigResponse, status_code=201)
-async def create_config(body: LLMConfigCreate, _admin=Depends(get_current_user)) -> LLMConfigResponse:
+async def create_config(body: LLMConfigCreate, _admin=Depends(require_admin_user)) -> LLMConfigResponse:
     """创建新 LLM 配置。"""
     async with get_db_session() as session:
         config = LLMConfig(
@@ -138,7 +138,7 @@ async def create_config(body: LLMConfigCreate, _admin=Depends(get_current_user))
 
 
 @router.put("/configs/{config_id}", response_model=LLMConfigResponse)
-async def update_config(config_id: int, body: LLMConfigUpdate, _admin=Depends(get_current_user)) -> LLMConfigResponse:
+async def update_config(config_id: int, body: LLMConfigUpdate, _admin=Depends(require_admin_user)) -> LLMConfigResponse:
     """更新 LLM 配置（部分字段可选）。"""
     reload_config: LLMConfig | None = None
     async with get_db_session() as session:
@@ -171,7 +171,7 @@ async def update_config(config_id: int, body: LLMConfigUpdate, _admin=Depends(ge
 
 
 @router.delete("/configs/{config_id}", status_code=204)
-async def delete_config(config_id: int, _admin=Depends(get_current_user)) -> None:
+async def delete_config(config_id: int, _admin=Depends(require_admin_user)) -> None:
     """删除 LLM 配置。若为激活配置则拒绝删除（返回 400）。"""
     async with get_db_session() as session:
         result = await session.execute(
@@ -188,7 +188,7 @@ async def delete_config(config_id: int, _admin=Depends(get_current_user)) -> Non
 
 
 @router.post("/configs/{config_id}/activate", response_model=LLMConfigResponse)
-async def activate_config(config_id: int, _admin=Depends(get_current_user)) -> LLMConfigResponse:
+async def activate_config(config_id: int, _admin=Depends(require_admin_user)) -> LLMConfigResponse:
     """激活指定配置，同时将其他配置设为非激活（事务保证）。"""
     reload_config: LLMConfig | None = None
     async with get_db_session() as session:

@@ -22,12 +22,18 @@
 
 ## 核心特性
 
-1. **多智能体图流编排** — 基于 LangGraph StateGraph 实现非线性流程控制，支持任意步骤人工介入（Human-in-the-Loop）
-2. **8 维网文质量评估** — DeepSeek 对生成文本进行主线推进、冲突悬念、角色一致性等八个维度打分，低于 0.80 自动触发局部重写
+1. **多智能体图流编排** — 基于 LangGraph StateGraph 实现非线性流程控制，支持任意步骤人工介入（Human-in-the-Loop），含 HITL 中断/恢复 + 持久化 checkpointer
+2. **分级漏斗式质量门禁** — 规则做闸门、LLM 做裁判、成本由风险决定（详见下方「质量门禁架构」）：
+   - **L0 零 Token 规则门禁**（每章）：字数 / 段落重复 / 句式复用 / 大纲覆盖率
+   - **L1 风险分级**：基于 L0 + 结构化状态增量 + 章节类型决定是否调 LLM
+   - **L2 LLM 全文评审**（仅高风险章）：8 维打分 + 人物/世界观一致性硬门禁
+   - **L3 候选改写择优**（仅不达标章）：基线 vs 候选，改善且保护维度不下降才激活
+   - 失败一律标记 `unverified`，绝不伪造合格分；支持 `QUALITY_MODE`（均衡 / 成本优先 / 质量优先）
 3. **活态知识图谱** — 每章生成前自动抽取实体三元组，防范"吃设定"、"死人复活"、"战力崩溃"等常见顽疾
 4. **故事圣经约束** — 精准注入本章相关人物/伏笔/时间线，生成后 LLM 反向更新圣经并检测性格漂移与设定矛盾
-5. **章节版本管理** — 每次生成/重写自动创建快照，支持版本对比、激活、回滚
-6. **实时 Web 前端** — Vue 3 + WebSocket 进度推送 + 三层图谱可视化 + 流式打字效果
+5. **结构化长期记忆** — 每章抽取 `state_delta`（关键事件 / 人物状态变化 / 伏笔 / 时间线 / 未解决冲突），替代正文截取作为衔接上下文，改善长篇连贯性
+6. **章节版本管理** — 每次生成/重写自动创建快照，支持版本对比、激活、回滚；候选择优先存不激活、确认改善才激活
+7. **实时 Web 前端** — Vue 3 + WebSocket 进度推送 + 三层图谱可视化 + 流式打字效果；质量面板诚实展示未评估章节
 
 ---
 
@@ -42,12 +48,14 @@ graph TD
     CheckGate -- 自动继续 --> ChapterGen[4. 章节精细生成]
     Interactive --> ChapterGen
 
-    ChapterGen --> KGCheck[5. 知识图谱一致性校验]
-    KGCheck --> QualCheck[6. 8 维质量评估]
-
-    QualCheck --> Routing{综合得分 ≥ 0.80?}
-    Routing -- 不合格 --> Revision[7. 针对性重写]
-    Revision --> ChapterGen
+    ChapterGen --> Gate[5. 质量门禁漏斗]
+    Gate --> L0[L0 规则门禁 + 抽取 state_delta]
+    L0 --> L1{L1 风险分级}
+    L1 -- 高风险 --> L2[6. L2 LLM 全文评审]
+    L1 -- 低风险 --> Output
+    L2 --> Routing{达标 & 一致性通过?}
+    Routing -- 不达标 --> Revision[7. L3 候选改写择优]
+    Revision --> Output
     Routing -- 合格 --> Output[8. 落库 & 更新知识图谱]
 
     Output --> CheckMore{还有下一章?}
@@ -154,32 +162,60 @@ curl -X POST http://localhost:8000/api/v1/projects/{id}/generate-full
 | `readability` 语言精炼度 | 通顺程度，排查错别字与车轱辘话 |
 | `trope_alignment` 题材契合度 | 匹配玄幻 / 都市 / 仙侠等题材套路表现力 |
 
-> 若大模型网络抖动或 JSON 解析失败，系统执行安全降级，赋予综合分 `0.82` 避免死循环。
+> 评估失败（网络抖动 / JSON 解析失败）时标记为 `unverified`，绝不伪造合格分——下游质量面板与卷级报告会诚实展示「未评估」状态。
+
+---
+
+## 质量门禁架构
+
+分级漏斗在长篇逐章生成循环中运行（`src/core/quality/gate.py` 编排），核心是**用规则承担 90% 的检查量，LLM 只在它真正擅长的地方出手**：
+
+| 层级 | 触发条件 | 检查方式 | Token |
+|------|----------|----------|-------|
+| L0 规则门禁 | 每章必跑 | 字数 / 段落重复 / 句式复用 / 大纲覆盖率 / 失败标记 | 零 |
+| L1 风险分级 | 每章 | 基于 L0 + state_delta + 章节类型 | 零~极低 |
+| L2 LLM 评审 | 仅高风险章 | 8 维评分 + 人物/世界观一致性硬门禁 | 中 |
+| L3 候选改写 | 仅 L2 不达标 | 基线 vs 候选，改善且保护维度不下降才激活 | 高 |
+
+**成本控制**：低风险章零 LLM 评审（仅 1 次 flash 抽取 state_delta），仅高风险章（失败 / 关键章 / 严重告警）触发 L2/L3。`QUALITY_MODE` 切换 economy / balanced / high 三档。
+
+**健壮性**：漏斗任何环节失败都不阻塞章节落库和下一章生成——最坏 `quality_status=unverified`，章节内容仍是可用基线。单章 Token 预算耗尽转人工。
+
+**一致性硬门禁**：人物一致性 / 世界观一致性出现严重冲突（评分 < 0.4）时，无论综合分多少都不通过，三条一致性检查路径（KG subagent / 非 subagent / StoryBible）全覆盖。
 
 ---
 
 ## 项目结构
 
 ```
-xiaoshuo_review/
+xIaoShuo/
 ├── src/
 │   ├── api/
-│   │   ├── routes/               # API 路由层
-│   │   ├── services/             # 业务逻辑层
+│   │   ├── routes/               # API 路由层（25 个路由模块）
+│   │   ├── services/             # 业务逻辑层（章节/改写/长篇/质量报告/灌水检测等）
 │   │   └── models/db_models.py   # SQLAlchemy ORM
 │   └── core/
 │       ├── langgraph/
-│       │   ├── graph.py          # LangGraph 流程图
+│       │   ├── graph.py          # LangGraph 流程图（含质量循环路由）
 │       │   ├── state.py          # 状态定义
+│       │   ├── checkpointer.py   # HITL 中断/恢复持久化
 │       │   └── nodes/            # 各阶段节点实现
 │       ├── llm/
-│       │   ├── client.py         # DeepSeek API 客户端
-│       │   └── chapter_generator.py
-│       ├── config.py
+│       │   ├── client.py         # DeepSeek API 客户端（flash/pro 双档）
+│       │   └── chapter_generator.py  # 章节流式生成 + pause_checker
+│       ├── quality/
+│       │   ├── gate.py           # 质量门禁编排器（L0/L1/L2/L3 漏斗）
+│       │   ├── rules.py          # L0 零 Token 规则门禁
+│       │   ├── risk.py           # L1 风险分级 + should_invoke_l2
+│       │   ├── state_delta.py     # 结构化状态增量抽取
+│       │   └── evaluator.py      # L2 八维质量评估
+│       ├── agents/               # 连续性编辑/图谱协调/记忆策展等子智能体
+│       ├── security/             # 认证 / owner 校验 / 加密
+│       ├── config.py             # 含 QUALITY_MODE 等质量配置
 │       └── database.py
 ├── frontend/                     # Vue 3 + Vite 前端
 ├── alembic/                      # 数据库迁移
-├── tests/                        # pytest 测试套件
+├── tests/                        # pytest 测试套件（changeNNN_ 前缀）
 ├── docs/images/                  # 截图资源
 ├── docker-compose.yml
 ├── Dockerfile

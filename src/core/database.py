@@ -72,6 +72,16 @@ async def init_db() -> None:
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # 幂等添加 is_admin 列（P1-1 LLM 配置权限：标记 admin 用户）
+        # 用 try/except 因为列已存在时 ALTER 会报错
+        try:
+            await conn.execute(
+                __import__("sqlalchemy").text(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false"
+                )
+            )
+        except Exception:
+            pass  # 列已存在或语法不兼容（如旧 SQLite），忽略
     logger.info("Database tables initialized")
 
 
