@@ -33,6 +33,10 @@ services:
       LLM_ENCRYPTION_KEY: ${LLM_ENCRYPTION_KEY}
       ADMIN_TOKEN: ${ADMIN_TOKEN}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      # 开发期免登录：DEV_AUTO_LOGIN=1 时无 token 自动用 dev 用户（admin）。
+      # 生产环境务必设为 false 或不开启，否则任何人可免登录调全部 API。
+      DEV_AUTO_LOGIN: ${DEV_AUTO_LOGIN:-false}
+      DEV_USERNAME: ${DEV_USERNAME:-dev}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # HITL 真 interrupt/resume（需持久化 checkpointer）
       HITL_AUTO_APPROVE: ${HITL_AUTO_APPROVE:-true}
