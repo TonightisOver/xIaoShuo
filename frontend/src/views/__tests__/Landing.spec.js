@@ -22,6 +22,7 @@ function makeRouter() {
       { path: '/welcome', component: Landing },
       { path: '/login', component: { template: '<div />' } },
       { path: '/', component: { template: '<div />' } },
+      { path: '/shelf', component: { template: '<div />' } },
       { path: '/create', component: { template: '<div />' } },
     ],
   })
@@ -135,7 +136,7 @@ describe('Landing.vue hero brush writing', () => {
     const links = wrapper.findAll('a')
     const linkByText = (text) => links.find((link) => link.text().includes(text))
 
-    expect(linkByText('进入书房').attributes('href')).toBe('/')
+    expect(linkByText('进入书房').attributes('href')).toBe('/shelf')
     expect(linkByText('开始创作').attributes('href')).toBe('/create')
     expect(linkByText('执笔入局').attributes('href')).toBe('/create')
 

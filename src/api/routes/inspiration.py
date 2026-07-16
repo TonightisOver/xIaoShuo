@@ -35,7 +35,7 @@ class InspirationCreateCollectedRequest(BaseModel):
 
 
 @router.post("/start")
-async def start_inspiration_session():
+async def start_inspiration_session(current_user: User = Depends(get_current_user)):
     wizard = get_inspiration_wizard()
     return wizard.start_session()
 
@@ -44,6 +44,7 @@ async def start_inspiration_session():
 async def process_inspiration_step(
     session_id: str,
     request: InspirationStepRequest,
+    current_user: User = Depends(get_current_user),
 ):
     wizard = get_inspiration_wizard()
     try:
@@ -68,6 +69,7 @@ async def process_inspiration_step(
 async def generate_inspiration_outline(
     session_id: str,
     request: InspirationGenerateRequest | None = None,
+    current_user: User = Depends(get_current_user),
 ):
     """生成大纲。无状态：优先用请求体的 collected，回退 session（兼容旧前端）。"""
     wizard = get_inspiration_wizard()

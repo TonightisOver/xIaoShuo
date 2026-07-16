@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { setActiveTaskId } from '../utils/taskState.js'
+import { authHeaders } from './useApi.js'
 
 export function useNovelActions(novelId, chapters) {
   const router = useRouter()
@@ -12,12 +13,20 @@ export function useNovelActions(novelId, chapters) {
     generating.value = true
     try {
       const id = typeof novelId === 'object' ? novelId.value : novelId
-      const res = await fetch(`/api/v1/projects/${id}/generate`, { method: 'POST' })
+      const res = await fetch(`/api/v1/projects/${id}/generate`, {
+        method: 'POST',
+        headers: { ...authHeaders() },
+      })
       if (res.ok) {
         const data = await res.json()
         setActiveTaskId(data.task_id)
         router.push(`/task/${data.task_id}`)
+      } else {
+        const err = await res.json().catch(() => ({}))
+        alert(err.detail || `生成失败（HTTP ${res.status}）`)
       }
+    } catch (e) {
+      alert(e.message || '生成失败，请检查网络后重试。')
     } finally {
       generating.value = false
     }
@@ -27,7 +36,10 @@ export function useNovelActions(novelId, chapters) {
     fullGenerating.value = true
     try {
       const id = typeof novelId === 'object' ? novelId.value : novelId
-      const res = await fetch(`/api/v1/projects/${id}/generate-full`, { method: 'POST' })
+      const res = await fetch(`/api/v1/projects/${id}/generate-full`, {
+        method: 'POST',
+        headers: { ...authHeaders() },
+      })
       if (res.ok) {
         const data = await res.json()
         setActiveTaskId(data.task_id)
@@ -40,7 +52,10 @@ export function useNovelActions(novelId, chapters) {
         } else if (msg.includes('已有') && msg.includes('有效章节')) {
           const confirmed = confirm(`${msg}\n\n确定要覆盖重新生成吗？此操作不可撤销！`)
           if (confirmed) {
-            const forceRes = await fetch(`/api/v1/projects/${id}/generate-full?force=true`, { method: 'POST' })
+            const forceRes = await fetch(`/api/v1/projects/${id}/generate-full?force=true`, {
+              method: 'POST',
+              headers: { ...authHeaders() },
+            })
             if (forceRes.ok) {
               const data = await forceRes.json()
               setActiveTaskId(data.task_id)
@@ -53,7 +68,12 @@ export function useNovelActions(novelId, chapters) {
         } else {
           alert(msg)
         }
+      } else {
+        const err = await res.json().catch(() => ({}))
+        alert(err.detail || `生成失败（HTTP ${res.status}）`)
       }
+    } catch (e) {
+      alert(e.message || '生成失败，请检查网络后重试。')
     } finally {
       fullGenerating.value = false
     }

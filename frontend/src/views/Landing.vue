@@ -190,15 +190,6 @@ const brushCol = ref(null)
 const tilt = ref({ x: 0, y: 0 })
 const scrollProgress = ref(0)
 
-function hasSession() {
-  try {
-    return Boolean(localStorage.getItem('session_token'))
-  } catch {
-    return false
-  }
-}
-
-const signedIn = ref(hasSession())
 const studyTarget = '/shelf'
 const createTarget = '/create'
 

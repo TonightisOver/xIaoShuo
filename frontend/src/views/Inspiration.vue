@@ -143,6 +143,7 @@
                       >
                         {{ outlineGenerating ? '大纲生成中...' : (outlineText ? '重新生成大纲' : '生成大纲预览') }}
                       </button>
+                      <p v-if="outlineGenerating && outlineStatus" class="text-[11px] text-ink-400 mt-2 animate-pulse">{{ outlineStatus }}</p>
                       <button
                         type="button"
                         class="btn-primary flex-1 py-2 text-xs"
@@ -268,6 +269,7 @@ const inputBoxRef = ref(null)
 const aiLoading = ref(false)
 const projectCreating = ref(false)
 const outlineGenerating = ref(false)
+const outlineStatus = ref('')
 
 // ── Wizard state（由后端 LLM API 驱动）─────────────────────
 // 后端步骤: idea → title → description → theme → genre → confirm
@@ -349,7 +351,10 @@ function completeCurrentAiMsg() {
 async function startSession() {
   aiLoading.value = true
   try {
-    const res = await fetch('/api/v1/inspiration/start', { method: 'POST' })
+    const res = await fetch('/api/v1/inspiration/start', {
+      method: 'POST',
+      headers: { ...authHeaders() },
+    })
     if (!res.ok) throw new Error('启动灵感会话失败')
     const data = await res.json()
     sessionId.value = data.session_id
@@ -369,7 +374,7 @@ async function startSession() {
 async function callStep(backendStep, text) {
   const res = await fetch(`/api/v1/inspiration/${sessionId.value}/step`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ step: backendStep, user_input: text }),
   })
   if (!res.ok) {
@@ -448,6 +453,7 @@ async function advanceStep(text) {
 async function generateOutline() {
   if (outlineGenerating.value) return
   outlineGenerating.value = true
+  outlineStatus.value = 'AI 正在构思大纲，通常需要 1-2 分钟，请勿离开或刷新页面...'
   try {
     // 无状态：直接传 collected 数据，不依赖 session（容器重启也不丢）
     const res = await fetch(`/api/v1/inspiration/${sessionId.value || 'nostate'}/generate`, {
@@ -468,6 +474,7 @@ async function generateOutline() {
     alert(e.message || '大纲生成失败，请重试。')
   } finally {
     outlineGenerating.value = false
+    outlineStatus.value = ''
   }
 }
 
