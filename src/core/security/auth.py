@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
-import os
 from secrets import compare_digest
 
 from fastapi import Depends, Header, HTTPException, status
 
 from src.core.auth_models import User
-from src.core.security.users import get_session_user
+from src.core.config import get_settings
+from src.core.security.users import get_or_create_dev_user, get_session_user
 
 
 def get_admin_token() -> str:
-    token = os.getenv("ADMIN_TOKEN", "").strip()
+    # 从 Settings 读取（pydantic 已加载 .env），而非 os.getenv（后者读不到 .env）
+    token = get_settings().ADMIN_TOKEN.strip()
     if not token:
         raise RuntimeError("ADMIN_TOKEN must be set")
     return token
@@ -52,6 +53,9 @@ async def get_current_user(
             supplied_token = token
 
     if not supplied_token:
+        # 开发期自动登录：DEV_AUTO_LOGIN 开启时无 token 直接返回 dev 用户
+        if get_settings().DEV_AUTO_LOGIN:
+            return await get_or_create_dev_user()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Session token required",

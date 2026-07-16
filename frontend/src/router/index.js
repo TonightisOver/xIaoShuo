@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
+  { path: '/welcome', name: 'landing', component: () => import('../views/Landing.vue') },
   { path: '/login', name: 'login', component: () => import('../views/Login.vue') },
   { path: '/', name: 'home', component: () => import('../views/Home.vue') },
   { path: '/tasks', name: 'tasks', component: () => import('../views/TaskList.vue') },
@@ -26,16 +27,10 @@ const router = createRouter({
   routes,
 })
 
-// Route protection guard
+// 暂时取消登录注册拦截：所有页面直接可进
+// 恢复鉴权时改回：未带 token 且非 landing/login → 跳 login
 router.beforeEach((to, from, next) => {
-  const token = localStorage.getItem('session_token')
-  if (to.name !== 'login' && !token) {
-    next({ name: 'login' })
-  } else if (to.name === 'login' && token) {
-    next({ name: 'home' })
-  } else {
-    next()
-  }
+  next()
 })
 
 export default router

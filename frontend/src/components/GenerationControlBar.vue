@@ -1,5 +1,5 @@
 <template>
-  <div class="fixed bottom-0 left-0 right-0 z-50 bg-paper-50/80 dark:bg-gray-900/80 backdrop-blur-lg border-t border-ink-200 dark:border-gray-700 shadow-[0_-2px_16px_rgba(0,0,0,0.06)] animate-fade-up">
+  <div class="fixed bottom-0 left-0 right-0 z-50 bg-paper-50/80 backdrop-blur-lg border-t border-ink-200 shadow-[0_-2px_16px_rgba(0,0,0,0.06)] animate-fade-up">
     <div class="max-w-4xl mx-auto px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
       <!-- Progress info -->
       <div class="flex items-center gap-3 text-sm text-ink-700 dark:text-gray-100">

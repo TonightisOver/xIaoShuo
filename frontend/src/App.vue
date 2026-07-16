@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen flex flex-col bg-slate-950 text-slate-100">
+  <div class="min-h-screen flex flex-col bg-paper-50 text-ink-600">
     <AppHeader v-slot="{}" v-if="showLayout" />
 
     <main class="flex-1">
@@ -20,6 +20,5 @@ import AppFooter from './components/AppFooter.vue'
 import ActiveTaskMonitor from './components/ActiveTaskMonitor.vue'
 
 const route = useRoute()
-const showLayout = computed(() => route.name && route.name !== 'login')
+const showLayout = computed(() => route.name && !['login', 'landing'].includes(route.name))
 </script>
-

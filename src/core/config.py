@@ -83,6 +83,11 @@ class Settings(BaseSettings):
     # 注册时 username 匹配此值的用户自动标记 is_admin=True（管理 LLM 配置等敏感操作）
     ADMIN_USERNAME: str = ""
 
+    # 开发期自动登录：DEV_AUTO_LOGIN=1 时无 token 直接返回 DEV_USERNAME 用户（带 admin）。
+    # 前端免登录即可用全部受保护 API。生产环境严禁开启。
+    DEV_AUTO_LOGIN: bool = False
+    DEV_USERNAME: str = "dev"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
