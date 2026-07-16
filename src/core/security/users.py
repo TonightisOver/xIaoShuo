@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 
 from src.core.auth_models import User, UserSession
+from src.core.config import get_settings
 from src.core.database import get_db_session
 
 # PBKDF2 password hashing parameters
@@ -98,3 +99,28 @@ async def delete_session(token: str) -> None:
         if db_session:
             await session.delete(db_session)
             await session.commit()
+
+
+async def get_or_create_dev_user() -> User:
+    """开发期自动登录兜底：返回固定的 dev 用户，不存在则创建（带 admin 权限）。
+
+    由环境变量 DEV_AUTO_LOGIN=1 开启，前端无需登录即可使用全部受保护 API，
+    便于本地开发与联调。生产环境不应开启。
+    """
+    dev_username = get_settings().DEV_USERNAME.strip() or "dev"
+    async with get_db_session() as session:
+        result = await session.execute(
+            select(User).where(User.username == dev_username)
+        )
+        user = result.scalar_one_or_none()
+        if user:
+            return user
+        user = User(
+            username=dev_username,
+            hashed_password=hash_password("dev-only-no-real-auth"),
+            is_admin=True,
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        return user

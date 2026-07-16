@@ -22,7 +22,7 @@
             <span class="text-3xl font-extrabold" :class="scoreColorClass(val)">{{ (val * 10).toFixed(1) }}</span>
             <span class="text-[10px] text-ink-400 font-medium">/ 10.0</span>
           </div>
-          <div class="w-full bg-neutral-900 h-1.5 rounded-full mt-2 overflow-hidden">
+          <div class="w-full bg-ink-200 h-1.5 rounded-full mt-2 overflow-hidden">
             <div class="h-full rounded-full transition-all duration-500" :class="scoreProgressClass(val)" :style="{ width: (val * 100) + '%' }"></div>
           </div>
         </div>

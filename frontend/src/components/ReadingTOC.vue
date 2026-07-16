@@ -11,7 +11,7 @@
     <transition name="toc-slide">
       <aside
         v-if="visible"
-        class="fixed inset-y-0 left-0 z-40 flex w-[280px] flex-col border-r border-white/20 bg-white/85 shadow-2xl backdrop-blur-xl dark:border-neutral-800/70 dark:bg-neutral-950/85"
+        class="fixed inset-y-0 left-0 z-40 flex w-[280px] flex-col border-r border-ink-200 bg-paper-50/95 shadow-2xl backdrop-blur-xl"
       >
         <header class="border-b border-neutral-200/70 px-4 py-4 dark:border-neutral-800/70">
           <div class="mb-3 flex items-center justify-between gap-3">

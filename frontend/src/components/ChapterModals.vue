@@ -63,7 +63,7 @@
         <div class="p-6 space-y-4">
           <div class="flex items-center justify-between text-xs text-ink-400">
             <div class="flex items-center gap-3">
-              <span class="px-2 py-0.5 rounded-full font-medium" :class="{ 'bg-blue-950 text-blue-300 border border-blue-900': previewVersionData.source === 'ai_rewrite', 'bg-amber-950 text-amber-300 border border-amber-900': previewVersionData.source === 'rollback', 'bg-neutral-800 text-ink-400 border border-neutral-700': previewVersionData.source === 'manual', 'bg-emerald-950 text-emerald-300 border border-emerald-900': previewVersionData.source === 'generation' }">{{ sourceLabel(previewVersionData.source) }}</span>
+              <span class="px-2 py-0.5 rounded-full font-medium" :class="{ 'bg-sky-50 text-sky-700 border border-sky-200': previewVersionData.source === 'ai_rewrite', 'bg-amber-50 text-amber-700 border border-amber-200': previewVersionData.source === 'rollback', 'bg-ink-100 text-ink-500 border border-ink-200': previewVersionData.source === 'manual', 'bg-emerald-50 text-emerald-700 border border-emerald-200': previewVersionData.source === 'generation' }">{{ sourceLabel(previewVersionData.source) }}</span>
               <span>{{ previewVersionData.word_count }} 字</span>
               <span>{{ formatDate(previewVersionData.created_at) }}</span>
               <span v-if="previewVersionData.quality_score" class="text-amber-400 font-semibold">★ {{ previewVersionData.quality_score.toFixed(1) }}</span>
