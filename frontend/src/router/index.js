@@ -3,7 +3,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 const routes = [
   { path: '/welcome', name: 'landing', component: () => import('../views/Landing.vue') },
   { path: '/login', name: 'login', component: () => import('../views/Login.vue') },
-  { path: '/', name: 'home', component: () => import('../views/Home.vue') },
+  { path: '/', name: 'landing-root', component: () => import('../views/Landing.vue') },
+  { path: '/shelf', name: 'home', component: () => import('../views/Home.vue') },
   { path: '/tasks', name: 'tasks', component: () => import('../views/TaskList.vue') },
   { path: '/create', name: 'create', component: () => import('../views/Create.vue') },
   { path: '/task/:id', name: 'task', component: () => import('../views/TaskDetail.vue') },

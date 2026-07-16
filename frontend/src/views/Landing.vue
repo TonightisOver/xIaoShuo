@@ -199,8 +199,8 @@ function hasSession() {
 }
 
 const signedIn = ref(hasSession())
-const studyTarget = computed(() => (signedIn.value ? '/' : '/login'))
-const createTarget = computed(() => (signedIn.value ? '/create' : '/login'))
+const studyTarget = '/shelf'
+const createTarget = '/create'
 
 // 权威字形 + 笔顺数据：运行时按需加载（不依赖 npm 包，避免安装/路径问题）
 const charData = []
