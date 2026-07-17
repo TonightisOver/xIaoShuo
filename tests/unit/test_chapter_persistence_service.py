@@ -31,7 +31,10 @@ def _make_mock_session():
     get_db_session() 返回的 async generator 在 `async with` 下会产出该 session。
     """
     session = AsyncMock()
-    session.execute = AsyncMock()
+    # execute 返回的结果链：.scalar_one_or_none() → None（模拟行不存在，走 INSERT 分支）
+    exec_result = MagicMock()
+    exec_result.scalar_one_or_none = MagicMock(return_value=None)
+    session.execute = AsyncMock(return_value=exec_result)
     session.add = MagicMock()
     session.commit = AsyncMock()
     # 作为 async context manager
@@ -124,6 +127,26 @@ class TestPersistGeneratedChapters:
 
         added = session.add.call_args_list[0].args[0]
         assert added.volume_number == 7
+
+    @pytest.mark.asyncio
+    async def test_upsert_updates_existing_row_not_insert(self):
+        """upsert：同 novel_id+chapter_number 已存在时 UPDATE，不 session.add（避免唯一约束冲突）"""
+        session, cm = _make_mock_session()
+        # 模拟已有行：scalar_one_or_none 返回一个 mock 行对象
+        existing_row = MagicMock()
+        exec_result = MagicMock()
+        exec_result.scalar_one_or_none = MagicMock(return_value=existing_row)
+        session.execute = AsyncMock(return_value=exec_result)
+        chapters = [_make_chapter_dict(chapter=1, volume_number=1, content="新内容")]
+
+        with patch("src.core.database.get_db_session", return_value=cm):
+            await persist_generated_chapters("novel-1", chapters, volume_number=1)
+
+        # 已存在 → 不 add，而是 setattr 更新已有行
+        session.add.assert_not_called()
+        # 验证关键字段被更新到已有行
+        assert existing_row.content == "新内容"
+        assert existing_row.status == "generated"
 
 
 # ============================================================

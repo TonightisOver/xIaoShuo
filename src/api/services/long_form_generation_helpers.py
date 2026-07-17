@@ -613,7 +613,6 @@ async def generate_volume_chapters(
             # update_quality_status 回调能 UPDATE 到已存在的 Chapter 行。
             # ⚠️ L3 改善由 rewrite_service.auto_improve_chapter 自行激活候选并
             # 写回 Chapter.content（在 gate 内完成），晚于本 persist，不会互相覆盖。
-            persisted_by_gate = False
             if not chapter_result.get("generation_failed"):
                 await persist_single_chapter(novel_id, chapter_result)
                 # === 质量门禁漏斗：抽取state_delta → L0 → L1 → L2 → L3 ===
@@ -646,17 +645,21 @@ async def generate_volume_chapters(
                     chapter_result["quality_status"] = gate_result.quality_status
                     chapter_result["quality_scores"] = gate_result.quality_scores
                     chapter_result["state_delta"] = gate_result.state_delta
-                    if gate_result.rewrite_improved:
-                        persisted_by_gate = True
                 except Exception as gate_err:
                     logger.warning(
                         "quality_gate_failed_non_fatal",
                         novel_id=novel_id, chapter=global_ch_num, error=str(gate_err),
                     )
             # === 漏斗结束 ===
-            # 失败章节在此落库（上面成功章节已在 gate 前落库）
-            if chapter_result.get("generation_failed") and not persisted_by_gate:
-                await persist_single_chapter(novel_id, chapter_result)
+            # 失败章节不入库（避免写入 content="[章节生成失败]" 的垃圾行），
+            # 仅保留在内存 generated_chapters 供外层统计 + 日志已记录。
+            # 成功章节已在 gate 前 persist_single_chapter 落库，
+            # gate 内 update_state_delta/update_quality_status UPDATE 同一行填充门禁字段。
+            if chapter_result.get("generation_failed"):
+                logger.warning(
+                    "chapter_skipped_failed_not_persisted",
+                    novel_id=novel_id, chapter=global_ch_num,
+                )
 
             # Sync chapter_type to DB
             await _sync_chapter_type_to_db(
@@ -688,6 +691,26 @@ async def generate_volume_chapters(
             "percentage": int((global_completed / total_chapters) * 100) if total_chapters else 0,
         }
         await _emit_progress(task_id, EventType.CHAPTER_PROGRESS, progress_data)
+
+        # 实时更新 LFP 表的 current_chapter + chapters_completed（卷内），
+        # 否则 NovelDetail 轮询 /long-form/progress 时进行中卷的章数一直为 0
+        # （原仅卷结束才 update_volume_status 一次性写 len(vol_chapters)）
+        try:
+            from src.api.services.long_form_progress_service import (
+                get_long_form_progress_service,
+            )
+            await get_long_form_progress_service().update_volume_status(
+                novel_id=novel_id,
+                volume_number=volume_number,
+                status="generating",
+                current_chapter=global_ch_num,
+                chapters_completed=len(generated_chapters),
+            )
+        except Exception as lfp_err:
+            logger.warning(
+                "long_form_progress_update_failed",
+                novel_id=novel_id, volume=volume_number, error=str(lfp_err),
+            )
 
     return generated_chapters
 

@@ -163,13 +163,21 @@ async def persist_generated_chapters(
     """
     from src.api.models.db_models import Chapter
     from src.core.database import get_db_session
+    from sqlalchemy import select
 
     async with get_db_session() as session:
         for ch in chapters:
-            chapter = Chapter(
-                novel_id=novel_id,
+            # upsert：同 novel_id+chapter_number 已存在则 UPDATE，避免唯一约束冲突
+            existing = (
+                await session.execute(
+                    select(Chapter).where(
+                        Chapter.novel_id == novel_id,
+                        Chapter.chapter_number == ch["chapter"],
+                    )
+                )
+            ).scalar_one_or_none()
+            fields = dict(
                 volume_number=volume_number or ch.get("volume_number"),
-                chapter_number=ch["chapter"],
                 title=ch["title"],
                 content=ch["content"],
                 word_count=ch["word_count"],
@@ -178,7 +186,11 @@ async def persist_generated_chapters(
                 state_delta=ch.get("state_delta"),
                 quality_status=ch.get("quality_status"),
             )
-            session.add(chapter)
+            if existing:
+                for k, v in fields.items():
+                    setattr(existing, k, v)
+            else:
+                session.add(Chapter(novel_id=novel_id, chapter_number=ch["chapter"], **fields))
 
 
 async def persist_chapters_with_replace(
