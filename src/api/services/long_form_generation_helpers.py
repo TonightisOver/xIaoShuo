@@ -52,6 +52,45 @@ async def _persist_quality_for_gate(
     )
 
 
+def compute_chapter_numbering(
+    chapter_start: int | None,
+    chapter_end: int | None,
+    outlines: list[dict[str, Any]],
+    request: Any,
+) -> tuple[list[tuple[int, dict[str, Any]]], int]:
+    """纯逻辑：根据卷/无卷模式推断每章的全局章号 + 全书总章数。
+
+    - 有卷模式（chapter_start 给定）：全局章号 = chapter_start + i
+    - 无卷模式（chapter_start=None）：章号从 outline 自身 "chapter" 字段取；
+      outline 无该字段则回退 1-based 序号（i+1）
+
+    total_chapters：
+    - request 有 volumes 时用 max(chapter_end, volumes * 每卷章数)
+    - 否则取 outlines 里的最大章号（无卷模式）
+
+    Returns: ([(global_ch_num, outline), ...], total_chapters)
+    """
+    items: list[tuple[int, dict[str, Any]]] = []
+    for i, outline in enumerate(outlines):
+        if chapter_start is not None:
+            global_num = chapter_start + i
+        else:
+            global_num = outline.get("chapter") or (i + 1)
+        items.append((global_num, outline))
+
+    if chapter_end is not None:
+        per_volume = max(chapter_end - (chapter_start or 1) + 1, 1)
+        total = max(
+            chapter_end,
+            getattr(request, "volumes", 1) * per_volume,
+        )
+    else:
+        # 无卷模式：total 取最大全局章号
+        total = max((g for g, _ in items), default=0)
+
+    return items, total
+
+
 def _normalize_outline_chapter(
     chapter: dict[str, Any],
     fallback: dict[str, Any],
@@ -455,14 +494,17 @@ async def generate_volume_outline(
 async def generate_volume_chapters(
     task_id: str,
     novel_id: str,
-    volume_number: int,
-    chapter_start: int,
-    chapter_end: int,
+    volume_number: int | None,
+    chapter_start: int | None,
+    chapter_end: int | None,
     vol_outline: dict[str, Any],
     words_per_chapter: int,
-    request: Any,
+    request: Any | None,
 ) -> list[dict[str, Any]]:
     """Generate chapters for a volume.
+
+    无卷退化：volume_number/chapter_start/chapter_end/request 均可为 None，
+    章号从 outline 的 "chapter" 字段推断（由 _generate_chapters_batch 调用方复用）。
 
     Returns:
         List of generated chapter dicts
@@ -513,8 +555,8 @@ async def generate_volume_chapters(
 
     # Get previous chapter context
     prev_context = ""
-    if chapter_start > 1:
-        prev_context = await manager.get_chapter_tail(novel_id, chapter_start - 1)
+    if (chapter_start or 1) > 1:
+        prev_context = await manager.get_chapter_tail(novel_id, (chapter_start or 1) - 1)
 
     chapters_data = vol_outline.get("chapters", [])
     generated_chapters = []
@@ -522,17 +564,16 @@ async def generate_volume_chapters(
     generated_word_count = sum(
         ch.get("word_count", 0)
         for ch in existing_chapters
-        if ch.get("chapter", 0) < chapter_start
+        if ch.get("chapter", 0) < (chapter_start or 1)
     )
-    total_chapters = max(
-        chapter_end,
-        getattr(request, "volumes", 1) * max(chapter_end - chapter_start + 1, 1),
+    # 章号推断 + 全书 total 统一走纯函数（支持无卷退化）
+    chapter_items, total_chapters = compute_chapter_numbering(
+        chapter_start=chapter_start, chapter_end=chapter_end,
+        outlines=chapters_data, request=request,
     )
     target_total_words = getattr(request, "target_words", 0) or 0
 
-    for i, ch_outline in enumerate(chapters_data):
-        # Map volume-local chapter number to global chapter number
-        global_ch_num = chapter_start + i
+    for global_ch_num, ch_outline in chapter_items:
         ch_outline["chapter"] = global_ch_num
 
         while await pause_store.is_paused(task_id):
@@ -681,7 +722,7 @@ async def generate_volume_chapters(
             })
 
         # Emit progress（全书聚合：completed/total/percentage 都基于全局章号，非卷内）
-        global_completed = chapter_start - 1 + len(generated_chapters)
+        global_completed = (chapter_start or 1) - 1 + len(generated_chapters)
         progress_data = {
             "current_stage": "chapter_generation",
             "volume_number": volume_number,
