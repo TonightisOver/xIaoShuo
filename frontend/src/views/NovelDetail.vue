@@ -117,6 +117,35 @@
         </router-link>
       </div>
 
+      <!-- 长篇生成进度卡（轮询 long-form/progress，就地显示卷/章进度）-->
+      <div v-if="novel.status === 'generating' && longFormSummary" class="mb-8 p-5 rounded-xl bg-paper-50 border border-ink-200">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-bold text-ink-800 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-vermilion-500 animate-pulse"></span>
+            长篇生成进度
+          </h3>
+          <span class="text-xs text-ink-400">{{ longFormSummary.percentage }}%</span>
+        </div>
+        <!-- 全书章节进度条 -->
+        <div class="w-full h-2 bg-ink-100 rounded-full overflow-hidden mb-3">
+          <div class="h-full bg-gradient-to-r from-vermilion-500 to-ink-700 rounded-full transition-all duration-500" :style="{ width: longFormSummary.percentage + '%' }"></div>
+        </div>
+        <div class="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-ink-500">
+          <span>卷：<b class="text-ink-800">{{ longFormSummary.completedVolumes }}</b> / {{ longFormSummary.totalVolumes }}</span>
+          <span>章节：<b class="text-ink-800">{{ longFormSummary.completedChapters }}</b> / {{ longFormSummary.totalChapters }}</span>
+          <span v-if="longFormSummary.currentVol" class="text-vermilion-600">正在写第 {{ longFormSummary.currentVol.volume_number }} 卷</span>
+          <span v-else-if="longFormSummary.percentage >= 100" class="text-emerald-600">全部章节已生成</span>
+        </div>
+        <!-- 卷级明细 -->
+        <div v-if="longFormSummary.totalVolumes > 0" class="mt-3 pt-3 border-t border-ink-100 flex flex-wrap gap-2">
+          <span v-for="v in longFormProgress.volumes" :key="v.volume_number"
+            class="text-[10px] px-2 py-0.5 rounded-full border"
+            :class="v.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : v.status === 'generating' ? 'bg-vermilion-50 text-vermilion-700 border-vermilion-200' : 'bg-paper-100 text-ink-400 border-ink-200'">
+            第{{ v.volume_number }}卷 · {{ v.chapters_completed }}/{{ v.chapter_end - v.chapter_start + 1 }}章
+          </span>
+        </div>
+      </div>
+
       <!-- Tabs Navigation -->
       <div class="border-b border-ink-200 mb-8 sticky top-16 z-40 bg-paper-50">
         <nav class="flex gap-6 overflow-x-auto scrollbar-none py-1">
@@ -392,7 +421,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import NovelChaptersTab from '../components/NovelChaptersTab.vue'
 import NovelStorylinesTab from '../components/NovelStorylinesTab.vue'
@@ -459,6 +488,53 @@ function stopReviewPolling() {
   }
 }
 
+// ── 长篇生成进度轮询（就地显示卷/章进度，不用跳任务控制台）──
+const longFormProgress = ref(null)
+const longFormPollingTimer = ref(null)
+
+async function fetchLongFormProgress() {
+  const id = novelId.value
+  if (!id) return
+  try {
+    const res = await fetch(`/api/v1/novels/${id}/long-form/progress`)
+    if (!res.ok) return
+    const data = await res.json()
+    longFormProgress.value = data
+    // 生成完成后停止轮询并刷新小说数据（拉新章节）
+    if (data.status === 'completed' || novel.value?.status !== 'generating') {
+      stopLongFormPolling()
+      if (data.status === 'completed') fetchAll()
+    }
+  } catch { /* 静默 */ }
+}
+
+function startLongFormPolling() {
+  if (longFormPollingTimer.value) return
+  fetchLongFormProgress()
+  longFormPollingTimer.value = setInterval(fetchLongFormProgress, 5000)
+}
+
+function stopLongFormPolling() {
+  if (longFormPollingTimer.value) {
+    clearInterval(longFormPollingTimer.value)
+    longFormPollingTimer.value = null
+  }
+}
+
+// 长篇进度聚合：总卷/总章/已完成章/百分比
+const longFormSummary = computed(() => {
+  const p = longFormProgress.value
+  if (!p) return null
+  const volumes = p.volumes || []
+  const totalVolumes = volumes.length
+  const completedVolumes = volumes.filter(v => v.status === 'completed').length
+  const totalChapters = volumes.reduce((s, v) => s + (v.chapter_end - v.chapter_start + 1), 0)
+  const completedChapters = volumes.reduce((s, v) => s + (v.chapters_completed || 0), 0)
+  const currentVol = volumes.find(v => v.status === 'generating')
+  const percentage = totalChapters ? Math.round((completedChapters / totalChapters) * 100) : 0
+  return { totalVolumes, completedVolumes, totalChapters, completedChapters, percentage, currentVol }
+})
+
 function onReviewDecision() {
   reviewDialogVisible.value = false
   stopReviewPolling()
@@ -496,10 +572,17 @@ function onGenerateChapters(range) { showRangeDialog.value = false; handleGenera
 
 onMounted(() => {
   fetchAll()
-  if (novel.value?.status === 'generating') {
+})
+
+// novel 加载完或状态变化后，若 generating 启动进度轮询
+watch(() => novel.value?.status, (s) => {
+  if (s === 'generating') {
     startReviewPolling()
+    startLongFormPolling()
+  } else {
+    stopLongFormPolling()
   }
 })
 
-onUnmounted(stopReviewPolling)
+onUnmounted(() => { stopReviewPolling(); stopLongFormPolling() })
 </script>

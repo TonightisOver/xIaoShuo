@@ -677,13 +677,15 @@ async def generate_volume_chapters(
                 "generation_failed": True,
             })
 
-        # Emit progress
+        # Emit progress（全书聚合：completed/total/percentage 都基于全局章号，非卷内）
+        global_completed = chapter_start - 1 + len(generated_chapters)
         progress_data = {
             "current_stage": "chapter_generation",
             "volume_number": volume_number,
-            "completed_chapters": len(generated_chapters),
-            "total_chapters": len(chapters_data),
-            "percentage": int((len(generated_chapters) / len(chapters_data)) * 100),
+            "current_chapter": global_ch_num if generated_chapters else chapter_start,
+            "completed_chapters": global_completed,
+            "total_chapters": total_chapters,
+            "percentage": int((global_completed / total_chapters) * 100) if total_chapters else 0,
         }
         await _emit_progress(task_id, EventType.CHAPTER_PROGRESS, progress_data)
 
