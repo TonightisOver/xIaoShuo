@@ -5,6 +5,7 @@ import asyncio
 import structlog
 
 from src.core.llm.client import get_llm_client
+from src.core.llm.chapter_generator import post_process_chapter
 from src.core.llm.prompts import TARGETED_REWRITE_PROMPTS
 
 logger = structlog.get_logger(__name__)
@@ -69,7 +70,8 @@ async def rewrite_chapter_segment(
         chapter_number=chapter_number,
         result_length=len(result),
     )
-    return result.strip()
+    # 复用章节后处理：清洗半角连字符、AI 病句等（与单章生成一致）
+    return post_process_chapter(result)
 
 
 def _build_rewrite_prompt(
@@ -185,7 +187,8 @@ async def targeted_rewrite(
         rewrite_type=rewrite_type,
         result_length=len(result),
     )
-    return result.strip()
+    # 复用章节后处理：清洗半角连字符、AI 病句等（与单章生成一致）
+    return post_process_chapter(result)
 
 
 async def batch_targeted_rewrite(

@@ -609,12 +609,14 @@ async def generate_volume_chapters(
             chapter_result["volume_number"] = volume_number
             generated_chapters.append(chapter_result)
             generated_word_count += chapter_result.get("word_count", 0)
-            # === 质量门禁漏斗：抽取state_delta → L0 → L1 → L2 → L3 ===
-            # ⚠️ L3 改善时 auto_improve_chapter 已 activate 候选并写回 Chapter.content。
-            # 若此后 persist_single_chapter 用 chapter_result.content 落库，会覆盖候选。
-            # → L3 改善(rewrite_improved=True)时跳过 persist_single_chapter。
+            # 先落库章节行，使质量门禁的 update_state_delta /
+            # update_quality_status 回调能 UPDATE 到已存在的 Chapter 行。
+            # ⚠️ L3 改善由 rewrite_service.auto_improve_chapter 自行激活候选并
+            # 写回 Chapter.content（在 gate 内完成），晚于本 persist，不会互相覆盖。
             persisted_by_gate = False
             if not chapter_result.get("generation_failed"):
+                await persist_single_chapter(novel_id, chapter_result)
+                # === 质量门禁漏斗：抽取state_delta → L0 → L1 → L2 → L3 ===
                 try:
                     from src.api.services.rewrite_loop_service import RewriteLoopService
                     from src.core.quality.gate import (
@@ -652,7 +654,8 @@ async def generate_volume_chapters(
                         novel_id=novel_id, chapter=global_ch_num, error=str(gate_err),
                     )
             # === 漏斗结束 ===
-            if not chapter_result.get("generation_failed") and not persisted_by_gate:
+            # 失败章节在此落库（上面成功章节已在 gate 前落库）
+            if chapter_result.get("generation_failed") and not persisted_by_gate:
                 await persist_single_chapter(novel_id, chapter_result)
 
             # Sync chapter_type to DB

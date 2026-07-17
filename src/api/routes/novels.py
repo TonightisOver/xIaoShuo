@@ -3,8 +3,9 @@
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
+from src.api.models.db_models import User
 from src.api.models.requests import (
     CreateNovelRequest,
     LongFormNovelRequest,
@@ -23,6 +24,7 @@ from src.api.models.responses import (
     TaskSummary,
 )
 from src.api.services import generate_novel_background, get_task_manager
+from src.core.security.auth import get_current_user
 from src.core.validation import ValidationError, validate_idea, validate_novel_type
 
 logger = logging.getLogger(__name__)
@@ -230,6 +232,7 @@ async def resume_generation_task(task_id: str):
 async def create_long_form_novel(
     request: LongFormNovelRequest,
     background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
 ) -> LongFormTaskResponse:
     """创建百万字长篇生成任务
 
@@ -265,6 +268,7 @@ async def create_long_form_novel(
             target_words=request.target_words,
             writing_style=request.writing_style,
             writing_style_prompt=request.writing_style_prompt,
+            owner_id=current_user.id,
         )
 
         # Update task with novel_id
@@ -382,7 +386,7 @@ async def get_foreshadow_tracker(novel_id: str) -> ForeshadowTrackerResult:
         raise HTTPException(status_code=500, detail="Failed to track foreshadows")
 
 
-@router.get("/{novel_id}/progress", response_model=LongFormProgressResponse)
+@router.get("/{novel_id}/long-form/progress", response_model=LongFormProgressResponse)
 async def get_long_form_progress(novel_id: str) -> LongFormProgressResponse:
     """获取百万字长篇生成进度
 

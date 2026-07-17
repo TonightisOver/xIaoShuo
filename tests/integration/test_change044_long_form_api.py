@@ -5,7 +5,7 @@ Tests the following endpoints:
 - GET  /api/v1/novels/{novel_id}/quality-report
 - GET  /api/v1/novels/{novel_id}/filler-detection
 - GET  /api/v1/novels/{novel_id}/foreshadow-tracker
-- GET  /api/v1/novels/{novel_id}/progress
+- GET  /api/v1/novels/{novel_id}/long-form/progress
 - POST /api/v1/novels/{novel_id}/volumes/{volume_number}/generate
 - POST /api/v1/novels/{novel_id}/volumes/{volume_number}/pause
 - POST /api/v1/novels/{novel_id}/volumes/{volume_number}/resume
@@ -450,7 +450,7 @@ class TestForeshadowTracker:
 
 
 # ============================================================
-#  GET /api/v1/novels/{novel_id}/progress
+#  GET /api/v1/novels/{novel_id}/long-form/progress
 # ============================================================
 
 class TestLongFormProgress:
@@ -459,14 +459,14 @@ class TestLongFormProgress:
     @pytest.mark.asyncio
     async def test_progress_novel_not_found(self, client):
         """Returns 404 when novel does not exist."""
-        resp = await client.get("/api/v1/novels/nonexistent-novel/progress")
+        resp = await client.get("/api/v1/novels/nonexistent-novel/long-form/progress")
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
     async def test_progress_empty_novel(self, client):
         """Returns progress data for novel with no progress records."""
         novel_id = await _create_novel_via_api(client)
-        resp = await client.get(f"/api/v1/novels/{novel_id}/progress")
+        resp = await client.get(f"/api/v1/novels/{novel_id}/long-form/progress")
         assert resp.status_code == 200
         data = resp.json()
         assert data["novel_id"] == novel_id
@@ -484,7 +484,7 @@ class TestLongFormProgress:
         await _insert_lfp(novel_id, 2, status="generating", chapters_completed=3,
                           chapter_start=6, chapter_end=10)
 
-        resp = await client.get(f"/api/v1/novels/{novel_id}/progress")
+        resp = await client.get(f"/api/v1/novels/{novel_id}/long-form/progress")
         assert resp.status_code == 200
         data = resp.json()
         assert data["completed_volumes"] == 1
@@ -652,7 +652,7 @@ class TestCrossEndpointIntegration:
         assert gen_resp.status_code == 202
 
         # 4. Check progress
-        prog_resp = await client.get(f"/api/v1/novels/{novel_id}/progress")
+        prog_resp = await client.get(f"/api/v1/novels/{novel_id}/long-form/progress")
         assert prog_resp.status_code == 200
 
         # 5. Check quality report (empty)
@@ -699,6 +699,6 @@ class TestCrossEndpointIntegration:
         assert ft.json()["total_foreshadows"] == 1
 
         # Progress
-        pr = await client.get(f"/api/v1/novels/{novel_id}/progress")
+        pr = await client.get(f"/api/v1/novels/{novel_id}/long-form/progress")
         assert pr.status_code == 200
         assert pr.json()["chapters_completed"] == 3

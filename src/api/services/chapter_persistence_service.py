@@ -175,6 +175,8 @@ async def persist_generated_chapters(
                 word_count=ch["word_count"],
                 chapter_type=ch.get("chapter_type"),
                 status=status,
+                state_delta=ch.get("state_delta"),
+                quality_status=ch.get("quality_status"),
             )
             session.add(chapter)
 
