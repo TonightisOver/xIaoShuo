@@ -4,7 +4,7 @@
 
 **Blocked by:** None — 可立即开始
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] 阶段说明：StageIndicator 每个阶段旁加一行描述（"正在展开创意..."、"正在设计世界观..."）
 - [ ] 失败重试：generation 节点失败时不直接标记 failed，给用户"重试本章"按钮

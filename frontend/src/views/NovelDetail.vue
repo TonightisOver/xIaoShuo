@@ -136,13 +136,17 @@
           <span v-if="longFormSummary.currentVol" class="text-vermilion-600">正在写第 {{ longFormSummary.currentVol.volume_number }} 卷</span>
           <span v-else-if="longFormSummary.percentage >= 100" class="text-emerald-600">全部章节已生成</span>
         </div>
-        <!-- 卷级明细 -->
+        <!-- 当前章节标题 -->
+        <p v-if="currentChapterTitle" class="text-xs text-ink-400 mt-2">正在生成：<b class="text-ink-700">{{ currentChapterTitle }}</b></p>
+        <!-- 卷级明细（已完成卷可点击跳转） -->
         <div v-if="longFormSummary.totalVolumes > 0" class="mt-3 pt-3 border-t border-ink-100 flex flex-wrap gap-2">
-          <span v-for="v in longFormProgress.volumes" :key="v.volume_number"
-            class="text-[10px] px-2 py-0.5 rounded-full border"
-            :class="v.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : v.status === 'generating' ? 'bg-vermilion-50 text-vermilion-700 border-vermilion-200' : 'bg-paper-100 text-ink-400 border-ink-200'">
+          <router-link v-for="v in longFormProgress.volume_details" :key="v.volume_number"
+            :to="v.status === 'completed' ? `/novels/${novelId}/chapters/${v.chapter_start}` : '#'"
+            class="text-[10px] px-2 py-0.5 rounded-full border transition-colors"
+            :class="v.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' : v.status === 'generating' ? 'bg-vermilion-50 text-vermilion-700 border-vermilion-200 pointer-events-none' : 'bg-paper-100 text-ink-400 border-ink-200 pointer-events-none'"
+            @click.prevent="v.status === 'completed' ? null : 0">
             第{{ v.volume_number }}卷 · {{ v.chapters_completed }}/{{ v.chapter_end - v.chapter_start + 1 }}章
-          </span>
+          </router-link>
         </div>
       </div>
 
@@ -491,6 +495,7 @@ function stopReviewPolling() {
 // ── 长篇生成进度轮询（就地显示卷/章进度，不用跳任务控制台）──
 const longFormProgress = ref(null)
 const longFormPollingTimer = ref(null)
+const currentChapterTitle = ref('')
 
 async function fetchLongFormProgress() {
   const id = novelId.value
@@ -500,6 +505,20 @@ async function fetchLongFormProgress() {
     if (!res.ok) return
     const data = await res.json()
     longFormProgress.value = data
+    // 查当前章节标题（取第一个 generating 卷的 current_chapter）
+    const currentVol = (data.volume_details || []).find(v => v.status === 'generating')
+    if (currentVol && currentVol.current_chapter) {
+      try {
+        const chRes = await fetch(`/api/v1/projects/${id}/chapters`)
+        if (chRes.ok) {
+          const chData = await chRes.json()
+          const ch = (chData.chapters || []).find(c => c.chapter_number === currentVol.current_chapter)
+          currentChapterTitle.value = ch ? ch.title : ''
+        }
+      } catch { currentChapterTitle.value = '' }
+    } else {
+      currentChapterTitle.value = ''
+    }
     // 生成完成后停止轮询并刷新小说数据（拉新章节）
     if (data.status === 'completed' || novel.value?.status !== 'generating') {
       stopLongFormPolling()
@@ -525,7 +544,7 @@ function stopLongFormPolling() {
 const longFormSummary = computed(() => {
   const p = longFormProgress.value
   if (!p) return null
-  const volumes = p.volumes || []
+  const volumes = p.volume_details || []
   const totalVolumes = volumes.length
   const completedVolumes = volumes.filter(v => v.status === 'completed').length
   const totalChapters = volumes.reduce((s, v) => s + (v.chapter_end - v.chapter_start + 1), 0)
