@@ -22,6 +22,7 @@ from src.api.services.chapter_persistence_service import (
     persist_generated_chapters,
     persist_langgraph_result,
     persist_quality_to_version,
+    record_chapter_artifacts,
 )
 
 
@@ -520,3 +521,66 @@ class TestPersistQualityToVersion:
         with patch("src.core.database.get_db_session", return_value=cm):
             # 不应抛异常
             await persist_quality_to_version("novel-1", 1, {"overall": 0.5}, [])
+
+
+# ============================================================
+# record_chapter_artifacts
+# ============================================================
+class TestRecordChapterArtifacts:
+    """record_chapter_artifacts() — 版本记录 + StoryBible 反向更新（逐章/批量复用）"""
+
+    @pytest.mark.asyncio
+    async def test_creates_version_and_bible_for_each_successful_chapter(self):
+        """每成功章调一次 create_chapter_version + update_bible_after_generation"""
+        chapters = [
+            _make_chapter_dict(chapter=1, content="c1", word_count=10),
+            _make_chapter_dict(chapter=2, content="c2", word_count=20),
+        ]
+        mock_manager = MagicMock()
+        mock_manager.create_chapter_version = AsyncMock()
+
+        with patch("src.api.services.novel_manager.get_novel_manager", return_value=mock_manager), \
+             patch("src.api.services.story_bible_service.update_bible_after_generation",
+                   new_callable=AsyncMock) as mock_bible:
+            await record_chapter_artifacts("novel-1", chapters)
+
+        assert mock_manager.create_chapter_version.call_count == 2
+        assert mock_bible.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_skips_chapters_without_content_or_wordcount(self):
+        """空内容/零字数的章节不创建版本也不回写 bible"""
+        chapters = [
+            _make_chapter_dict(chapter=1, content="c1", word_count=10),
+            {"chapter": 2, "title": "空", "content": "", "word_count": 0},  # 跳过
+            {"chapter": 3, "title": "无字数", "content": "c3", "word_count": 0},  # 跳过
+        ]
+        mock_manager = MagicMock()
+        mock_manager.create_chapter_version = AsyncMock()
+
+        with patch("src.api.services.novel_manager.get_novel_manager", return_value=mock_manager), \
+             patch("src.api.services.story_bible_service.update_bible_after_generation",
+                   new_callable=AsyncMock) as mock_bible:
+            await record_chapter_artifacts("novel-1", chapters)
+
+        assert mock_manager.create_chapter_version.call_count == 1
+        assert mock_bible.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_bible_failure_does_not_block_subsequent_chapters(self):
+        """某章 bible 回写异常不阻断后续章"""
+        chapters = [
+            _make_chapter_dict(chapter=1, content="c1", word_count=10),
+            _make_chapter_dict(chapter=2, content="c2", word_count=20),
+        ]
+        mock_manager = MagicMock()
+        mock_manager.create_chapter_version = AsyncMock(side_effect=[None, ValueError("x")])
+
+        with patch("src.api.services.novel_manager.get_novel_manager", return_value=mock_manager), \
+             patch("src.api.services.story_bible_service.update_bible_after_generation",
+                   new_callable=AsyncMock) as mock_bible:
+            # 不应抛异常
+            await record_chapter_artifacts("novel-1", chapters)
+
+        # 版本即便第二章抛错，bible 仍对两章都尝试
+        assert mock_bible.call_count == 2

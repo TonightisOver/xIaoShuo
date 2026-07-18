@@ -706,6 +706,18 @@ async def generate_volume_chapters(
             await _sync_chapter_type_to_db(
                 novel_id, global_ch_num, chapter_result.get("chapter_type")
             )
+            # 版本记录 + StoryBible 反向更新（成功章；与短篇 persist_chapters_with_replace 复用同一函数）
+            if not chapter_result.get("generation_failed"):
+                try:
+                    from src.api.services.chapter_persistence_service import (
+                        record_chapter_artifacts,
+                    )
+                    await record_chapter_artifacts(novel_id, [chapter_result])
+                except Exception as art_err:
+                    logger.warning(
+                        "chapter_artifacts_record_failed",
+                        novel_id=novel_id, chapter=global_ch_num, error=str(art_err),
+                    )
         except Exception as ch_error:
             logger.error(
                 "chapter_generation_failed",

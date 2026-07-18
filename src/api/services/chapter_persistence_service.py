@@ -193,6 +193,55 @@ async def persist_generated_chapters(
                 session.add(Chapter(novel_id=novel_id, chapter_number=ch["chapter"], **fields))
 
 
+async def record_chapter_artifacts(
+    novel_id: str,
+    chapters: list[dict[str, Any]],
+) -> None:
+    """对成功生成的章节创建版本记录 + 反向更新 StoryBible。
+
+    提取自 persist_chapters_with_replace，供逐章路径（GVC）与批量路径复用，
+    统一"生成后留痕"语义。任一章节的版本/StoryBible 失败不阻断整体。
+    """
+    from src.api.services.novel_manager import get_novel_manager
+
+    manager = get_novel_manager()
+    successful_chapters = [
+        ch for ch in chapters if ch.get("content") and ch.get("word_count", 0) > 0
+    ]
+
+    # 版本记录
+    for ch in successful_chapters:
+        try:
+            await manager.create_chapter_version(
+                novel_id=novel_id,
+                chapter_number=ch["chapter"],
+                content=ch["content"],
+                source="generation",
+                model_name="deepseek",
+                is_active=True,
+            )
+        except (ValueError, Exception):
+            pass
+
+    # 反向更新 StoryBible
+    for ch in successful_chapters:
+        try:
+            from src.api.services.story_bible_service import (
+                update_bible_after_generation,
+            )
+
+            await update_bible_after_generation(
+                novel_id=novel_id,
+                chapter_number=ch["chapter"],
+                chapter_content=ch["content"],
+                chapter_outline=ch,
+            )
+        except Exception as e:
+            logger.warning(
+                "story_bible_update_failed chapter=%s: %s", ch.get("chapter"), e
+            )
+
+
 async def persist_chapters_with_replace(
     novel_id: str,
     chapters: list[dict[str, Any]],
@@ -253,39 +302,8 @@ async def persist_chapters_with_replace(
     # 补充可能遗漏的 volume_number
     await manager.fix_volume_numbers(novel_id)
 
-    # Auto-create version records
-    for ch in successful_chapters:
-        if ch.get("content"):
-            try:
-                await manager.create_chapter_version(
-                    novel_id=novel_id,
-                    chapter_number=ch["chapter"],
-                    content=ch["content"],
-                    source="generation",
-                    model_name="deepseek",
-                    is_active=True,
-                )
-            except (ValueError, Exception):
-                pass
-
-    # 反向更新 StoryBible
-    for ch in successful_chapters:
-        if ch.get("content"):
-            try:
-                from src.api.services.story_bible_service import (
-                    update_bible_after_generation,
-                )
-
-                await update_bible_after_generation(
-                    novel_id=novel_id,
-                    chapter_number=ch["chapter"],
-                    chapter_content=ch["content"],
-                    chapter_outline=ch,
-                )
-            except Exception as e:
-                logger.warning(
-                    "story_bible_update_failed chapter=%s: %s", ch.get("chapter"), e
-                )
+    # 版本记录 + StoryBible 反向更新（复用统一函数）
+    await record_chapter_artifacts(novel_id, successful_chapters)
 
 
 async def persist_quality_to_version(
