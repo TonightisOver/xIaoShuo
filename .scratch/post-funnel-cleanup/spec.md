@@ -30,3 +30,31 @@
 ### 工程化
 - [x] Matt Pocock engineering skills 配置（issue-tracker=本地 markdown，domain=单上下文）
 - [x] CONTEXT.md 领域术语表
+
+## 第二轮（2026-07-18）：工程债务清理 + 依赖链重构
+
+### Ticket 01 — 安全运维 debt（partial）
+- [x] BackgroundTasks 丢失保护：启动恢复同时清理 pending 任务，防进程内调度丢失后假死（`recover_interrupted_tasks` where 含 pending + was_running 文案区分）
+- [x] 前端 5 组件风格残留统一纸墨（ForeshadowTracker/ChapterEdit/KnowledgeGraphView/KnowledgeGraph/Careers/Home：neutral→ink/paper, accent→vermilion，保留语义色）
+- [ ] 关 DEV_AUTO_LOGIN / 改 root 密码 / 恢复登录守卫 — 用户决策暂不处理
+
+### Ticket 02 — 拆 novel_generator
+- [x] 长篇三入口（generate_chapters_background/generate_long_form_background/generate_volume_background）迁入 long_form_generation_helpers
+- [x] novel_generator 996→640 行，保留 re-export 保测试 patch 路径稳定
+
+### Ticket 03 — chapter_generator 接口收窄
+- [x] ChapterGenContext dataclass 封装 14 个散列参数（chars_str/world_str/storylines_str/style/blueprint/story_bible/prev/target_words...）
+- [x] generate_single_chapter / generate_chapter_stream / _generate_single_chapter_inner 三函数收 ctx
+- [x] 修 helpers storylines 漏传 bug（gen_ctx.storylines_str 未透传到 ChapterGenContext）
+
+### Ticket 04 — 短篇 quality_check 收敛 gate
+- [x] 短篇 LangGraph quality_check 节点收敛到 run_quality_gate（评分+state_delta+consistency 硬门禁统一走 gate）
+- [x] 保留 KG 抽取副作用（consistency_warnings / kg_continuity_report / extract_from_chapter）
+- [x] 删 KG verdict / StoryBible error 硬门禁（口径收敛为 gate L2 评分 < 0.4）
+- [x] 短篇首次抽 state_delta 入 state
+- [x] revision_requests 用 gate.warnings 兜底（L0 告警，取前 5）
+
+### 遗留债务清理
+- [x] long_form_generation_helpers `i` NameError（真实运行时 bug，588/693 行，改 enumerate 的 vol_ch_idx）
+- [x] test_novel_generator_supplement 4 孤儿测试（删 TestGenerateChaptersBatch 死代码 + 重写 TestGenerateVolumeBackgroundFallback patch 路径）
+- [x] test_change036 慢测试（前两个重试测试 patch wait_exponential → 0.2s；exhausts 降级路径退避未覆盖 → skip 待定位）
