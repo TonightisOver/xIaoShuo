@@ -3,10 +3,10 @@
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
       <div>
-        <h1 class="text-2xl font-bold tracking-tight text-neutral-900 flex items-center gap-2">
+        <h1 class="text-2xl font-bold tracking-tight text-ink-900 flex items-center gap-2">
           <span>🧠 知识图谱</span>
         </h1>
-        <p class="text-neutral-500 text-xs md:text-sm mt-1">
+        <p class="text-ink-500 text-xs md:text-sm mt-1">
           实体关系可视化 · 跨章节演化时间线 · 一致性冲突检测
         </p>
       </div>
@@ -19,12 +19,12 @@
     </div>
 
     <!-- Sub-tabs -->
-    <div class="flex gap-1 mb-6 border-b border-neutral-200/80">
+    <div class="flex gap-1 mb-6 border-b border-ink-200/80">
       <button
         class="px-5 py-3 text-sm font-semibold transition-all relative"
         :class="activeTab === 'graph'
-          ? 'text-purple-600 font-bold border-b-2 border-purple-600'
-          : 'text-neutral-500 hover:text-neutral-800'"
+          ? 'text-vermilion-600 font-bold border-b-2 border-vermilion-600'
+          : 'text-ink-500 hover:text-ink-800'"
         @click="activeTab = 'graph'"
       >
         🌐 实体关系网络
@@ -32,8 +32,8 @@
       <button
         class="px-5 py-3 text-sm font-semibold transition-all relative"
         :class="activeTab === 'timeline'
-          ? 'text-purple-600 font-bold border-b-2 border-purple-600'
-          : 'text-neutral-500 hover:text-neutral-800'"
+          ? 'text-vermilion-600 font-bold border-b-2 border-vermilion-600'
+          : 'text-ink-500 hover:text-ink-800'"
         @click="activeTab = 'timeline'"
       >
         📅 演化时间线
@@ -41,8 +41,8 @@
       <button
         class="px-5 py-3 text-sm font-semibold transition-all relative"
         :class="activeTab === 'conflicts'
-          ? 'text-purple-600 font-bold border-b-2 border-purple-600'
-          : 'text-neutral-500 hover:text-neutral-800'"
+          ? 'text-vermilion-600 font-bold border-b-2 border-vermilion-600'
+          : 'text-ink-500 hover:text-ink-800'"
         @click="activeTab = 'conflicts'"
       >
         ⚠️ 一致性冲突

@@ -33,7 +33,7 @@
 
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-24">
-      <div class="w-10 h-10 rounded-full border-4 border-purple-500/10 border-t-purple-600 animate-spin"></div>
+      <div class="w-10 h-10 rounded-full border-4 border-vermilion-500/10 border-t-vermilion-600 animate-spin"></div>
     </div>
 
     <!-- Error -->

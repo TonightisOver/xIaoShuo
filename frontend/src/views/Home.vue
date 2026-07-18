@@ -170,7 +170,7 @@ function getGenreClass(type) {
     '都市': 'genre-dushi',
     '言情': 'genre-yanqing',
   }
-  return map[type] || 'bg-neutral-100 text-neutral-600'
+  return map[type] || 'bg-paper-100 text-ink-600'
 }
 
 async function fetchNovels() {

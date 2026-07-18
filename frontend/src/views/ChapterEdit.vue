@@ -49,21 +49,21 @@
       <!-- ==================== 3. 编辑模式 (Standard Edit Mode) ==================== -->
       <div v-else>
         <!-- Restore Local Draft Banner -->
-        <div v-if="hasLocalDraft" class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-center justify-between shadow-sm">
+        <div v-if="hasLocalDraft" class="bg-paper-100 border border-ink-200 rounded-xl p-4 mb-6 flex items-center justify-between shadow-sm">
           <div class="flex items-center gap-3">
-            <div class="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600">
+            <div class="w-8 h-8 rounded-lg bg-paper-200 flex items-center justify-center text-ink-600">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
               </svg>
             </div>
             <div>
-              <h4 class="text-xs font-bold text-amber-800">发现本地有更新的未保存草稿</h4>
-              <p class="text-[11px] text-amber-600 mt-0.5">您在 {{ localDraftTime }} 编辑了本章，是否还原为本地草稿？</p>
+              <h4 class="text-xs font-bold text-ink-800">发现本地有更新的未保存草稿</h4>
+              <p class="text-[11px] text-ink-600 mt-0.5">您在 {{ localDraftTime }} 编辑了本章，是否还原为本地草稿？</p>
             </div>
           </div>
           <div class="flex items-center gap-2">
-            <button @click="restoreLocalDraft" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors">还原草稿</button>
-            <button @click="discardLocalDraft" class="px-3 py-1.5 border border-amber-300 text-amber-700 hover:bg-amber-100 rounded-lg text-xs font-medium transition-colors">放弃</button>
+            <button @click="restoreLocalDraft" class="px-3 py-1.5 bg-ink-700 hover:bg-vermilion-600 text-white rounded-lg text-xs font-bold transition-colors">还原草稿</button>
+            <button @click="discardLocalDraft" class="px-3 py-1.5 border border-ink-300 text-ink-700 hover:bg-paper-100 rounded-lg text-xs font-medium transition-colors">放弃</button>
           </div>
         </div>
 
@@ -174,8 +174,8 @@
                       </span>
                       <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
                         :class="{
-                          'bg-blue-50 text-blue-700': ver.source === 'ai_rewrite',
-                          'bg-amber-50 text-amber-700': ver.source === 'rollback',
+                          'bg-paper-100 text-ink-700': ver.source === 'ai_rewrite',
+                          'bg-paper-200 text-ink-700': ver.source === 'rollback',
                           'bg-paper-100 text-ink-500': ver.source === 'manual',
                           'bg-emerald-50 text-emerald-700': ver.source === 'generation',
                         }"
@@ -183,7 +183,7 @@
                     </div>
                     <div class="text-ink-400 mt-0.5 flex items-center gap-2">
                       <span>{{ ver.word_count }} 字 · {{ formatDate(ver.created_at) }}</span>
-                      <span v-if="ver.quality_score" class="text-amber-600">★ {{ ver.quality_score.toFixed(1) }}</span>
+                      <span v-if="ver.quality_score" class="text-ink-600">★ {{ ver.quality_score.toFixed(1) }}</span>
                     </div>
                   </div>
                 </div>
@@ -234,7 +234,7 @@
 
               <!-- Auto save status indicator at bottom right of the editor -->
               <div v-if="autoSaveStatus" class="absolute bottom-4 right-4 bg-ink-700/80 text-white text-[10px] px-2.5 py-1 rounded-full font-bold tracking-wide backdrop-blur border border-ink-600 flex items-center gap-1.5 transition-opacity">
-                <span class="w-1.5 h-1.5 rounded-full bg-indigo-400" :class="{ 'animate-ping': autoSaveStatus === 'caching' || autoSaveStatus === 'saving' }"></span>
+                <span class="w-1.5 h-1.5 rounded-full bg-vermilion-400" :class="{ 'animate-ping': autoSaveStatus === 'caching' || autoSaveStatus === 'saving' }"></span>
                 <span>{{ autoSaveStatusLabel }}</span>
               </div>
             </div>

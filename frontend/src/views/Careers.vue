@@ -434,8 +434,8 @@ function getCategoryColor(cat) {
     '魔法': 'bg-purple-500',
     '异能': 'bg-blue-500',
     '科技': 'bg-cyan-500',
-    '其它': 'bg-neutral-500'
-  }[cat] || 'bg-neutral-500'
+    '其它': 'bg-ink-500'
+  }[cat] || 'bg-ink-500'
 }
 
 function getCategoryBadgeClass(cat) {
@@ -445,8 +445,8 @@ function getCategoryBadgeClass(cat) {
     '魔法': 'bg-purple-50 text-purple-700 border-purple-100',
     '异能': 'bg-blue-50 text-blue-700 border-blue-100',
     '科技': 'bg-cyan-50 text-cyan-700 border-cyan-100',
-    '其它': 'bg-neutral-50 text-neutral-600 border-neutral-200'
-  }[cat] || 'bg-neutral-50 text-neutral-600'
+    '其它': 'bg-paper-50 text-ink-600 border-ink-200'
+  }[cat] || 'bg-paper-50 text-ink-600'
 }
 
 // 获取某一职业的阶段列表，用来给下拉框遍历
