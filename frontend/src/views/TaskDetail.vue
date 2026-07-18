@@ -51,6 +51,7 @@
             <span v-if="currentChapterTitle" class="text-ink-300 dark:text-neutral-500 font-normal ml-1">「{{ currentChapterTitle }}」</span>
           </span>
           <span v-if="isStreaming" class="inline-block w-2 h-2 rounded-full bg-vermilion-500 animate-pulse"></span>
+          <span v-if="chapterWordCount" class="text-xs text-ink-400 ml-auto">{{ chapterWordCount.toLocaleString() }} 字</span>
         </h2>
         <StreamingText :text="streamingText" :is-streaming="isStreaming" />
       </div>
@@ -152,6 +153,14 @@
         <ul class="text-xs md:text-sm text-rose-800 space-y-1 bg-paper-50 p-4 rounded-xl border border-rose-100 font-mono">
           <li v-for="(err, i) in task.errors" :key="i" class="list-disc list-inside">{{ err }}</li>
         </ul>
+        <div class="mt-4 flex gap-3">
+          <router-link v-if="task.novel_id" :to="`/novels/${task.novel_id}`" class="btn-primary text-xs flex items-center gap-1.5">
+            <span>回到小说详情</span>
+          </router-link>
+          <button type="button" class="btn-secondary text-xs flex items-center gap-1.5" @click="retryGeneration">
+            <span>重试生成</span>
+          </button>
+        </div>
       </div>
 
       <!-- WebSocket Events Log / Premium Terminal Console -->
@@ -292,6 +301,25 @@ async function handleResume() {
 async function handleStop() {
   // Reuse pause as a hard stop for now
   await handlePause()
+}
+
+async function retryGeneration() {
+  if (!task.value?.novel_id) return
+  try {
+    const res = await fetch(`/api/v1/projects/${task.value.novel_id}/generate`, { method: 'POST' })
+    if (res.ok) {
+      const data = await res.json()
+      // 重新加载新 task
+      taskId.value = data.task_id
+      task.value = null
+      await fetchTask()
+    } else {
+      const err = await res.json().catch(() => ({}))
+      alert(err.detail || '重试生成失败')
+    }
+  } catch (e) {
+    alert(e.message || '重试生成失败，请检查网络后重试。')
+  }
 }
 
 async function fetchTask() {

@@ -4,7 +4,7 @@
 
 **Blocked by:** None — 可立即开始
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] 非入口 md（AGENTS.md/CHANGELOG.md/DATABASE_SETUP.md）移入 `docs/`
 - [ ] 部署文件归类：Dockerfile/nginx.conf → 保留根（标准位置），deploy.sh/verify_deployment.py → `scripts/`
