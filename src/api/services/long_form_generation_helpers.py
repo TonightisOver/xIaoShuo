@@ -579,13 +579,13 @@ async def generate_volume_chapters(
     )
     target_total_words = getattr(request, "target_words", 0) or 0
 
-    for global_ch_num, ch_outline in chapter_items:
+    for vol_ch_idx, (global_ch_num, ch_outline) in enumerate(chapter_items):
         ch_outline["chapter"] = global_ch_num
 
         while await pause_store.is_paused(task_id):
             await asyncio.sleep(1)
 
-        if i == 0:
+        if vol_ch_idx == 0:  # 本卷第一章
             previous_chapter = prev_context or "这是本卷第一章"
         else:
             last_result = generated_chapters[-1] if generated_chapters else {}
@@ -690,7 +690,7 @@ async def generate_volume_chapters(
                         characters=chars_str,
                         persist_callbacks=gate_callbacks,
                         rewrite_service=RewriteLoopService(),
-                        chapter_index_in_volume=i,
+                        chapter_index_in_volume=vol_ch_idx,
                     )
                     chapter_result["quality_status"] = gate_result.quality_status
                     chapter_result["quality_scores"] = gate_result.quality_scores

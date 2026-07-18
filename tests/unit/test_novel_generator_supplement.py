@@ -1,4 +1,4 @@
-"""novel_generator.py 补充单元测试
+"""novel_generator / long_form_generation_helpers 补充单元测试
 
 覆盖现有测试未触及的关键路径：
 - calculate_long_form_chapter_plan: auto_calc 算法边界与 clamp
@@ -6,16 +6,13 @@
 - pause_task / resume_task / is_task_paused: 任务暂停/恢复
 - generate_novel_background: 失败时标记 task 失败 + novel 状态 failed
 - _run_sub_feature: 子特性失败不阻塞后续
-- _generate_chapters_batch: 批量生成循环（暂停等待、上下文衔接）
 - generate_volume_background: 无 outline 时的 fallback 路径
 """
 from __future__ import annotations
 
-import math
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # 纯函数测试
@@ -325,11 +322,11 @@ class TestRunSubFeatureIsolation:
             )
 
         # 失败时通过 _emit_progress 发出 ERROR 事件
-        from src.api.services.progress_event_bus import EventType as ET
+        from src.api.services.progress_event_bus import EventType
 
         error_emits = [
             c for c in emit.call_args_list
-            if len(c.args) >= 2 and c.args[1] == ET.ERROR
+            if len(c.args) >= 2 and c.args[1] == EventType.ERROR
         ]
         assert len(error_emits) >= 1
 
@@ -359,113 +356,29 @@ class TestRunSubFeatureIsolation:
 
 
 # ---------------------------------------------------------------------------
-# _generate_chapters_batch 循环行为
-# ---------------------------------------------------------------------------
-
-
-class TestGenerateChaptersBatch:
-    """_generate_chapters_batch 批量生成循环（暂停等待 + 上下文衔接）。"""
-
-    @pytest.mark.asyncio
-    async def test_generates_all_chapters_sequentially(self):
-        """按顺序生成所有章节，返回结果列表。"""
-        from src.api.services.novel_generator import _generate_chapters_batch
-
-        outlines = [
-            {"chapter": 1, "title": "第1章", "plot": "开端"},
-            {"chapter": 2, "title": "第2章", "plot": "发展"},
-        ]
-
-        gen_chapter = AsyncMock(side_effect=[
-            {"chapter": 1, "title": "第1章", "content": "内容1", "chapter_type": "main"},
-            {"chapter": 2, "title": "第2章", "content": "内容2", "chapter_type": "main"},
-        ])
-
-        with patch("src.api.services.novel_generator.is_task_paused", AsyncMock(return_value=False)), \
-             patch("src.api.services.novel_generator._get_story_bible_context", AsyncMock(return_value="bible")), \
-             patch("src.api.services.novel_generator._get_blueprint", AsyncMock(return_value={"blueprint": True})), \
-             patch("src.api.services.novel_generator._emit_progress", AsyncMock()), \
-             patch("src.api.services.novel_generator._sync_chapter_type_to_db", AsyncMock()), \
-             patch("src.core.llm.chapter_generator.generate_single_chapter", gen_chapter), \
-             patch("src.core.llm.client.get_llm_client"), \
-             patch("src.api.services.novel_generator._context_builder") as mock_ctx, \
-             patch("src.core.database.get_db_session") as mock_session:
-            mock_ctx.build_generation_context = AsyncMock(return_value=MagicMock(
-                chars_str="人物", world_str="世界", storylines_str="故事线",
-                style_instruction="风格",
-            ))
-            mock_session.return_value.__aenter__ = AsyncMock()
-            mock_session.return_value.__aexit__ = AsyncMock()
-
-            result = await _generate_chapters_batch(
-                task_id="task-batch", novel_id="novel-1",
-                chapter_outlines=outlines, prev_context="前文",
-            )
-
-        assert len(result) == 2
-        assert gen_chapter.call_count == 2
-        # 第1章用 prev_context；第2章用第1章的结尾内容
-        first_call_prev = gen_chapter.call_args_list[0].kwargs["previous_chapter"]
-        assert "前文" in first_call_prev
-
-    @pytest.mark.asyncio
-    async def test_waits_while_paused(self):
-        """任务暂停时，循环等待直到恢复。"""
-        from src.api.services.novel_generator import _generate_chapters_batch
-
-        # 先返回 True（暂停），再返回 False（恢复）
-        paused_states = iter([True, False])
-
-        async def _paused(_task_id):
-            return next(paused_states)
-
-        gen_chapter = AsyncMock(return_value={"chapter": 1, "content": "内容", "chapter_type": "main"})
-
-        with patch("src.api.services.novel_generator.is_task_paused", side_effect=_paused), \
-             patch("src.api.services.novel_generator._get_story_bible_context", AsyncMock(return_value="")), \
-             patch("src.api.services.novel_generator._get_blueprint", AsyncMock(return_value=None)), \
-             patch("src.api.services.novel_generator._emit_progress", AsyncMock()), \
-             patch("src.api.services.novel_generator._sync_chapter_type_to_db", AsyncMock()), \
-             patch("src.core.llm.chapter_generator.generate_single_chapter", gen_chapter), \
-             patch("src.core.llm.client.get_llm_client"), \
-             patch("src.api.services.novel_generator._context_builder") as mock_ctx, \
-             patch("src.core.database.get_db_session") as mock_session:
-            mock_ctx.build_generation_context = AsyncMock(return_value=MagicMock(
-                chars_str="", world_str="", storylines_str="", style_instruction="",
-            ))
-            mock_session.return_value.__aenter__ = AsyncMock()
-            mock_session.return_value.__aexit__ = AsyncMock()
-
-            result = await _generate_chapters_batch(
-                task_id="task-pause", novel_id="novel-1",
-                chapter_outlines=[{"chapter": 1, "title": "第1章", "plot": ""}],
-                prev_context="",
-            )
-
-        assert len(result) == 1
-        # is_task_paused 被调用至少 2 次（第一次 True 等，第二次 False 继续）
-        assert gen_chapter.call_count == 1
-
-
-# ---------------------------------------------------------------------------
 # generate_volume_background fallback 路径
 # ---------------------------------------------------------------------------
 
 
 class TestGenerateVolumeBackgroundFallback:
-    """generate_volume_background 在 volume_service 无 outline 时走 outline_service fallback。"""
+    """generate_volume_background 在 volume_service 无 outline 时走 outline_service fallback。
+
+    Ticket 02 后 generate_volume_background 迁入 long_form_generation_helpers，
+    内部不再调 _generate_chapters_batch（已删），改调 generate_volume_chapters。
+    fallback 业务逻辑（volume 无 outline → 从 outline_service 取章节数据）仍有效。
+    """
 
     @pytest.mark.asyncio
     async def test_fallback_to_outline_service_when_volume_has_no_outline(self):
         """volume_service.get_volume 返回无 outline 时，从 outline_service 取章节数据。"""
-        from src.api.services.novel_generator import generate_volume_background
+        from src.api.services.long_form_generation_helpers import (
+            generate_volume_background,
+        )
 
         tm = MagicMock()
         tm.update_status = AsyncMock()
         tm.complete_task = AsyncMock()
         tm.fail_task = AsyncMock()
-
-        nm = MagicMock()
 
         vol_service = MagicMock()
         vol_service.get_volume = AsyncMock(return_value=None)  # 无 volume 数据
@@ -479,32 +392,28 @@ class TestGenerateVolumeBackgroundFallback:
             {"chapter_number": 1, "content": {"title": "第1章", "turning_point": "转折", "scenes": []}},
         ])
 
-        ch_service = MagicMock()
-        ch_service.list_chapters_preview = AsyncMock(return_value=[])
-
-        with patch("src.api.services.novel_generator.get_task_manager", return_value=tm), \
-             patch("src.api.services.novel_generator.get_novel_manager", return_value=nm), \
-             patch("src.api.services.novel_generator.get_volume_service", return_value=vol_service), \
-             patch("src.api.services.novel_generator._emit_progress", AsyncMock()), \
-             patch("src.api.services.novel_generator._generate_chapters_batch", AsyncMock(return_value=[{"chapter": 1}])) as batch_mock, \
-             patch("src.api.services.novel_generator.persist_generated_chapters", AsyncMock()), \
-             patch("src.api.services.outline_service.get_outline_service", return_value=outline_svc), \
-             patch("src.api.services.chapter_service.get_chapter_service", return_value=ch_service):
+        with patch("src.api.services.long_form_generation_helpers.get_task_manager", return_value=tm), \
+             patch("src.api.services.long_form_generation_helpers.get_volume_service", return_value=vol_service), \
+             patch("src.api.services.long_form_generation_helpers._emit_progress", AsyncMock()), \
+             patch("src.api.services.long_form_generation_helpers.generate_volume_chapters",
+                   new=AsyncMock(return_value=[{"chapter": 1}])) as gen_vol_mock, \
+             patch("src.api.services.outline_service.get_outline_service", return_value=outline_svc):
             await generate_volume_background("task-vol", "novel-1", 1)
 
-        # 走了 fallback：chapter_outlines 从 outline_service 取
-        batch_mock.assert_awaited_once()
-        outlines_passed = batch_mock.call_args.kwargs["chapter_outlines"]
-        assert len(outlines_passed) == 1
-        assert outlines_passed[0]["chapter"] == 1
+        # 走了 fallback：generate_volume_chapters 被调，vol_outline.chapters 从 outline_service 取
+        gen_vol_mock.assert_awaited_once()
+        vol_outline_passed = gen_vol_mock.call_args.kwargs["vol_outline"]
+        assert vol_outline_passed["chapters"][0]["chapter"] == 1
         tm.complete_task.assert_awaited_once()
         vol_service.update_volume.assert_awaited_once()
         assert vol_service.update_volume.call_args.kwargs.get("status") == "completed"
 
     @pytest.mark.asyncio
     async def test_raises_when_no_outline_anywhere(self):
-        """volume 和 outline_service 都无数据时抛 ValueError。"""
-        from src.api.services.novel_generator import generate_volume_background
+        """volume 和 outline_service 都无数据时抛 ValueError（被外层捕获标 task 失败）。"""
+        from src.api.services.long_form_generation_helpers import (
+            generate_volume_background,
+        )
 
         tm = MagicMock()
         tm.update_status = AsyncMock()
@@ -519,14 +428,12 @@ class TestGenerateVolumeBackgroundFallback:
         outline_svc.get_volume_outlines = AsyncMock(return_value=[])  # 无数据
         outline_svc.get_chapter_outlines = AsyncMock(return_value=[])
 
-        with patch("src.api.services.novel_generator.get_task_manager", return_value=tm), \
-             patch("src.api.services.novel_generator.get_novel_manager", return_value=MagicMock()), \
-             patch("src.api.services.novel_generator.get_volume_service", return_value=vol_service), \
-             patch("src.api.services.novel_generator._emit_progress", AsyncMock()), \
-             patch("src.api.services.novel_generator._generate_chapters_batch", AsyncMock()), \
-             patch("src.api.services.novel_generator.persist_generated_chapters", AsyncMock()), \
-             patch("src.api.services.outline_service.get_outline_service", return_value=outline_svc), \
-             patch("src.api.services.chapter_service.get_chapter_service", return_value=MagicMock()):
+        with patch("src.api.services.long_form_generation_helpers.get_task_manager", return_value=tm), \
+             patch("src.api.services.long_form_generation_helpers.get_volume_service", return_value=vol_service), \
+             patch("src.api.services.long_form_generation_helpers._emit_progress", AsyncMock()), \
+             patch("src.api.services.long_form_generation_helpers.generate_volume_chapters",
+                   new=AsyncMock(return_value=[])), \
+             patch("src.api.services.outline_service.get_outline_service", return_value=outline_svc):
             await generate_volume_background("task-vol2", "novel-1", 1)
 
         # 抛 ValueError 被外层 try 捕获 → task 标记失败
