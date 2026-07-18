@@ -4,7 +4,7 @@
 
 **Blocked by:** None — 可立即开始
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] 进度卡加当前章节标题（从 LFP 接口的 current_chapter 查章节 title）
 - [ ] 估算剩余时间（基于已生成速度 × 剩余章数）

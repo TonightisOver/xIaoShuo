@@ -415,7 +415,7 @@ class TestListTasks:
 
 
 class TestRecoverInterruptedTasks:
-    """recover_interrupted_tasks — 服务启动时恢复孤儿 running 任务。"""
+    """recover_interrupted_tasks — 服务启动时清理孤儿 running + 丢失的 pending。"""
 
     @pytest.mark.asyncio
     async def test_marks_orphan_running_tasks_as_failed(self, manager):
@@ -439,8 +439,46 @@ class TestRecoverInterruptedTasks:
         session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_marks_pending_tasks_as_failed(self, manager):
+        """status=pending 的任务（BackgroundTasks 丢失）也被标记为 failed。
+
+        pending 任务由 FastAPI BackgroundTasks 进程内调度，容器在 add_task 后、
+        后台函数跑前重启会永久卡 pending。启动恢复一并清理。
+        """
+        pending_task = _make_task_mock(task_id="p1", status="pending")
+        session = _make_session()
+        result_mock = MagicMock()
+        result_mock.scalars.return_value.all.return_value = [pending_task]
+        session.execute = AsyncMock(return_value=result_mock)
+
+        with _patch_db(session):
+            count = await manager.recover_interrupted_tasks()
+
+        assert count == 1
+        assert pending_task.status == "failed"
+        assert pending_task.completed_at is not None
+        assert any("未及执行" in e for e in pending_task.errors)
+
+    @pytest.mark.asyncio
+    async def test_running_and_pending_distinguish_reason(self, manager):
+        """running 与 pending 走不同中断文案。"""
+        running_task = _make_task_mock(task_id="r1", status="running")
+        pending_task = _make_task_mock(task_id="p1", status="pending")
+        session = _make_session()
+        result_mock = MagicMock()
+        result_mock.scalars.return_value.all.return_value = [running_task, pending_task]
+        session.execute = AsyncMock(return_value=result_mock)
+
+        with _patch_db(session):
+            count = await manager.recover_interrupted_tasks()
+
+        assert count == 2
+        assert any("仍在运行" in e for e in running_task.errors)
+        assert any("未及执行" in e for e in pending_task.errors)
+
+    @pytest.mark.asyncio
     async def test_no_orphan_returns_zero(self, manager):
-        """无 running 任务时返回 0，不 commit。"""
+        """无 running/pending 任务时返回 0，仍 commit（无操作）。"""
         session = _make_session()
         result_mock = MagicMock()
         result_mock.scalars.return_value.all.return_value = []
@@ -453,12 +491,12 @@ class TestRecoverInterruptedTasks:
         session.commit.assert_awaited_once()  # 仍 commit（无操作）
 
     @pytest.mark.asyncio
-    async def test_does_not_touch_non_running_tasks(self, manager):
-        """pending/completed/failed 任务不受影响（查询只选 running）。"""
+    async def test_does_not_touch_non_stuck_tasks(self, manager):
+        """completed/failed 任务不在查询结果里（查询选 running+pending），状态不变。"""
         running_task = _make_task_mock(task_id="r1", status="running")
         completed_task = _make_task_mock(task_id="c1", status="completed")
         session = _make_session()
-        # 查询只返回 running 的（模拟 SQL where status=running）
+        # 查询只返回 running+pending（模拟 SQL where status in (running,pending)）
         result_mock = MagicMock()
         result_mock.scalars.return_value.all.return_value = [running_task]
         session.execute = AsyncMock(return_value=result_mock)

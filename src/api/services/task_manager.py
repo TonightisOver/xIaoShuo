@@ -295,8 +295,9 @@ class TaskManager:
         """服务启动时恢复被中断的任务。
 
         服务重启时，内存中正在跑的 BackgroundTask 会丢失，但 Task 表里这些任务的
-        status 仍是 ``running``（无人实际在跑）。本方法将这些「孤儿 running 任务」
-        标记为 failed，避免它们永远卡在 running 状态误导用户。
+        status 仍是 ``running``（孤儿 running）；此外 add_task 后、后台函数跑前重启
+        的任务会永远卡在 ``pending``（FastAPI BackgroundTasks 是进程内调度，容器重启
+        即丢）。本方法将这两类假死任务一并标记为 failed，避免误导用户。
 
         设计决策：标记为 failed 而非自动重跑——自动重跑有重复生成的风险（用户可能
         已经手动重试），且不同生成类型（分步/全功能/长篇）的入队参数各异，自动重放
@@ -307,24 +308,30 @@ class TaskManager:
         """
         async with get_db_session() as session:
             result = await session.execute(
-                select(Task).where(Task.status == "running")
+                select(Task).where(Task.status.in_(["running", "pending"]))
             )
-            orphan_tasks = result.scalars().all()
+            stuck_tasks = result.scalars().all()
             now = datetime.now()
-            for task in orphan_tasks:
+            for task in stuck_tasks:
+                was_running = task.status == "running"
                 task.status = "failed"
                 task.completed_at = now
+                reason = (
+                    "系统重启中断：服务重启时任务仍在运行，已标记为失败，请重新发起"
+                    if was_running
+                    else "系统重启中断：任务未及执行即丢失（BackgroundTasks 进程内调度，容器重启即丢），已标记为失败，请重新发起"
+                )
                 current_errors = task.errors or []
-                current_errors.append("系统重启中断：服务重启时任务仍在运行，已标记为失败，请重新发起")
+                current_errors.append(reason)
                 task.errors = current_errors
             await session.commit()
-            if orphan_tasks:
+            if stuck_tasks:
                 logger.warning(
                     "recovered_interrupted_tasks",
-                    count=len(orphan_tasks),
-                    task_ids=[t.task_id for t in orphan_tasks],
+                    count=len(stuck_tasks),
+                    task_ids=[t.task_id for t in stuck_tasks],
                 )
-            return len(orphan_tasks)
+            return len(stuck_tasks)
 
 
 # 全局任务管理器实例
