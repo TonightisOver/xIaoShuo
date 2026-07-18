@@ -187,7 +187,7 @@ class TestGenerateSingleChapterTimeout:
     @pytest.mark.asyncio
     async def test_timeout_returns_generation_failed_dict(self):
         """When asyncio.wait_for raises TimeoutError, result has generation_failed=True."""
-        from src.core.llm.chapter_generator import generate_single_chapter
+        from src.core.llm.chapter_generator import ChapterGenContext, generate_single_chapter
 
         mock_client = MagicMock()
         chapter_outline = {"chapter": 3, "title": "第三章", "plot": "情节"}
@@ -195,11 +195,13 @@ class TestGenerateSingleChapterTimeout:
         with patch("src.core.llm.chapter_generator.asyncio.wait_for",
                    side_effect=TimeoutError()):
             result = await generate_single_chapter(
-                client=mock_client,
-                chapter_outline=chapter_outline,
-                previous_chapter="",
-                characters_json="[]",
-                world_setting_json="{}",
+                ChapterGenContext(
+                    client=mock_client,
+                    chapter_outline=chapter_outline,
+                    previous_chapter="",
+                    characters_json="[]",
+                    world_setting_json="{}",
+                )
             )
 
         assert result["generation_failed"] is True
@@ -210,7 +212,7 @@ class TestGenerateSingleChapterTimeout:
     @pytest.mark.asyncio
     async def test_timeout_uses_chapter_number_from_outline(self):
         """Timeout result preserves chapter number and title from outline."""
-        from src.core.llm.chapter_generator import generate_single_chapter
+        from src.core.llm.chapter_generator import ChapterGenContext, generate_single_chapter
 
         mock_client = MagicMock()
         chapter_outline = {"chapter": 7, "title": "第七章：决战", "plot": "决战"}
@@ -218,11 +220,13 @@ class TestGenerateSingleChapterTimeout:
         with patch("src.core.llm.chapter_generator.asyncio.wait_for",
                    side_effect=TimeoutError()):
             result = await generate_single_chapter(
-                client=mock_client,
-                chapter_outline=chapter_outline,
-                previous_chapter="",
-                characters_json="[]",
-                world_setting_json="{}",
+                ChapterGenContext(
+                    client=mock_client,
+                    chapter_outline=chapter_outline,
+                    previous_chapter="",
+                    characters_json="[]",
+                    world_setting_json="{}",
+                )
             )
 
         assert result["chapter"] == 7
@@ -232,7 +236,7 @@ class TestGenerateSingleChapterTimeout:
     @pytest.mark.asyncio
     async def test_success_does_not_set_generation_failed(self):
         """Successful generation does NOT include generation_failed key."""
-        from src.core.llm.chapter_generator import generate_single_chapter
+        from src.core.llm.chapter_generator import ChapterGenContext, generate_single_chapter
 
         mock_client = AsyncMock()
         mock_client.generate = AsyncMock(return_value="章节正文内容")
@@ -250,11 +254,13 @@ class TestGenerateSingleChapterTimeout:
             new=AsyncMock(return_value=expected),
         ):
             result = await generate_single_chapter(
-                client=mock_client,
-                chapter_outline=chapter_outline,
-                previous_chapter="",
-                characters_json="[]",
-                world_setting_json="{}",
+                ChapterGenContext(
+                    client=mock_client,
+                    chapter_outline=chapter_outline,
+                    previous_chapter="",
+                    characters_json="[]",
+                    world_setting_json="{}",
+                )
             )
 
         assert result.get("generation_failed") is None or result.get("generation_failed") is False
@@ -304,9 +310,10 @@ class TestChapterGenerationNodeIsolation:
 
         call_count = 0
 
-        async def fake_generate(client, chapter_outline, **kwargs):
+        async def fake_generate(ctx, **kwargs):
             nonlocal call_count
             call_count += 1
+            chapter_outline = ctx.chapter_outline
             ch = chapter_outline["chapter"]
             if ch == 2:
                 raise RuntimeError("API 调用失败")
@@ -348,7 +355,8 @@ class TestChapterGenerationNodeIsolation:
         ]
         state = _make_state(outlines)
 
-        async def fake_generate(client, chapter_outline, **kwargs):
+        async def fake_generate(ctx, **kwargs):
+            chapter_outline = ctx.chapter_outline
             ch = chapter_outline["chapter"]
             if ch == 2:
                 raise ValueError("章节生成错误")
@@ -374,7 +382,7 @@ class TestChapterGenerationNodeIsolation:
         outlines = [{"chapter": 1, "title": "第一章", "plot": "开篇"}]
         state = _make_state(outlines)
 
-        async def always_fail(client, chapter_outline, **kwargs):
+        async def always_fail(ctx, **kwargs):
             raise ConnectionError("网络断开")
 
         with patch("src.core.langgraph.nodes.chapter_generation.get_settings") as mock_cfg, \
@@ -404,7 +412,8 @@ class TestChapterGenerationNodeIsolation:
         async def fake_callback(data):
             callback_calls.append(data)
 
-        async def fake_generate(client, chapter_outline, **kwargs):
+        async def fake_generate(ctx, **kwargs):
+            chapter_outline = ctx.chapter_outline
             ch = chapter_outline["chapter"]
             if ch == 2:
                 raise RuntimeError("失败")

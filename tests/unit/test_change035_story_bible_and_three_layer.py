@@ -7,7 +7,7 @@ import pytest
 from src.api.models.db_models import StoryBible
 from src.api.routes.story_bible import get_story_bible, update_story_bible
 from src.api.services.knowledge_graph_service import KnowledgeGraphService
-from src.core.llm.chapter_generator import generate_single_chapter
+from src.core.llm.chapter_generator import ChapterGenContext, generate_single_chapter
 
 # ---------------------------------------------------------------------------
 # Test Component 1: Story Bible Database Model & CRUD Endpoints
@@ -257,15 +257,17 @@ class TestChapterPlanningCheckCascade:
         with patch("src.core.config.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(KG_SUBAGENT_ENABLED=False, SPEC="Settings")
             result = await generate_single_chapter(
-            client=client,
-            chapter_outline=chapter_outline,
-            previous_chapter=previous_chapter,
-            characters_json=characters_json,
-            world_setting_json=world_setting_json,
-            kg_service=kg_mock,
-            novel_id="novel-plan-test",
-            story_bible_context=story_bible_context,
-        )
+                ChapterGenContext(
+                    client=client,
+                    chapter_outline=chapter_outline,
+                    previous_chapter=previous_chapter,
+                    characters_json=characters_json,
+                    world_setting_json=world_setting_json,
+                    kg_service=kg_mock,
+                    novel_id="novel-plan-test",
+                    story_bible_context=story_bible_context,
+                )
+            )
 
         # 1. Verify two LLM calls were made
         assert client.generate.call_count == 2

@@ -14,7 +14,7 @@ from langchain_core.runnables import RunnableConfig
 
 from src.core.config import get_settings
 from src.core.langgraph.state import NovelState
-from src.core.llm.chapter_generator import generate_single_chapter
+from src.core.llm.chapter_generator import ChapterGenContext, generate_single_chapter
 from src.core.llm.client import get_llm_client
 from src.core.validation import get_style_instruction
 
@@ -96,17 +96,21 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
                     )
 
                 chapter_result = await generate_single_chapter(
-                    client=client,
-                    chapter_outline=chapter_outline,
-                    previous_chapter=previous_chapter,
-                    characters_json=characters_json,
-                    world_setting_json=world_setting_json,
-                    style_instruction=style_instruction,
-                    kg_service=kg_service,
-                    novel_id=novel_id,
-                    target_words=target_words_per_chapter,
-                    blueprint=bp,
-                    story_bible_context=story_bible_ctx,
+                    ChapterGenContext(
+                        client=client,
+                        chapter_outline=chapter_outline,
+                        previous_chapter=previous_chapter,
+                        characters_json=characters_json,
+                        world_setting_json=world_setting_json,
+                        # 短篇 LangGraph state 无 storylines 数据源，保持空串
+                        # （长篇 helpers 已从 gen_ctx.storylines_str 传入，Ticket 03 修复）
+                        style_instruction=style_instruction,
+                        kg_service=kg_service,
+                        novel_id=novel_id,
+                        target_words=target_words_per_chapter,
+                        blueprint=bp,
+                        story_bible_context=story_bible_ctx,
+                    )
                 )
 
                 # Sync chapter_type via injected callback

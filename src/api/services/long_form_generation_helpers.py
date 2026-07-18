@@ -518,6 +518,7 @@ async def generate_volume_chapters(
     from src.core.database import get_db_session
     from src.core.llm.chapter_generator import (
         CHAPTER_WORD_HARD_CAP,
+        ChapterGenContext,
         generate_chapter_stream,
     )
     from src.core.llm.client import get_llm_client
@@ -556,6 +557,7 @@ async def generate_volume_chapters(
     chars_str = gen_ctx.chars_str
     world_str = gen_ctx.world_str
     style_instruction = gen_ctx.style_instruction
+    storylines_str = gen_ctx.storylines_str
 
     # Get previous chapter context
     prev_context = ""
@@ -637,19 +639,22 @@ async def generate_volume_chapters(
                 )
 
             chapter_result = await generate_chapter_stream(
-                client=client,
-                chapter_outline=ch_outline,
-                previous_chapter=previous_chapter,
-                characters_json=chars_str,
-                world_setting_json=world_str,
-                on_token=on_token,
-                on_complete=on_complete,
-                style_instruction=style_instruction,
-                target_words=chapter_target_words,
-                novel_id=novel_id,
-                blueprint=bp,
-                story_bible_context=story_bible_ctx,
-                pause_checker=pause_checker,
+                ChapterGenContext(
+                    client=client,
+                    chapter_outline=ch_outline,
+                    previous_chapter=previous_chapter,
+                    characters_json=chars_str,
+                    world_setting_json=world_str,
+                    storylines_json=storylines_str,  # Ticket 03：修复此前漏传
+                    style_instruction=style_instruction,
+                    target_words=chapter_target_words,
+                    novel_id=novel_id,
+                    blueprint=bp,
+                    story_bible_context=story_bible_ctx,
+                    on_token=on_token,
+                    on_complete=on_complete,
+                    pause_checker=pause_checker,
+                )
             )
             chapter_result["volume_number"] = volume_number
             generated_chapters.append(chapter_result)

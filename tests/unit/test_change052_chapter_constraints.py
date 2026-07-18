@@ -200,7 +200,7 @@ class TestContinuationLoop:
 
     async def test_no_continuation_when_word_count_sufficient(self):
         """字数 >= 75% 时不触发续写。"""
-        from src.core.llm.chapter_generator import _generate_single_chapter_inner
+        from src.core.llm.chapter_generator import ChapterGenContext, _generate_single_chapter_inner
 
         target_words = 3000
         # 75% of 3000 = 2250; 2300 chars is above threshold
@@ -211,13 +211,15 @@ class TestContinuationLoop:
 
         with patch("src.core.llm.chapter_generator._continuation_generation", new_callable=AsyncMock) as mock_cont:
             result = await _generate_single_chapter_inner(
-                client=mock_client,
-                chapter_outline={"chapter": 1, "title": "第一章", "plot": "测试"},
-                previous_chapter="",
-                characters_json="[]",
-                world_setting_json="{}",
-                target_words=target_words,
-                blueprint=self._make_blueprint(),
+                ChapterGenContext(
+                    client=mock_client,
+                    chapter_outline={"chapter": 1, "title": "第一章", "plot": "测试"},
+                    previous_chapter="",
+                    characters_json="[]",
+                    world_setting_json="{}",
+                    target_words=target_words,
+                    blueprint=self._make_blueprint(),
+                )
             )
 
         mock_cont.assert_not_called()
@@ -227,6 +229,7 @@ class TestContinuationLoop:
         """字数不足时续写最多触发 MAX_CONTINUATION_ATTEMPTS 次。"""
         from src.core.llm.chapter_generator import (
             MAX_CONTINUATION_ATTEMPTS,
+            ChapterGenContext,
             _generate_single_chapter_inner,
         )
 
@@ -242,20 +245,22 @@ class TestContinuationLoop:
             mock_cont.return_value = short_content
 
             await _generate_single_chapter_inner(
-                client=mock_client,
-                chapter_outline={"chapter": 1, "title": "第一章", "plot": "测试"},
-                previous_chapter="",
-                characters_json="[]",
-                world_setting_json="{}",
-                target_words=target_words,
-                blueprint=self._make_blueprint(),
+                ChapterGenContext(
+                    client=mock_client,
+                    chapter_outline={"chapter": 1, "title": "第一章", "plot": "测试"},
+                    previous_chapter="",
+                    characters_json="[]",
+                    world_setting_json="{}",
+                    target_words=target_words,
+                    blueprint=self._make_blueprint(),
+                )
             )
 
         assert mock_cont.call_count == MAX_CONTINUATION_ATTEMPTS  # 3
 
     async def test_continuation_stops_when_word_count_sufficient(self):
         """续写后字数达标时停止，不再继续。"""
-        from src.core.llm.chapter_generator import _generate_single_chapter_inner
+        from src.core.llm.chapter_generator import ChapterGenContext, _generate_single_chapter_inner
 
         target_words = 3000
         short_content = "字" * 1800  # 60%, triggers continuation
@@ -268,13 +273,15 @@ class TestContinuationLoop:
             mock_cont.return_value = sufficient_content
 
             result = await _generate_single_chapter_inner(
-                client=mock_client,
-                chapter_outline={"chapter": 1, "title": "第一章", "plot": "测试"},
-                previous_chapter="",
-                characters_json="[]",
-                world_setting_json="{}",
-                target_words=target_words,
-                blueprint=self._make_blueprint(),
+                ChapterGenContext(
+                    client=mock_client,
+                    chapter_outline={"chapter": 1, "title": "第一章", "plot": "测试"},
+                    previous_chapter="",
+                    characters_json="[]",
+                    world_setting_json="{}",
+                    target_words=target_words,
+                    blueprint=self._make_blueprint(),
+                )
             )
 
         assert mock_cont.call_count == 1
@@ -282,7 +289,7 @@ class TestContinuationLoop:
 
     async def test_word_count_updated_after_each_continuation(self):
         """每次续写后重新计算字数，以新字数判断是否继续。"""
-        from src.core.llm.chapter_generator import _generate_single_chapter_inner
+        from src.core.llm.chapter_generator import ChapterGenContext, _generate_single_chapter_inner
 
         target_words = 3000
         short_content = "字" * 1800  # 60%, triggers continuation
@@ -297,13 +304,15 @@ class TestContinuationLoop:
             mock_cont.side_effect = continuation_results
 
             result = await _generate_single_chapter_inner(
-                client=mock_client,
-                chapter_outline={"chapter": 1, "title": "第一章", "plot": "测试"},
-                previous_chapter="",
-                characters_json="[]",
-                world_setting_json="{}",
-                target_words=target_words,
-                blueprint=self._make_blueprint(),
+                ChapterGenContext(
+                    client=mock_client,
+                    chapter_outline={"chapter": 1, "title": "第一章", "plot": "测试"},
+                    previous_chapter="",
+                    characters_json="[]",
+                    world_setting_json="{}",
+                    target_words=target_words,
+                    blueprint=self._make_blueprint(),
+                )
             )
 
         assert mock_cont.call_count == 2
@@ -311,7 +320,7 @@ class TestContinuationLoop:
 
     async def test_continuation_exception_breaks_loop(self):
         """续写抛出异常时中断循环，不再重试。"""
-        from src.core.llm.chapter_generator import _generate_single_chapter_inner
+        from src.core.llm.chapter_generator import ChapterGenContext, _generate_single_chapter_inner
 
         target_words = 3000
         short_content = "字" * 1800
@@ -323,13 +332,15 @@ class TestContinuationLoop:
             mock_cont.side_effect = RuntimeError("LLM error")
 
             result = await _generate_single_chapter_inner(
-                client=mock_client,
-                chapter_outline={"chapter": 1, "title": "第一章", "plot": "测试"},
-                previous_chapter="",
-                characters_json="[]",
-                world_setting_json="{}",
-                target_words=target_words,
-                blueprint=self._make_blueprint(),
+                ChapterGenContext(
+                    client=mock_client,
+                    chapter_outline={"chapter": 1, "title": "第一章", "plot": "测试"},
+                    previous_chapter="",
+                    characters_json="[]",
+                    world_setting_json="{}",
+                    target_words=target_words,
+                    blueprint=self._make_blueprint(),
+                )
             )
 
         # Exception breaks the loop after first attempt

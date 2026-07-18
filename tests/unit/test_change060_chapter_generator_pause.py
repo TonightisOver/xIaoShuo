@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.core.llm.chapter_generator import generate_chapter_stream
+from src.core.llm.chapter_generator import ChapterGenContext, generate_chapter_stream
 
 
 class _FakeStream:
@@ -31,15 +31,17 @@ async def test_generate_chapter_stream_accepts_pause_checker():
     on_complete = AsyncMock()
 
     result = await generate_chapter_stream(
-        client=client,
-        chapter_outline={"chapter": 1, "title": "测试章", "plot": "测试"},
-        previous_chapter="",
-        characters_json="[]",
-        world_setting_json="{}",
-        on_token=on_token,
-        on_complete=on_complete,
-        target_words=100,
-        pause_checker=pause_checker,
+        ChapterGenContext(
+            client=client,
+            chapter_outline={"chapter": 1, "title": "测试章", "plot": "测试"},
+            previous_chapter="",
+            characters_json="[]",
+            world_setting_json="{}",
+            on_token=on_token,
+            on_complete=on_complete,
+            target_words=100,
+            pause_checker=pause_checker,
+        )
     )
 
     assert result.get("generation_failed") is not True
@@ -59,15 +61,17 @@ async def test_generate_chapter_stream_pause_true_aborts():
     pause_checker = AsyncMock(return_value=True)
 
     result = await generate_chapter_stream(
-        client=client,
-        chapter_outline={"chapter": 1, "title": "测试章", "plot": "测试"},
-        previous_chapter="",
-        characters_json="[]",
-        world_setting_json="{}",
-        on_token=AsyncMock(),
-        on_complete=AsyncMock(),
-        target_words=100,
-        pause_checker=pause_checker,
+        ChapterGenContext(
+            client=client,
+            chapter_outline={"chapter": 1, "title": "测试章", "plot": "测试"},
+            previous_chapter="",
+            characters_json="[]",
+            world_setting_json="{}",
+            on_token=AsyncMock(),
+            on_complete=AsyncMock(),
+            target_words=100,
+            pause_checker=pause_checker,
+        )
     )
 
     # 暂停时应标记 paused 并中止生成（不能正常完成、不能进入流式生成）
@@ -96,15 +100,17 @@ async def test_generate_chapter_stream_pause_mid_stream():
     on_token = AsyncMock()
 
     result = await generate_chapter_stream(
-        client=client,
-        chapter_outline={"chapter": 1, "title": "测试章", "plot": "测试"},
-        previous_chapter="",
-        characters_json="[]",
-        world_setting_json="{}",
-        on_token=on_token,
-        on_complete=AsyncMock(),
-        target_words=100,
-        pause_checker=pause_checker,
+        ChapterGenContext(
+            client=client,
+            chapter_outline={"chapter": 1, "title": "测试章", "plot": "测试"},
+            previous_chapter="",
+            characters_json="[]",
+            world_setting_json="{}",
+            on_token=on_token,
+            on_complete=AsyncMock(),
+            target_words=100,
+            pause_checker=pause_checker,
+        )
     )
 
     assert result.get("paused") is True

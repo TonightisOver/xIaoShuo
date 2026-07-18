@@ -104,19 +104,21 @@ async def test_generate_volume_outline_splits_large_volume_into_batches():
 
 
 async def test_chapter_generation_uses_target_word_based_max_tokens():
-    from src.core.llm.chapter_generator import _generate_single_chapter_inner
+    from src.core.llm.chapter_generator import ChapterGenContext, _generate_single_chapter_inner
 
     client = AsyncMock()
     client.generate = AsyncMock(return_value="字" * 4000)
 
     result = await _generate_single_chapter_inner(
-        client=client,
-        chapter_outline={"chapter": 1, "title": "第一章", "plot": "推进"},
-        previous_chapter="上一章结尾",
-        characters_json="[]",
-        world_setting_json="{}",
-        target_words=5000,
-        blueprint={"chapter_type": "main_advance"},
+        ChapterGenContext(
+            client=client,
+            chapter_outline={"chapter": 1, "title": "第一章", "plot": "推进"},
+            previous_chapter="上一章结尾",
+            characters_json="[]",
+            world_setting_json="{}",
+            target_words=5000,
+            blueprint={"chapter_type": "main_advance"},
+        )
     )
 
     assert result["word_count"] == 4000

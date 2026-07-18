@@ -6,6 +6,7 @@ import asyncio
 import json
 import re
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 
 import structlog
@@ -17,6 +18,31 @@ from src.core.llm.prompts import (
 )
 
 logger = structlog.get_logger(__name__)
+
+
+@dataclass
+class ChapterGenContext:
+    """单章生成上下文：收拢 generate_single_chapter 的 12-14 个散列参数。
+
+    面向 chapter_generator 内部；与 novel_context_service.GenerationContext
+    （面向调用方装配）职责不同，不要合并。
+    """
+    client: Any
+    chapter_outline: dict[str, Any]
+    previous_chapter: str
+    characters_json: str
+    world_setting_json: str
+    storylines_json: str = ""
+    style_instruction: str = ""
+    kg_service: Any | None = None
+    novel_id: str | None = None
+    target_words: int | None = None
+    blueprint: dict | None = None
+    story_bible_context: str | None = None
+    # 流式专属（generate_chapter_stream 用）
+    on_token: Callable[[str, str], Awaitable[None]] | None = None
+    on_complete: Callable[[str], Awaitable[None]] | None = None
+    pause_checker: Callable[[], Awaitable[bool]] | None = None
 
 
 def _format_blueprint_constraint(blueprint: dict) -> str:
@@ -183,78 +209,29 @@ async def _continuation_generation(
 
 
 
-async def generate_single_chapter(
-    client: Any,
-    chapter_outline: dict[str, Any],
-    previous_chapter: str,
-    characters_json: str,
-    world_setting_json: str,
-    storylines_json: str = "",
-    style_instruction: str = "",
-    kg_service: Any | None = None,
-    novel_id: str | None = None,
-    target_words: int | None = None,
-    blueprint: dict | None = None,
-    story_bible_context: str | None = None,
-) -> dict[str, Any]:
-    """生成单章内容。
+async def generate_single_chapter(ctx: ChapterGenContext) -> dict[str, Any]:
+    """生成单章内容（非流式）。
 
-    Args:
-        target_words: Target word count for long-form mode (None for standard mode)
-        blueprint: 预生成的章节蓝图（可选，传入则跳过蓝图生成/查询）
-        story_bible_context: 故事圣经约束文本（由调用方查询后传入）
-
-    Returns:
-        {"chapter": int, "title": str, "content": str, "word_count": int,
-         "chapter_type": str | None}
+    Args/Returns 同旧版，参数通过 ChapterGenContext 传入。
     """
     try:
         return await asyncio.wait_for(
-            _generate_single_chapter_inner(
-                client=client,
-                chapter_outline=chapter_outline,
-                previous_chapter=previous_chapter,
-                characters_json=characters_json,
-                world_setting_json=world_setting_json,
-                storylines_json=storylines_json,
-                style_instruction=style_instruction,
-                kg_service=kg_service,
-                novel_id=novel_id,
-                target_words=target_words,
-                blueprint=blueprint,
-                story_bible_context=story_bible_context,
-            ),
+            _generate_single_chapter_inner(ctx),
             timeout=CHAPTER_TIMEOUT_SECONDS,
         )
     except TimeoutError:
-        chapter_num = chapter_outline.get("chapter", 0)
+        chapter_num = ctx.chapter_outline.get("chapter", 0)
         logger.error("chapter_generation_timeout", chapter=chapter_num, timeout=CHAPTER_TIMEOUT_SECONDS)
         return {
             "chapter": chapter_num,
-            "title": chapter_outline.get("title", f"第{chapter_num}章"),
+            "title": ctx.chapter_outline.get("title", f"第{chapter_num}章"),
             "content": f"[章节生成失败：生成超时（{CHAPTER_TIMEOUT_SECONDS}s），可能是模型响应较慢，请稍后重试]",
             "word_count": 0,
             "generation_failed": True,
         }
 
 
-async def generate_chapter_stream(
-    client: Any,
-    chapter_outline: dict[str, Any],
-    previous_chapter: str,
-    characters_json: str,
-    world_setting_json: str,
-    on_token: Callable[[str, str], Awaitable[None]],
-    on_complete: Callable[[str], Awaitable[None]],
-    storylines_json: str = "",
-    style_instruction: str = "",
-    kg_service: Any | None = None,
-    novel_id: str | None = None,
-    target_words: int | None = None,
-    blueprint: dict | None = None,
-    story_bible_context: str | None = None,
-    pause_checker: Callable[[], Awaitable[bool]] | None = None,
-) -> dict[str, Any]:
+async def generate_chapter_stream(ctx: ChapterGenContext) -> dict[str, Any]:
     """Generate a single chapter using streaming for body text.
 
     Args:
@@ -262,27 +239,11 @@ async def generate_chapter_stream(
     """
     try:
         return await asyncio.wait_for(
-            _generate_single_chapter_inner(
-                client=client,
-                chapter_outline=chapter_outline,
-                previous_chapter=previous_chapter,
-                characters_json=characters_json,
-                world_setting_json=world_setting_json,
-                storylines_json=storylines_json,
-                style_instruction=style_instruction,
-                kg_service=kg_service,
-                novel_id=novel_id,
-                target_words=target_words,
-                blueprint=blueprint,
-                story_bible_context=story_bible_context,
-                on_token=on_token,
-                on_complete=on_complete,
-                pause_checker=pause_checker,
-            ),
+            _generate_single_chapter_inner(ctx),
             timeout=CHAPTER_TIMEOUT_SECONDS,
         )
     except TimeoutError:
-        chapter_num = chapter_outline.get("chapter", 0)
+        chapter_num = ctx.chapter_outline.get("chapter", 0)
         logger.error(
             "chapter_generation_timeout",
             chapter=chapter_num,
@@ -290,30 +251,14 @@ async def generate_chapter_stream(
         )
         return {
             "chapter": chapter_num,
-            "title": chapter_outline.get("title", f"Chapter {chapter_num}"),
+            "title": ctx.chapter_outline.get("title", f"Chapter {chapter_num}"),
             "content": f"[Chapter generation failed: timeout ({CHAPTER_TIMEOUT_SECONDS}s)]",
             "word_count": 0,
             "generation_failed": True,
         }
 
 
-async def _generate_single_chapter_inner(
-    client: Any,
-    chapter_outline: dict[str, Any],
-    previous_chapter: str,
-    characters_json: str,
-    world_setting_json: str,
-    storylines_json: str = "",
-    style_instruction: str = "",
-    kg_service: Any | None = None,
-    novel_id: str | None = None,
-    target_words: int | None = None,
-    blueprint: dict | None = None,
-    story_bible_context: str | None = None,
-    on_token: Callable[[str, str], Awaitable[None]] | None = None,
-    on_complete: Callable[[str], Awaitable[None]] | None = None,
-    pause_checker: Callable[[], Awaitable[bool]] | None = None,
-) -> dict[str, Any]:
+async def _generate_single_chapter_inner(ctx: ChapterGenContext) -> dict[str, Any]:
     """生成单章内容。
 
     Args:
@@ -326,6 +271,23 @@ async def _generate_single_chapter_inner(
         {"chapter": int, "title": str, "content": str, "word_count": int,
          "chapter_type": str | None}
     """
+    # 从 ctx 解包为局部变量，函数体沿用旧参数名（最小改动）
+    client = ctx.client
+    chapter_outline = ctx.chapter_outline
+    previous_chapter = ctx.previous_chapter
+    characters_json = ctx.characters_json
+    world_setting_json = ctx.world_setting_json
+    storylines_json = ctx.storylines_json
+    style_instruction = ctx.style_instruction
+    kg_service = ctx.kg_service
+    novel_id = ctx.novel_id
+    target_words = ctx.target_words
+    blueprint = ctx.blueprint
+    story_bible_context = ctx.story_bible_context
+    on_token = ctx.on_token
+    on_complete = ctx.on_complete
+    pause_checker = ctx.pause_checker
+
     # 1. 检索知识图谱上下文
     kg_context = ""
     if kg_service and novel_id:

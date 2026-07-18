@@ -208,7 +208,7 @@ class TestGenerateSingleChapter:
     @pytest.mark.asyncio
     async def test_basic_generation_returns_correct_format(self):
         """Happy path: returns dict with chapter, title, content, word_count."""
-        from src.core.llm.chapter_generator import generate_single_chapter
+        from src.core.llm.chapter_generator import ChapterGenContext, generate_single_chapter
 
         mock_client = AsyncMock()
         mock_client.generate = AsyncMock(return_value="这是生成的章节内容，包含精彩的情节。")
@@ -216,11 +216,13 @@ class TestGenerateSingleChapter:
         chapter_outline = {"chapter": 3, "title": "风云突变", "plot": "主角遭遇危机"}
 
         result = await generate_single_chapter(
-            client=mock_client,
-            chapter_outline=chapter_outline,
-            previous_chapter="上一章结尾内容",
-            characters_json='[{"name": "张三", "role": "主角"}]',
-            world_setting_json='{"background": "修仙世界"}',
+            ChapterGenContext(
+                client=mock_client,
+                chapter_outline=chapter_outline,
+                previous_chapter="上一章结尾内容",
+                characters_json='[{"name": "张三", "role": "主角"}]',
+                world_setting_json='{"background": "修仙世界"}',
+            )
         )
 
         assert result["chapter"] == 3
@@ -231,7 +233,7 @@ class TestGenerateSingleChapter:
     @pytest.mark.asyncio
     async def test_first_chapter_uses_default_previous(self):
         """When previous_chapter is empty, prompt uses '这是第一章'."""
-        from src.core.llm.chapter_generator import generate_single_chapter
+        from src.core.llm.chapter_generator import ChapterGenContext, generate_single_chapter
 
         mock_client = AsyncMock()
         mock_client.generate = AsyncMock(return_value="第一章内容")
@@ -239,11 +241,13 @@ class TestGenerateSingleChapter:
         chapter_outline = {"chapter": 1, "title": "开篇"}
 
         await generate_single_chapter(
-            client=mock_client,
-            chapter_outline=chapter_outline,
-            previous_chapter="",
-            characters_json="[]",
-            world_setting_json="{}",
+            ChapterGenContext(
+                client=mock_client,
+                chapter_outline=chapter_outline,
+                previous_chapter="",
+                characters_json="[]",
+                world_setting_json="{}",
+            )
         )
 
         # Verify the prompt contains "这是第一章"
@@ -254,18 +258,20 @@ class TestGenerateSingleChapter:
     @pytest.mark.asyncio
     async def test_style_instruction_prepended_to_prompt(self):
         """style_instruction is prepended to the prompt."""
-        from src.core.llm.chapter_generator import generate_single_chapter
+        from src.core.llm.chapter_generator import ChapterGenContext, generate_single_chapter
 
         mock_client = AsyncMock()
         mock_client.generate = AsyncMock(return_value="内容")
 
         await generate_single_chapter(
-            client=mock_client,
-            chapter_outline={"chapter": 1, "title": "测试"},
-            previous_chapter="前文",
-            characters_json="[]",
-            world_setting_json="{}",
-            style_instruction="请使用热血燃向的文风",
+            ChapterGenContext(
+                client=mock_client,
+                chapter_outline={"chapter": 1, "title": "测试"},
+                previous_chapter="前文",
+                characters_json="[]",
+                world_setting_json="{}",
+                style_instruction="请使用热血燃向的文风",
+            )
         )
 
         prompt = mock_client.generate.call_args[0][0]
@@ -274,7 +280,7 @@ class TestGenerateSingleChapter:
     @pytest.mark.asyncio
     async def test_storylines_appended_to_prompt(self):
         """storylines_json is appended to the prompt."""
-        from src.core.llm.chapter_generator import generate_single_chapter
+        from src.core.llm.chapter_generator import ChapterGenContext, generate_single_chapter
 
         mock_client = AsyncMock()
         mock_client.generate = AsyncMock(return_value="内容")
@@ -282,12 +288,14 @@ class TestGenerateSingleChapter:
         sl_json = '[{"name": "主线", "type": "main"}]'
 
         await generate_single_chapter(
-            client=mock_client,
-            chapter_outline={"chapter": 1, "title": "测试"},
-            previous_chapter="前文",
-            characters_json="[]",
-            world_setting_json="{}",
-            storylines_json=sl_json,
+            ChapterGenContext(
+                client=mock_client,
+                chapter_outline={"chapter": 1, "title": "测试"},
+                previous_chapter="前文",
+                characters_json="[]",
+                world_setting_json="{}",
+                storylines_json=sl_json,
+            )
         )
 
         prompt = mock_client.generate.call_args[0][0]
@@ -297,7 +305,7 @@ class TestGenerateSingleChapter:
     @pytest.mark.asyncio
     async def test_kg_service_context_retrieval(self):
         """When kg_service is provided, it retrieves context."""
-        from src.core.llm.chapter_generator import generate_single_chapter
+        from src.core.llm.chapter_generator import ChapterGenContext, generate_single_chapter
 
         mock_client = AsyncMock()
         mock_client.generate = AsyncMock(return_value="内容")
@@ -312,14 +320,16 @@ class TestGenerateSingleChapter:
         with patch("src.core.config.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(KG_SUBAGENT_ENABLED=False)
             await generate_single_chapter(
-            client=mock_client,
-            chapter_outline=chapter_outline,
-            previous_chapter="前文",
-            characters_json="[]",
-            world_setting_json="{}",
-            kg_service=mock_kg,
-            novel_id="novel-kg-1",
-        )
+                ChapterGenContext(
+                    client=mock_client,
+                    chapter_outline=chapter_outline,
+                    previous_chapter="前文",
+                    characters_json="[]",
+                    world_setting_json="{}",
+                    kg_service=mock_kg,
+                    novel_id="novel-kg-1",
+                )
+            )
 
         mock_kg.retrieve_context.assert_awaited_once_with(
             novel_id="novel-kg-1",
@@ -334,7 +344,7 @@ class TestGenerateSingleChapter:
     @pytest.mark.asyncio
     async def test_kg_service_failure_non_blocking(self):
         """KG service failure does not block chapter generation."""
-        from src.core.llm.chapter_generator import generate_single_chapter
+        from src.core.llm.chapter_generator import ChapterGenContext, generate_single_chapter
 
         mock_client = AsyncMock()
         mock_client.generate = AsyncMock(return_value="正常生成内容")
@@ -344,13 +354,15 @@ class TestGenerateSingleChapter:
         mock_kg.extract_from_chapter = AsyncMock(side_effect=RuntimeError("KG down"))
 
         result = await generate_single_chapter(
-            client=mock_client,
-            chapter_outline={"chapter": 1, "title": "测试"},
-            previous_chapter="",
-            characters_json="[]",
-            world_setting_json="{}",
-            kg_service=mock_kg,
-            novel_id="novel-kg-2",
+            ChapterGenContext(
+                client=mock_client,
+                chapter_outline={"chapter": 1, "title": "测试"},
+                previous_chapter="",
+                characters_json="[]",
+                world_setting_json="{}",
+                kg_service=mock_kg,
+                novel_id="novel-kg-2",
+            )
         )
 
         # Should still return content despite KG failure
