@@ -24,7 +24,11 @@ from src.api.services.chapter_generation_utils import (
     _sync_chapter_type_to_db,
 )
 from src.api.services.chapter_persistence_service import persist_generated_chapters
+from src.api.services.long_form_progress_service import get_long_form_progress_service
+from src.api.services.novel_generator_planning import calculate_long_form_chapter_plan
 from src.api.services.progress_event_bus import EventType
+from src.api.services.task_manager import get_task_manager
+from src.api.services.volume_service import get_volume_service
 
 logger = structlog.get_logger(__name__)
 
@@ -912,3 +916,364 @@ async def _get_persisted_chapter_scores(
     except Exception:
         return None
 
+
+
+async def generate_volume_background(
+    task_id: str, novel_id: str, volume_number: int
+) -> None:
+    """按卷生成章节内容"""
+    task_manager = get_task_manager()
+    volume_service = get_volume_service()
+
+    try:
+        await task_manager.update_status(task_id, "running")
+
+        vol = await volume_service.get_volume(novel_id, volume_number)
+        if not vol or not vol.get("outline"):
+            # Fallback: try outlines table for volume/chapter data
+            from src.api.services.outline_service import get_outline_service
+            outline_svc = get_outline_service()
+            vol_outlines = await outline_svc.get_volume_outlines(novel_id)
+            outline_vol = next((v for v in vol_outlines if v["volume_number"] == volume_number), None)
+            if not outline_vol or not outline_vol.get("content"):
+                raise ValueError(f"Volume {volume_number} has no outline")
+            chapters_from_outline = await outline_svc.get_chapter_outlines(novel_id, volume_number)
+            if chapters_from_outline:
+                chapters_data = [{
+                    "chapter": ch["chapter_number"],
+                    "title": (ch.get("content") or {}).get("title", f"第{ch['chapter_number']}章"),
+                    "plot": (ch.get("content") or {}).get("turning_point", ""),
+                    "scenes": (ch.get("content") or {}).get("scenes", []),
+                } for ch in chapters_from_outline]
+            else:
+                # Use volume outline's own chapter list
+                chapters_data = outline_vol["content"].get("chapters", [])
+            vol = {"outline": {"chapters": chapters_data}}
+        else:
+            chapters_data = vol["outline"].get("chapters", [])
+
+        # Generate chapters using unified chapter generator (with gate + persist + artifacts)
+        vol_chapters = await generate_volume_chapters(
+            task_id=task_id,
+            novel_id=novel_id,
+            volume_number=volume_number,
+            chapter_start=None,  # 无卷模式：章号从 outline 自身 chapter 字段取（已是全局号）
+            chapter_end=None,
+            vol_outline={"chapters": chapters_data},
+            words_per_chapter=3000,  # 默认每章 3000 字
+            request=None,
+        )
+
+        await volume_service.update_volume(novel_id, volume_number, status="completed")
+        await task_manager.complete_task(task_id, {"chapters": vol_chapters})
+        await _emit_progress(
+            task_id, EventType.COMPLETED,
+            {"percentage": 100, "volume_number": volume_number},
+        )
+
+        logger.info(
+            "volume_generation_completed",
+            novel_id=novel_id,
+            volume_number=volume_number,
+        )
+
+    except Exception as e:
+        logger.exception("volume_generation_failed", error=str(e))
+        await task_manager.fail_task(task_id, str(e))
+        await volume_service.update_volume(novel_id, volume_number, status="failed")
+        await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
+
+
+async def generate_chapters_background(
+    task_id: str, novel_id: str, chapter_start: int, chapter_end: int
+) -> None:
+    """按章节范围生成"""
+    task_manager = get_task_manager()
+    volume_service = get_volume_service()
+
+    try:
+        await task_manager.update_status(task_id, "running")
+
+        # Build ordered chapter outlines for the requested range
+        volumes = await volume_service.list_volumes(novel_id)
+        all_outlines = []
+        for vol in volumes:
+            outline = vol.get("outline") or {}
+            for ch in outline.get("chapters", []):
+                all_outlines.append(ch)
+
+        chapter_outlines_for_range = []
+        for ch_num in range(chapter_start, chapter_end + 1):
+            ch_outline = next(
+                (co for co in all_outlines if co.get("chapter") == ch_num),
+                {"chapter": ch_num, "title": f"第{ch_num}章", "plot": "续写情节", "words": 5000},
+            )
+            chapter_outlines_for_range.append(ch_outline)
+
+        # Generate chapters using unified chapter generator (with gate + persist + artifacts).
+        # chapter_outlines_for_range 的 chapter 字段已是全局章号 → 无卷模式直接复用。
+        generated_chapters = await generate_volume_chapters(
+            task_id=task_id,
+            novel_id=novel_id,
+            volume_number=None,
+            chapter_start=None,
+            chapter_end=None,
+            vol_outline={"chapters": chapter_outlines_for_range},
+            words_per_chapter=5000,
+            request=None,
+        )
+
+        await task_manager.complete_task(task_id, {"chapters": generated_chapters})
+        await _emit_progress(
+            task_id, EventType.COMPLETED,
+            {"percentage": 100, "chapter_start": chapter_start, "chapter_end": chapter_end},
+        )
+
+        logger.info(
+            "chapters_generation_completed",
+            novel_id=novel_id,
+            chapter_start=chapter_start,
+            chapter_end=chapter_end,
+        )
+
+    except Exception as e:
+        logger.exception("chapters_generation_failed", error=str(e))
+        await task_manager.fail_task(task_id, str(e))
+        await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
+
+
+async def generate_long_form_background(
+    task_id: str,
+    novel_id: str,
+    request: Any,
+) -> None:
+    """后台执行百万字长篇生成
+
+    流程：
+    1. 生成总纲（master_outline）
+    2. 逐卷执行卷纲细化 + 卷内7节点流水线
+    3. 每卷完成后生成质量报告
+    4. 全部完成后生成最终报告
+
+    Args:
+        task_id: Task ID
+        novel_id: Novel ID
+        request: LongFormNovelRequest
+    """
+    task_manager = get_task_manager()
+    progress_service = get_long_form_progress_service()
+
+    try:
+        await task_manager.update_status(task_id, "running")
+
+        logger.info("long_form_generation_starting", task_id=task_id, novel_id=novel_id)
+
+        # T1: 自动计算每卷章节数（必须在 initialize_progress / update_novel 之前）
+        total_volumes = request.volumes
+        words_per_chapter = request.words_per_chapter
+
+        chapter_plan = calculate_long_form_chapter_plan(request)
+        chapters_per_vol = chapter_plan["chapters_per_volume"]
+
+        if request.auto_calc_chapters:
+            if chapters_per_vol != chapter_plan["computed_chapters_per_volume"]:
+                logger.warning(
+                    "auto_calc_chapters_clamped",
+                    computed=chapter_plan["computed_chapters_per_volume"],
+                    clamped=chapters_per_vol,
+                    target_words=request.target_words,
+                    words_per_chapter=request.words_per_chapter,
+                    volumes=request.volumes,
+                )
+            logger.info(
+                "auto_calc_chapters",
+                target_words=request.target_words,
+                words_per_chapter=request.words_per_chapter,
+                total_chapters=chapter_plan["estimated_total_chapters"],
+                chapters_per_vol=chapters_per_vol,
+            )
+
+        # Initialize progress tracking (uses correct chapters_per_vol)
+        await progress_service.initialize_progress(
+            novel_id=novel_id,
+            total_volumes=request.volumes,
+            chapters_per_volume=chapters_per_vol,
+        )
+
+        # Stage 1: Generate master outline
+        await _emit_progress(
+            task_id, EventType.STAGE_START,
+            {"stage": "master_outline", "percentage": 0},
+        )
+
+        # T2: pass chapters_per_vol so the prompt uses the correct value
+        master_outline = await generate_master_outline(
+            novel_id=novel_id,
+            request=request,
+            chapters_per_vol=chapters_per_vol,
+        )
+
+        # Update novel with master outline (uses correct chapters_per_vol)
+        from src.api.services.novel_manager import get_novel_manager
+        novel_manager = get_novel_manager()
+        await novel_manager.update_novel(
+            novel_id,
+            master_outline=master_outline,
+            total_volumes=request.volumes,
+            chapters_per_volume=chapters_per_vol,
+            words_per_chapter=request.words_per_chapter,
+            is_long_form=True,
+        )
+
+        await _emit_progress(
+            task_id, EventType.STAGE_COMPLETE,
+            {"stage": "master_outline", "percentage": 5},
+        )
+
+        # Stage 2: Generate volume by volume
+        global_chapter_start = 1
+        all_chapters_generated = []
+        failed_volumes: list[int] = []
+        unverified_volumes: list[int] = []
+
+        for vol_num in range(1, total_volumes + 1):
+            # Update progress
+            await progress_service.update_volume_status(
+                novel_id=novel_id,
+                volume_number=vol_num,
+                status="generating",
+            )
+
+            vol_percentage = 5 + int((vol_num - 1) / total_volumes * 90)
+            await _emit_progress(task_id, EventType.STAGE_START, {
+                "stage": f"volume_{vol_num}",
+                "volume_number": vol_num,
+                "percentage": vol_percentage,
+            })
+
+            try:
+                # Generate volume outline
+                vol_outline = await generate_volume_outline(
+                    novel_id=novel_id,
+                    master_outline=master_outline,
+                    volume_number=vol_num,
+                    chapters_per_volume=chapters_per_vol,
+                    words_per_chapter=words_per_chapter,
+                    request=request,
+                )
+
+                # T3: Persist volume outline and chapter outlines to Outline table
+                try:
+                    from src.api.services.outline_service import get_outline_service
+                    outline_service = get_outline_service()
+                    await outline_service.upsert_volume_outline(novel_id, vol_num, vol_outline)
+                    chapters_data = vol_outline.get("chapters", [])
+                    volume_offset = (vol_num - 1) * chapters_per_vol
+                    for idx, ch in enumerate(chapters_data):
+                        local_ch_num = ch.get("chapter", idx + 1)
+                        global_ch_num = volume_offset + local_ch_num
+                        await outline_service.upsert_chapter_outline(novel_id, vol_num, global_ch_num, ch)
+                    logger.info(
+                        "volume_outline_persisted",
+                        novel_id=novel_id,
+                        volume_number=vol_num,
+                        chapter_count=len(chapters_data),
+                    )
+                except Exception as persist_error:
+                    logger.warning(
+                        "volume_outline_persist_failed",
+                        novel_id=novel_id,
+                        volume_number=vol_num,
+                        error=str(persist_error),
+                    )
+
+                # Generate chapters for this volume
+                chapter_end = global_chapter_start + chapters_per_vol - 1
+                vol_chapters = await generate_volume_chapters(
+                    task_id=task_id,
+                    novel_id=novel_id,
+                    volume_number=vol_num,
+                    chapter_start=global_chapter_start,
+                    chapter_end=chapter_end,
+                    vol_outline=vol_outline,
+                    words_per_chapter=words_per_chapter,
+                    request=request,
+                )
+
+                all_chapters_generated.extend(vol_chapters)
+
+                # Generate quality report for this volume
+                quality_report = await generate_volume_quality_report(
+                    novel_id=novel_id,
+                    volume_number=vol_num,
+                    chapters=vol_chapters,
+                )
+
+                if quality_report.get("has_unverified"):
+                    unverified_volumes.append(vol_num)
+
+                # Update progress
+                await progress_service.update_volume_status(
+                    novel_id=novel_id,
+                    volume_number=vol_num,
+                    status="completed",
+                    chapters_completed=len(vol_chapters),
+                    quality_report=quality_report,
+                )
+
+                await _emit_progress(task_id, EventType.STAGE_COMPLETE, {
+                    "stage": f"volume_{vol_num}",
+                    "volume_number": vol_num,
+                    "percentage": vol_percentage + int(90 / total_volumes),
+                })
+
+                global_chapter_start = chapter_end + 1
+
+            except Exception as vol_error:
+                logger.error(
+                    "volume_generation_failed",
+                    novel_id=novel_id,
+                    volume_number=vol_num,
+                    error=str(vol_error),
+                )
+                failed_volumes.append(vol_num)
+                await progress_service.update_volume_status(
+                    novel_id=novel_id,
+                    volume_number=vol_num,
+                    status="failed",
+                    errors=[str(vol_error)],
+                )
+                # Continue to next volume
+                continue
+
+        # Final completion — distinguish volume-level statuses
+        if failed_volumes and not all_chapters_generated:
+            final_status = "failed"
+        elif failed_volumes:
+            final_status = "partially_completed"
+        elif unverified_volumes:
+            final_status = "completed_with_unverified_quality"
+        else:
+            final_status = "completed"
+        await task_manager.complete_task(task_id, {
+            "novel_id": novel_id,
+            "total_volumes": total_volumes,
+            "total_chapters": len(all_chapters_generated),
+        }, status=final_status)
+
+        await _emit_progress(
+            task_id, EventType.COMPLETED,
+            {"percentage": 100, "current_stage": "completed"},
+        )
+
+        logger.info(
+            "long_form_generation_completed",
+            task_id=task_id,
+            novel_id=novel_id,
+            total_chapters=len(all_chapters_generated),
+        )
+
+    except Exception as e:
+        logger.exception("long_form_generation_failed", task_id=task_id)
+        await task_manager.fail_task(task_id, str(e))
+        await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
