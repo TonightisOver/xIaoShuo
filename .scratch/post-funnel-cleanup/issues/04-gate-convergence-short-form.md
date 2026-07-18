@@ -4,7 +4,7 @@
 
 **Blocked by:** 03（Context 对象收窄后，gate 调用方接口统一）
 
-**Status:** ready-for-agent
+**Status:** resolved — 短篇 quality_check 节点收敛到 run_quality_gate；保留 KG 抽取副作用，删 KG/StoryBible 硬门禁（口径收敛为 gate L2 评分 < 0.4）；短篇首次抽 state_delta 入 state
 
 - [ ] `langgraph/nodes/quality_check.py` 的 `evaluate_chapter_quality` 改为调 `run_quality_gate`
 - [ ] 去掉 short-form 里独立实现的 `consistency_blocked`（gate 自带 CONSISTENCY_BLOCK_THRESHOLD）

@@ -4,7 +4,7 @@
 
 **Blocked by:** None — 可立即开始
 
-**Status:** ready-for-agent
+**Status:** partial — BackgroundTasks 丢失保护 + 前端风格统一已落地；安全三项（DEV_AUTO_LOGIN/root 密码/登录守卫）按 map.md 决策暂不处理
 
 - [ ] **关 DEV_AUTO_LOGIN**：线上当前 DEV_AUTO_LOGIN=1，任何人可免登录获 admin 调全部 API（含 LLM 配置）。恢复前端路由守卫 + 去掉 compose 注入，仅本地 dev 保留
 - [ ] **改 root 密码**：服务器 root 密码 `qT27RUgyLRGJ` 已在对话记录中暴露，部署完立即改

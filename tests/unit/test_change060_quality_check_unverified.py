@@ -19,8 +19,10 @@ async def test_eval_failure_marks_unverified_not_fake_score():
     }
     config = {"configurable": {}}
 
-    with patch("src.core.langgraph.nodes.quality_check.evaluate_chapter_quality",
-               new=AsyncMock(side_effect=Exception("LLM 挂了"))):
+    with patch("src.core.quality.gate.evaluate_chapter_quality",
+               new=AsyncMock(side_effect=Exception("LLM 挂了"))), \
+         patch("src.core.quality.state_delta.extract_state_delta",
+               new=AsyncMock(return_value={})):
         result = await quality_check.node(state, config)
 
     scores = result["quality_scores"]
@@ -54,8 +56,13 @@ async def test_unverified_blocks_pass_until_max_retries():
 
 
 @pytest.mark.asyncio
-async def test_bible_severe_conflict_triggers_hard_gate():
-    """StoryBible 严重冲突(bible_errors>0)应触发一致性硬门禁(consistency_blocked=True)。"""
+async def test_bible_severe_conflict_collected_not_blocked():
+    """StoryBible 冲突收敛到 consistency_warnings 供展示，不再触发硬门禁（Ticket 04）。
+
+    gate 的硬门禁只看 L2 评分 character_consistency/world_consistency < 0.4，
+    不消费 detect_bible_conflicts。本测试 mock L2 返回高分，故即使 bible 有
+    error 级冲突也不应 consistency_blocked。
+    """
     state = {
         "chapters": [{"chapter": 1, "title": "测试", "content": "正文内容较长", "word_count": 8}],
         "novel_type": "玄幻",
@@ -85,14 +92,19 @@ async def test_bible_severe_conflict_triggers_hard_gate():
         }
     }
 
-    with patch("src.core.langgraph.nodes.quality_check.evaluate_chapter_quality",
+    with patch("src.core.quality.gate.evaluate_chapter_quality",
                new=AsyncMock(return_value=fake_result)), \
+         patch("src.core.quality.state_delta.extract_state_delta",
+               new=AsyncMock(return_value={})), \
          patch("src.core.langgraph.nodes.quality_check.get_settings") as mock_s:
         mock_s.return_value.KNOWLEDGE_GRAPH_ENABLED = False  # 跳过 KG
         mock_s.return_value.QUALITY_LOOP_ENABLED = True
         result = await quality_check.node(state, config)
 
+    # bible 冲突收集到 consistency_warnings 供 human_review 展示
+    warnings = result["consistency_warnings"]
+    assert any(w.get("type") == "character_inconsistency" for w in warnings)
+    # L2 高分 → 不触发硬门禁（gate 口径变化，StoryBible error 不再 block）
     scores = result["quality_scores"]
-    # bible_errors>0 应触发硬门禁
-    assert scores.get("consistency_blocked") is True
-    assert scores.get("status") == "consistency_blocked"
+    assert scores.get("consistency_blocked") is not True
+    assert scores.get("status") != "consistency_blocked"

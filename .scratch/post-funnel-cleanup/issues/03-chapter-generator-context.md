@@ -4,7 +4,7 @@
 
 **Blocked by:** 02（novel_generator 拆完后调用方数量稳定，改接口风险更可控）
 
-**Status:** ready-for-agent
+**Status:** resolved — ChapterGenContext 收窄 14 参数 + 修 helpers storylines 漏传
 
 - [ ] 定义 `GenerationContext`：封装 chars_str/world_str/storylines_str/style_instruction/blueprint/story_bible_context/previous_chapter/target_words
 - [ ] chapter_generator 内部函数接收 GenerationContext 替代散列参数

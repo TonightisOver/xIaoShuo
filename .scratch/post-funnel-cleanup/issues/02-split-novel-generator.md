@@ -4,7 +4,7 @@
 
 **Blocked by:** 01（安全基线先稳）
 
-**Status:** ready-for-agent
+**Status:** resolved — 长篇三入口迁入 helpers，novel_generator 996→640 行
 
 - [ ] `generate_long_form_background` 从 novel_generator 迁入 long_form_generation_helpers
 - [ ] 删除 novel_generator 里长篇相关的 import（progress_service/calculate_chapter_plan 等）

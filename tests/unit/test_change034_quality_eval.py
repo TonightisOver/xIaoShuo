@@ -13,10 +13,14 @@ class TestQualityCheckNode:
 
     @pytest.mark.asyncio
     async def test_quality_check_happy_path(self):
-        """Happy path: LLM returns a valid JSON structure.
+        """Happy path：gate 返回 verified + 合法分数，节点透传并产出 state_delta。
 
-        It should be successfully parsed.
+        Ticket 04 后节点收敛到 run_quality_gate，L2 评分逻辑由 gate 负责
+        （详见 test_change061_quality_gate）。本测试只验节点翻译层契约：
+        gate verified → quality_scores 透传 + state_delta 入 state。
         """
+        from src.core.quality.gate import GateResult
+
         state: NovelState = {
             "project_id": "test-project-034",
             "novel_type": "玄幻",
@@ -33,75 +37,33 @@ class TestQualityCheckNode:
             "errors": [],
         }
 
-        mock_llm_response = """
-        {
-          "scores": {
-            "advancement": 0.90,
-            "conflict": 0.85,
-            "character_consistency": 0.95,
-            "world_consistency": 0.90,
-            "foreshadowing": 0.80,
-            "pacing": 0.85,
-            "readability": 0.90,
-            "trope_alignment": 0.85
-          },
-          "feedback": {
-            "advancement": "主线推进非常流畅，展现了张三作为大师兄的气场。",
-            "conflict": "风云涌动给出了很好的危机期待感。",
-            "character_consistency": "张三心静如水符合性格设定。",
-            "world_consistency": "玄幻山门设定合理。",
-            "foreshadowing": "暗示了即将到来的挑战。",
-            "pacing": "节奏紧凑，开篇简练。",
-            "readability": "文笔干净利落。",
-            "trope_alignment": "符合玄幻大师兄套路。"
-          },
-          "overall_score": 0.88,
-          "suggestions": [
-            "可以适当增加一些路人配角的惊叹以衬托大师兄。"
-          ]
-        }
-        """
+        fake_gate = GateResult(
+            final_content="张三站在山门之上",
+            quality_status="verified",
+            quality_scores={
+                "overall": 0.88, "advancement": 0.90, "conflict": 0.85,
+                "character_consistency": 0.95, "world_consistency": 0.90,
+                "foreshadowing": 0.80, "pacing": 0.85, "readability": 0.90,
+                "trope_alignment": 0.85,
+            },
+            state_delta={"characters": ["张三"]},
+            l2_evaluated=True,
+        )
 
-        with patch(
-            "src.core.quality.evaluator.get_llm_client"
-        ) as mock_get_client, patch(
-            "src.core.config.get_settings"
-        ) as mock_settings:
-
-            # Disable Knowledge Graph to isolate LLM evaluation testing
-            mock_cfg = AsyncMock()
-            mock_cfg.KNOWLEDGE_GRAPH_ENABLED = False
-            mock_settings.return_value = mock_cfg
-
-            mock_client = AsyncMock()
-            mock_client.generate = AsyncMock(return_value=mock_llm_response)
-            mock_get_client.return_value = mock_client
-
+        with patch("src.core.langgraph.nodes.quality_check.get_settings") as mock_s, \
+             patch("src.core.quality.gate.run_quality_gate",
+                   new=AsyncMock(return_value=fake_gate)):
+            mock_s.return_value.KNOWLEDGE_GRAPH_ENABLED = False
             updated_state = await node(state)
 
-        # Assert correct output formatting and type mapping
         assert updated_state["current_stage"] == "quality_check_completed"
         scores = updated_state["quality_scores"]
         assert scores["overall"] == 0.88
-        assert scores["advancement"] == 0.90
-        assert scores["conflict"] == 0.85
         assert scores["character_consistency"] == 0.95
-        assert scores["world_consistency"] == 0.90
-        assert scores["foreshadowing"] == 0.80
-        assert scores["pacing"] == 0.85
-        assert scores["readability"] == 0.90
-        assert scores["trope_alignment"] == 0.85
         assert scores["consistency"] == 1.0  # KG disabled default
-
-        # Assert suggestions and feedback mapped to revision_requests
-        assert len(updated_state["revision_requests"]) > 0
-        assert any(
-            "主线推进非常流畅" in r for r in updated_state["revision_requests"]
-        )
-        assert any(
-            "修改建议: 可以适当增加一些路人配角" in r
-            for r in updated_state["revision_requests"]
-        )
+        assert scores.get("consistency_blocked") is not True
+        # state_delta 入 state（短篇首次有 state_delta，Ticket 04 目标）
+        assert updated_state["state_delta"] == {"characters": ["张三"]}
 
     @pytest.mark.asyncio
     async def test_quality_check_graceful_fallback_on_llm_error(self):
@@ -140,10 +102,13 @@ class TestQualityCheckNode:
 
     @pytest.mark.asyncio
     async def test_quality_check_malformed_json_recovery(self):
-        """When LLM returns a malformed JSON string, the parser detects it.
+        """gate L2 拿到畸形 JSON 降级为 unverified 时，节点应透传 unverified 状态。
 
-        It should gracefully fall back to default scores.
+        Ticket 04 后 L2 解析容错由 gate 负责（gate.py L2 失败 → unverified）。
+        本测试验节点翻译层：gate unverified → quality_scores.status=unverified。
         """
+        from src.core.quality.gate import GateResult
+
         state: NovelState = {
             "project_id": "test-project-malformed",
             "novel_type": "都市",
@@ -152,31 +117,21 @@ class TestQualityCheckNode:
             "errors": [],
         }
 
-        # Corrupt JSON block missing closing bracket
-        corrupt_json = """
-        {
-          "scores": {
-            "advancement": 0.90,
-            "conflict": 0.85
-        """
+        fake_gate = GateResult(
+            final_content="写代码中。",
+            quality_status="unverified",
+            quality_scores={"overall": None, "status": "unverified"},
+            state_delta={"_unverified": True},
+            l2_evaluated=True,
+        )
 
-        with patch(
-            "src.core.quality.evaluator.get_llm_client"
-        ) as mock_get_client, patch(
-            "src.core.config.get_settings"
-        ) as mock_settings:
-
-            mock_cfg = AsyncMock()
-            mock_cfg.KNOWLEDGE_GRAPH_ENABLED = False
-            mock_settings.return_value = mock_cfg
-
-            mock_client = AsyncMock()
-            mock_client.generate = AsyncMock(return_value=corrupt_json)
-            mock_get_client.return_value = mock_client
-
+        with patch("src.core.langgraph.nodes.quality_check.get_settings") as mock_s, \
+             patch("src.core.quality.gate.run_quality_gate",
+                   new=AsyncMock(return_value=fake_gate)):
+            mock_s.return_value.KNOWLEDGE_GRAPH_ENABLED = False
             updated_state = await node(state)
 
-        # Should recover safely
         assert updated_state["current_stage"] == "quality_check_completed"
         scores = updated_state["quality_scores"]
-        assert scores["overall"] == 0.8  # Default from evaluator fallback
+        assert scores["overall"] is None
+        assert scores["status"] == "unverified"

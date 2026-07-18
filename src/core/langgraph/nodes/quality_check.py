@@ -13,7 +13,10 @@ from langchain_core.runnables import RunnableConfig
 
 from src.core.config import get_settings
 from src.core.langgraph.state import NovelState
-from src.core.quality.evaluator import evaluate_chapter_quality
+
+# evaluate_chapter_quality 不再由节点直接调用（收敛到 run_quality_gate，Ticket 04）。
+# 保留 import 仅为测试 patch 路径稳定：test_change060 patch 本模块符号。
+from src.core.quality.evaluator import evaluate_chapter_quality  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -87,8 +90,10 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
         l0_all.append(l0)
 
     # 2. 知识图谱一致性检查 (via injected kg_service)
+    # NOTE（Ticket 04）：KG 检查仅产出 consistency_warnings / kg_continuity_report
+    # 供下游 human_review 展示 + KG 抽取副作用。一致性硬门禁已收敛到 run_quality_gate
+    # （gate 看 L2 评分的 character_consistency/world_consistency < 0.4）。
     consistency_score = 1.0
-    consistency_blocked = False
     settings = get_settings()
     consistency_warnings = []
     kg_continuity_report = None
@@ -129,13 +134,10 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
                     verdict = kg_continuity_report.get("verdict", "pass")
                     if verdict == "block":
                         consistency_score = 0.3
-                        consistency_blocked = True  # 硬门禁：无论 overall 多少都不通过
                     elif verdict == "warn":
                         consistency_score = 0.8
-                        consistency_blocked = False
                     else:
                         consistency_score = 1.0
-                        consistency_blocked = False
                 else:
                     conflicts = await kg_service.check_consistency(
                         novel_id=novel_id,
@@ -146,11 +148,12 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
                     error_count = sum(1 for c in conflicts if c.get("severity") == "error")
                     if error_count > 0:
                         consistency_score = max(0.3, 1.0 - error_count * 0.2)
-                        consistency_blocked = True  # 硬门禁：严重一致性冲突，无论 overall 多少都不通过
             except Exception as e:
                 logger.warning(f"Consistency check failed: {e}")
 
     # 2.5 StoryBible 冲突检测 (via injected callback)
+    # NOTE（Ticket 04）：仅收集到 consistency_warnings 供展示，不再触发硬门禁
+    # （gate 的硬门禁基于 L2 评分，不消费 detect_bible_conflicts）。
     detect_bible_conflicts_fn = configurable.get("detect_bible_conflicts")
     if novel_id and detect_bible_conflicts_fn:
         try:
@@ -161,13 +164,6 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
             )
             if bible_conflicts:
                 consistency_warnings.extend(bible_conflicts)
-                bible_errors = sum(
-                    1 for c in bible_conflicts
-                    if c.get("severity") == "error"
-                )
-                if bible_errors > 0:
-                    consistency_score = max(0.3, consistency_score - bible_errors * 0.1)
-                    consistency_blocked = True  # 硬门禁：StoryBible 严重冲突（人物/设定矛盾），无论 overall 多少都不通过
         except Exception as e:
             logger.warning(f"StoryBible conflict detection failed: {e}")
 
@@ -185,72 +181,84 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
             except Exception as e:
                 logger.warning(f"Knowledge graph extraction failed: {e}")
 
-    # 3. 调用公共质量评估模块进行 8 大硬度指标自适应评分
-    persist_quality_fn = configurable.get("persist_quality")
+    # 3. 质量门禁漏斗（收敛到 run_quality_gate，Ticket 04）
+    #    gate 接管：state_delta 抽取 + L0 + L1 风险分级 + L2 评分 + consistency 硬门禁 + L3 改写。
+    #    节点保留：KG 一致性检查（§2 产出 consistency_warnings/kg_continuity_report）
+    #             + KG 知识抽取副作用（§2.6）。
+    #    一致性硬门禁口径变化：gate 看 L2 评分 character_consistency/world_consistency < 0.4，
+    #    旧版基于 KG verdict / StoryBible error 的 block 已移除。
+    from src.api.services.chapter_persistence_service import persist_quality_to_version
+    from src.api.services.rewrite_loop_service import RewriteLoopService
+    from src.core.quality.gate import GatePersistCallbacks, run_quality_gate
+
+    persist_quality_fn = configurable.get("persist_quality") or persist_quality_to_version
+
+    novel_type = state.get("novel_type", "网络小说")
+    idea = state.get("idea", "暂无核心创意描述")
+    world_setting_str = (
+        json.dumps(state.get("world_setting"), ensure_ascii=False)
+        if state.get("world_setting") else "暂无世界观设定"
+    )
+    characters_str = (
+        json.dumps(state.get("characters", []), ensure_ascii=False)
+        if state.get("characters") else "暂无人物角色人设"
+    )
+
+    # 短篇 LangGraph 暂无 novel_manager 入口，state_delta 仅入 state 不落 DB 行；
+    # quality_status 也仅写入 quality_scores，由 persist_quality_fn 持久化。
+    async def _noop(*args, **kwargs):
+        return None
+
+    gate_callbacks = GatePersistCallbacks(
+        update_state_delta=_noop,
+        update_quality_status=_noop,
+        persist_quality_scores=persist_quality_fn,
+        detect_bible_conflicts=configurable.get("detect_bible_conflicts"),
+    )
 
     try:
-        # 组织生成大设定上下文
-        novel_type = state.get("novel_type", "网络小说")
-        idea = state.get("idea", "暂无核心创意描述")
-
-        world_setting = state.get("world_setting")
-        world_setting_str = (
-            json.dumps(world_setting, ensure_ascii=False)
-            if world_setting
-            else "暂无世界观设定"
-        )
-
-        characters = state.get("characters", [])
-        characters_str = (
-            json.dumps(characters, ensure_ascii=False)
-            if characters
-            else "暂无人物角色人设"
-        )
-
-        logger.info(
-            "Calling DeepSeek for multi-dimensional novel quality check "
-            "(novel_id=%s, chapter=%s)",
-            state.get("project_id"),
-            chapter_number,
-        )
-
-        result = await evaluate_chapter_quality(
-            chapter_content=chapter_content,
+        gate_result = await run_quality_gate(
+            novel_id=novel_id,
             chapter_number=chapter_number,
+            chapter_result={
+                "content": chapter_content,
+                "word_count": last_chapter.get("word_count", len(chapter_content)),
+                "chapter_type": last_chapter.get("chapter_type"),
+            },
+            chapter_outline=last_chapter.get("plot") or last_chapter.get("outline"),
             novel_type=novel_type,
             idea=idea,
             world_setting=world_setting_str,
             characters=characters_str,
-            chapter_title=chapter_title,
-            default_score=0.8,
+            persist_callbacks=gate_callbacks,
+            rewrite_service=RewriteLoopService(),
+            chapter_index_in_volume=max(len(chapters) - 1, 0),
         )
 
-        # 装配多维评分指标数据（含 consistency 维度）
-        quality_scores = result.to_scores_dict()
+        quality_scores = dict(gate_result.quality_scores)
+        # 保留 KG 一致性分作参考维度（不参与 block 判定，block 已由 gate 决定）
         quality_scores["consistency"] = consistency_score
-        if consistency_blocked:
+        # 翻译 gate quality_status → graph.py 路由期望的标记
+        if gate_result.quality_status == "consistency_blocked":
             quality_scores["consistency_blocked"] = True
             quality_scores["status"] = "consistency_blocked"
+        elif gate_result.quality_status == "unverified":
+            quality_scores["status"] = "unverified"
+        elif gate_result.quality_status in ("verified", "failed"):
+            quality_scores["status"] = gate_result.quality_status
+
+        # revision_requests：gate 不产出 L2 feedback/suggestions，用 L0 告警兜底
+        # 供 human_review 展示（取前 5）。warnings 是 list[dict]（_l0_warnings 产出）。
+        revision_requests = [
+            f"【L0】: {w.get('message') or w.get('rule', '')}"
+            for w in (gate_result.warnings or [])
+        ][:5]
 
         logger.info(
-            "Quality evaluation completed successfully "
-            "(overall_score=%s, scores=%s)",
-            quality_scores["overall"],
-            quality_scores,
+            f"quality_gate_completed novel_id={novel_id} chapter={chapter_number} "
+            f"status={gate_result.quality_status} overall={quality_scores.get('overall')} "
+            f"l2_evaluated={gate_result.l2_evaluated} rewrite_attempted={gate_result.rewrite_attempted}"
         )
-
-        # 将反馈与修改建议沉淀入 state 中供 revision 流程展示
-        revision_requests = []
-        for dim, fb in result.feedback.items():
-            revision_requests.append(f"【{dim}】: {fb}")
-        for sug in result.suggestions:
-            revision_requests.append(f"修改建议: {sug}")
-
-        # 持久化质量评分到活跃版本 (via injected callback)
-        if persist_quality_fn and novel_id and chapter_number:
-            await persist_quality_fn(
-                novel_id, chapter_number, quality_scores, consistency_warnings
-            )
 
         return {
             **state,
@@ -260,32 +268,22 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
             "current_stage": "quality_check_completed",
             "kg_continuity_report": kg_continuity_report,
             "l0_results": l0_all,
+            "state_delta": gate_result.state_delta,  # 短篇首次有 state_delta（Ticket 04 目标）
         }
 
     except Exception as e:
         logger.error(
-            f"Multi-dimensional quality check failed. "
-            f"Falling back to graceful defaults: {e}",
+            f"quality gate failed, falling back to unverified: {e}",
             exc_info=True,
         )
-
-    # 4. 触发兜底优雅降级，防止主生成流程中断或死锁
-    unverified_scores["consistency"] = consistency_score
-
-    # 即使降级也持久化默认评分
-    if persist_quality_fn and novel_id and last_chapter:
-        await persist_quality_fn(
-            novel_id,
-            last_chapter.get("chapter", 0),
-            unverified_scores,
-            consistency_warnings,
-        )
-
-    return {
-        **state,
-        "quality_scores": {**unverified_scores, "consistency_blocked": consistency_blocked},
-        "consistency_warnings": consistency_warnings,
-        "current_stage": "quality_check_completed",
-        "kg_continuity_report": kg_continuity_report,
-        "l0_results": l0_all,
-    }
+        unverified_scores["consistency"] = consistency_score
+        if persist_quality_fn and novel_id:
+            await persist_quality_fn(novel_id, chapter_number, unverified_scores, consistency_warnings)
+        return {
+            **state,
+            "quality_scores": {**unverified_scores, "consistency_blocked": False},
+            "consistency_warnings": consistency_warnings,
+            "current_stage": "quality_check_completed",
+            "kg_continuity_report": kg_continuity_report,
+            "l0_results": l0_all,
+        }
