@@ -17,8 +17,6 @@ from src.api.services.chapter_generation_utils import (
     _sync_chapter_type_to_db,
 )
 from src.api.services.chapter_persistence_service import (
-    persist_chapters_with_replace,
-    persist_generated_chapters,
     persist_langgraph_result,
     persist_quality_to_version,
 )
@@ -622,104 +620,6 @@ async def _run_sub_feature(
         })
 
 
-async def _generate_chapters_batch(
-    task_id: str,
-    novel_id: str,
-    chapter_outlines: list[dict],
-    prev_context: str,
-    default_previous_text: str = "这是起始章节",
-) -> list[dict]:
-    """Unified chapter generation loop used by volume and range generators.
-
-    Iterates over chapter_outlines, generates each chapter sequentially,
-    emits progress, syncs chapter_type, and returns the list of generated chapters.
-
-    Args:
-        task_id: Task identifier for progress events.
-        novel_id: Novel identifier.
-        chapter_outlines: Ordered list of chapter outline dicts
-            (must have "chapter" key).
-        prev_context: Text context from previous chapters
-            (before the first outline).
-        default_previous_text: Fallback text when prev_context is empty
-            for the first chapter.
-
-    Returns:
-        List of generated chapter result dicts.
-    """
-    from src.core.database import get_db_session
-    from src.core.llm.chapter_generator import generate_single_chapter
-    from src.core.llm.client import get_llm_client
-
-    client = get_llm_client()
-
-    # Build context via NovelContextBuilder
-    async with get_db_session() as session:
-        gen_ctx = await _context_builder.build_generation_context(session, novel_id)
-
-    chars_str = gen_ctx.chars_str
-    world_str = gen_ctx.world_str
-    sl_str = gen_ctx.storylines_str
-    style_instruction = gen_ctx.style_instruction
-
-    total_chapters = len(chapter_outlines)
-    generated_chapters: list[dict] = []
-
-    for i, ch_outline in enumerate(chapter_outlines):
-        while await is_task_paused(task_id):
-            await asyncio.sleep(1)
-
-        # Determine previous chapter text with richer context for continuity
-        if i == 0:
-            previous_chapter = prev_context
-        else:
-            last_result = generated_chapters[-1]
-            last_content = last_result.get("content") or ""
-            parts = []
-            if last_result.get("title"):
-                parts.append(f"上一章：《{last_result['title']}》")
-            if last_content:
-                parts.append(f"结尾段落：\n{last_content[-400:]}")
-            if ch_outline.get("plot"):
-                parts.append(f"本章需要推进：{ch_outline['plot']}")
-            previous_chapter = "\n".join(parts) if parts else last_content[:500]
-
-        # Prepare story bible context and blueprint
-        story_bible_ctx = await _get_story_bible_context(novel_id, ch_outline)
-        bp = await _get_blueprint(novel_id, ch_outline)
-
-        chapter_result = await generate_single_chapter(
-            client=client,
-            chapter_outline=ch_outline,
-            previous_chapter=previous_chapter or default_previous_text,
-            characters_json=chars_str,
-            world_setting_json=world_str,
-            storylines_json=sl_str,
-            style_instruction=style_instruction,
-            novel_id=novel_id,
-            blueprint=bp,
-            story_bible_context=story_bible_ctx,
-        )
-        generated_chapters.append(chapter_result)
-
-        # Sync chapter_type to DB
-        ch_num = ch_outline.get("chapter", i + 1)
-        await _sync_chapter_type_to_db(
-            novel_id, ch_num, chapter_result.get("chapter_type")
-        )
-
-        # Emit progress
-        progress_data = {
-            "current_stage": "chapter_generation",
-            "completed_chapters": len(generated_chapters),
-            "total_chapters": total_chapters,
-            "percentage": int((len(generated_chapters) / total_chapters) * 100),
-        }
-        await _emit_progress(
-            task_id, EventType.CHAPTER_PROGRESS, progress_data, update_status=True,
-        )
-
-    return generated_chapters
 
 
 async def generate_volume_background(
@@ -757,33 +657,22 @@ async def generate_volume_background(
         else:
             chapters_data = vol["outline"].get("chapters", [])
 
-        # Fetch context: previous chapters from earlier volumes
-        prev_context = ""
-        from src.api.services.chapter_service import get_chapter_service
-        ch_service = get_chapter_service()
-        prev_chapters = await ch_service.list_chapters_preview(novel_id)
-        prev_in_earlier_vols = [c for c in prev_chapters if (c.get("volume_number") or 0) < volume_number]
-        if prev_in_earlier_vols:
-            last_ch = prev_in_earlier_vols[-1]
-            last_tail = await ch_service.get_chapter_tail(
-                novel_id, last_ch["chapter_number"]
-            )
-            prev_context = f"前文最后一章《{last_ch.get('title', '')}》结尾：{last_tail}"
+        # Generate chapters using unified chapter generator (with gate + persist + artifacts)
+        from src.api.services.long_form_generation_helpers import generate_volume_chapters
 
-        # Generate chapters using unified batch function
-        generated_chapters = await _generate_chapters_batch(
+        vol_chapters = await generate_volume_chapters(
             task_id=task_id,
             novel_id=novel_id,
-            chapter_outlines=chapters_data,
-            prev_context=prev_context,
-            default_previous_text="这是本卷第一章",
+            volume_number=volume_number,
+            chapter_start=None,  # 无卷模式：章号从 outline 自身 chapter 字段取（已是全局号）
+            chapter_end=None,
+            vol_outline={"chapters": chapters_data},
+            words_per_chapter=3000,  # 默认每章 3000 字
+            request=None,
         )
 
-        # Persist chapters to DB
-        await persist_generated_chapters(novel_id, generated_chapters, volume_number)
-
         await volume_service.update_volume(novel_id, volume_number, status="completed")
-        await task_manager.complete_task(task_id, {"chapters": generated_chapters})
+        await task_manager.complete_task(task_id, {"chapters": vol_chapters})
         await _emit_progress(
             task_id, EventType.COMPLETED,
             {"percentage": 100, "volume_number": volume_number},
@@ -813,13 +702,6 @@ async def generate_chapters_background(
     try:
         await task_manager.update_status(task_id, "running")
 
-        prev_context = ""
-        if chapter_start > 1:
-            from src.api.services.chapter_service import get_chapter_service
-            prev_context = await get_chapter_service().get_chapter_tail(
-                novel_id, chapter_start - 1
-            )
-
         # Build ordered chapter outlines for the requested range
         volumes = await volume_service.list_volumes(novel_id)
         all_outlines = []
@@ -836,17 +718,20 @@ async def generate_chapters_background(
             )
             chapter_outlines_for_range.append(ch_outline)
 
-        # Generate chapters using unified batch function
-        generated_chapters = await _generate_chapters_batch(
+        # Generate chapters using unified chapter generator (with gate + persist + artifacts).
+        # chapter_outlines_for_range 的 chapter 字段已是全局章号 → 无卷模式直接复用。
+        from src.api.services.long_form_generation_helpers import generate_volume_chapters
+
+        generated_chapters = await generate_volume_chapters(
             task_id=task_id,
             novel_id=novel_id,
-            chapter_outlines=chapter_outlines_for_range,
-            prev_context=prev_context,
-            default_previous_text="这是起始章节",
+            volume_number=None,
+            chapter_start=None,
+            chapter_end=None,
+            vol_outline={"chapters": chapter_outlines_for_range},
+            words_per_chapter=5000,
+            request=None,
         )
-
-        # Persist chapters (replace existing, create versions, update StoryBible)
-        await persist_chapters_with_replace(novel_id, generated_chapters, volumes)
 
         await task_manager.complete_task(task_id, {"chapters": generated_chapters})
         await _emit_progress(

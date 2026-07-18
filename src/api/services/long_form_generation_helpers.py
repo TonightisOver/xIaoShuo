@@ -504,7 +504,7 @@ async def generate_volume_chapters(
     """Generate chapters for a volume.
 
     无卷退化：volume_number/chapter_start/chapter_end/request 均可为 None，
-    章号从 outline 的 "chapter" 字段推断（由 _generate_chapters_batch 调用方复用）。
+    章号从 outline 的 "chapter" 字段推断（支持无卷调用方复用）。
 
     Returns:
         List of generated chapter dicts
