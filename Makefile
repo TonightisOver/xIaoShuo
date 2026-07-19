@@ -10,7 +10,7 @@
 PY := poetry run
 FE := cd frontend && npm
 
-.PHONY: test-unit test-api test-integration test-backend test-frontend ruff ruff-fix build-frontend check-structure check-legacy-paths verify
+.PHONY: test-unit test-api test-integration test-backend test-frontend ruff ruff-fix build-frontend check-structure check-legacy-paths check-secrets verify
 
 ## 后端单元测试
 test-unit:
@@ -52,6 +52,10 @@ check-structure:
 check-legacy-paths:
 	$(PY) python scripts/check_legacy_paths.py
 
+## 仓库敏感凭据扫描
+check-secrets:
+	$(PY) python scripts/check_secrets.py
+
 ## 聚合门禁：跑全部验证（任一失败即整体失败）
-verify: test-backend test-frontend ruff check-structure check-legacy-paths build-frontend
+verify: test-backend test-frontend ruff check-structure check-legacy-paths check-secrets build-frontend
 	@echo "==== ALL CHECKS PASSED ===="

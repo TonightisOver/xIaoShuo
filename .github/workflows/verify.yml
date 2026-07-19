@@ -37,6 +37,7 @@ jobs:
       - run: make ruff
       - run: make check-structure
       - run: make check-legacy-paths
+      - run: make check-secrets
 
   frontend:
     runs-on: ubuntu-latest
