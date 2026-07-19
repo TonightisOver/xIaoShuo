@@ -20,6 +20,7 @@ from src.api.models.db_models import (  # noqa: E402
     CharacterCareer,
     Novel,
 )
+from src.core.auth_models import User  # noqa: E402
 from src.core.database import Base, get_db_session, get_engine  # noqa: E402
 
 NOVEL_ID = "career-test-novel"
@@ -32,6 +33,8 @@ async def _db_setup():
         await conn.run_sync(Base.metadata.create_all)
 
     async with get_db_session() as session:
+        if not await session.get(User, 1):
+            session.add(User(id=1, username="test_user", hashed_password="mocked", is_admin=True))
         existing = await session.execute(
             select(Novel).where(Novel.novel_id == NOVEL_ID)
         )
@@ -43,6 +46,7 @@ async def _db_setup():
                 novel_type="玄幻",
                 target_words=100000,
                 status="draft",
+                owner_id=1,
             ))
 
     yield

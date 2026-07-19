@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from src.api.main import app
 from src.api.models.db_models import Chapter, Novel, Volume
+from src.core.auth_models import User
 from src.core.database import Base, get_db_session, get_engine
 
 NOVEL_A = "integ-031-novel-a"
@@ -26,6 +27,9 @@ async def _db_setup():
         await conn.run_sync(Base.metadata.create_all)
 
     async with get_db_session() as session:
+        # owner_id=1 需真实用户行；conftest 的 mock user id=1
+        if not await session.get(User, 1):
+            session.add(User(id=1, username="test_user", hashed_password="mocked", is_admin=True))
         for nid in (NOVEL_A, NOVEL_B):
             existing = await session.execute(
                 select(Novel).where(Novel.novel_id == nid)
@@ -38,6 +42,7 @@ async def _db_setup():
                     novel_type="玄幻",
                     target_words=100000,
                     status="draft",
+                    owner_id=1,
                 ))
 
     yield

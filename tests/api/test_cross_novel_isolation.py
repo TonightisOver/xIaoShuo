@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from src.api.main import app
 from src.api.models.db_models import Character, Novel
+from src.core.auth_models import User
 from src.core.database import Base, get_db_session, get_engine
 
 NOVEL_A = "isolation-novel-a"
@@ -20,6 +21,8 @@ async def _db_setup():
 
     # Seed two novels so FK constraints pass
     async with get_db_session() as session:
+        if not await session.get(User, 1):
+            session.add(User(id=1, username="test_user", hashed_password="mocked", is_admin=True))
         for nid in (NOVEL_A, NOVEL_B):
             existing = await session.execute(
                 select(Novel).where(Novel.novel_id == nid)
@@ -32,6 +35,7 @@ async def _db_setup():
                     novel_type="玄幻",
                     target_words=10000,
                     status="draft",
+                    owner_id=1,
                 ))
 
     yield
