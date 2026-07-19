@@ -23,12 +23,13 @@ from src.api.models.responses import (
     TaskResponse,
     TaskSummary,
 )
+from src.api.owner_guard import verify_novel_owner, verify_task_owner
 from src.api.services.generation.novel_generator_planning import (
     calculate_long_form_chapter_plan,
 )
 from src.api.services.tasks.task_dispatcher import TaskType
 from src.api.services.tasks.task_manager import get_task_manager
-from src.core.security.auth import get_current_user
+from src.core.security.auth import get_current_user, require_admin_user
 from src.core.validation import ValidationError, validate_idea, validate_novel_type
 
 logger = logging.getLogger(__name__)
@@ -38,11 +39,15 @@ tasks_router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
 
 
 @router.post("", response_model=TaskResponse, status_code=202)
-async def create_novel(request: CreateNovelRequest) -> TaskResponse:
+async def create_novel(
+    request: CreateNovelRequest,
+    current_user: User = Depends(get_current_user),
+) -> TaskResponse:
     """创建小说生成任务
 
     Args:
         request: 创建请求
+        current_user: 当前登录用户
     Returns:
         任务响应
 
@@ -60,6 +65,7 @@ async def create_novel(request: CreateNovelRequest) -> TaskResponse:
             idea=request.idea,
             novel_type=request.novel_type,
             target_words=request.target_words,
+            owner_id=current_user.id,
             task_type=TaskType.NOVEL_GENERATE.value,
             task_payload={"request": request.model_dump(mode="json")},
             max_attempts=1,
@@ -83,23 +89,23 @@ async def create_novel(request: CreateNovelRequest) -> TaskResponse:
 
 
 @router.get("/{task_id}", response_model=TaskDetailResponse)
-async def get_novel_task(task_id: str) -> TaskDetailResponse:
+async def get_novel_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+) -> TaskDetailResponse:
     """获取任务详情
 
     Args:
         task_id: 任务 ID
+        current_user: 当前登录用户（必须为任务 owner）
 
     Returns:
         任务详情
 
     Raises:
-        HTTPException: 任务不存在
+        HTTPException: 任务不存在 / 非 owner
     """
-    task_manager = get_task_manager()
-    task = await task_manager.get_task(task_id)
-
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+    task = await verify_task_owner(task_id, current_user)
 
     # 构建进度信息
     progress = None
@@ -125,20 +131,22 @@ async def list_novel_tasks(
     status: str | None = Query(None, description="过滤状态"),
     limit: int = Query(20, ge=1, le=100, description="返回数量"),
     offset: int = Query(0, ge=0, description="偏移量"),
+    current_user: User = Depends(get_current_user),
 ) -> TaskListResponse:
-    """列出任务
+    """列出当前用户的任务
 
     Args:
         status: 过滤状态
         limit: 返回数量
         offset: 偏移量
+        current_user: 当前登录用户（只返回其 owner 的任务）
 
     Returns:
         任务列表
     """
     task_manager = get_task_manager()
-    tasks, total = await task_manager.list_tasks(
-        status=status, limit=limit, offset=offset
+    tasks, total = await task_manager.list_tasks_for_owner(
+        owner_id=current_user.id, status=status, limit=limit, offset=offset
     )
 
     # 转换为摘要格式
@@ -165,32 +173,35 @@ async def list_novel_tasks(
 
 
 @router.post("/cleanup/stale")
-async def cleanup_stale_tasks():
-    """自动将超过2小时未完成的任务标记为失败"""
+async def cleanup_stale_tasks(
+    current_user: User = Depends(require_admin_user),
+):
+    """自动将超过2小时未完成的任务标记为失败（仅管理员，影响所有用户任务）。"""
     task_manager = get_task_manager()
     count = await task_manager.expire_stale_tasks(hours=2)
     return {"expired_count": count}
 
 
 @router.post("/{task_id}/cancel")
-async def cancel_task(task_id: str):
-    """将卡住的任务标记为失败"""
-    task_manager = get_task_manager()
-    task = await task_manager.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+async def cancel_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """将卡住的任务标记为失败（仅任务 owner）。"""
+    task = await verify_task_owner(task_id, current_user)
     if task["status"] in ("completed", "failed"):
         raise HTTPException(status_code=400, detail="Task already finished")
+    task_manager = get_task_manager()
     await task_manager.fail_task(task_id, "用户手动取消：任务超时未完成")
     return {"status": "cancelled"}
 
 
 @tasks_router.post("/{task_id}/pause")
-async def pause_generation_task(task_id: str):
-    task_manager = get_task_manager()
-    task = await task_manager.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+async def pause_generation_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    task = await verify_task_owner(task_id, current_user)
     if task["status"] != "running":
         raise HTTPException(
             status_code=400,
@@ -206,11 +217,11 @@ async def pause_generation_task(task_id: str):
 
 
 @tasks_router.post("/{task_id}/resume")
-async def resume_generation_task(task_id: str):
-    task_manager = get_task_manager()
-    task = await task_manager.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+async def resume_generation_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    task = await verify_task_owner(task_id, current_user)
     if task["status"] != "paused":
         raise HTTPException(
             status_code=400,
@@ -266,6 +277,7 @@ async def create_long_form_novel(
             novel_type=request.novel_type,
             target_words=request.target_words,
             novel_id=novel_id,
+            owner_id=current_user.id,
             task_type=TaskType.NOVEL_LONG_FORM.value,
             task_payload={
                 "novel_id": novel_id,
@@ -300,18 +312,23 @@ async def create_long_form_novel(
 
 
 @router.get("/{novel_id}/quality-report", response_model=QualityReport)
-async def get_quality_report(novel_id: str) -> QualityReport:
+async def get_quality_report(
+    novel_id: str,
+    current_user: User = Depends(get_current_user),
+) -> QualityReport:
     """获取质量趋势报告
 
     Args:
         novel_id: 小说 ID
+        current_user: 当前登录用户（必须为小说 owner）
 
     Returns:
         质量报告
 
     Raises:
-        HTTPException: 小说不存在
+        HTTPException: 小说不存在 / 非 owner
     """
+    await verify_novel_owner(novel_id, current_user)
     try:
         from src.api.services.quality.quality_report_service import (
             get_quality_report_service,
@@ -325,18 +342,17 @@ async def get_quality_report(novel_id: str) -> QualityReport:
 
 
 @router.get("/{novel_id}/filler-detection", response_model=FillerDetectionResult)
-async def get_filler_detection(novel_id: str) -> FillerDetectionResult:
+async def get_filler_detection(
+    novel_id: str,
+    current_user: User = Depends(get_current_user),
+) -> FillerDetectionResult:
     """获取注水检测结果
 
     Args:
         novel_id: 小说 ID
-
-    Returns:
-        注水检测结果
-
-    Raises:
-        HTTPException: 小说不存在
+        current_user: 当前登录用户（必须为小说 owner）
     """
+    await verify_novel_owner(novel_id, current_user)
     try:
         from src.api.services.quality.filler_detection_service import (
             get_filler_detection_service,
@@ -350,18 +366,17 @@ async def get_filler_detection(novel_id: str) -> FillerDetectionResult:
 
 
 @router.get("/{novel_id}/foreshadow-tracker", response_model=ForeshadowTrackerResult)
-async def get_foreshadow_tracker(novel_id: str) -> ForeshadowTrackerResult:
+async def get_foreshadow_tracker(
+    novel_id: str,
+    current_user: User = Depends(get_current_user),
+) -> ForeshadowTrackerResult:
     """获取伏笔追踪报告
 
     Args:
         novel_id: 小说 ID
-
-    Returns:
-        伏笔追踪结果
-
-    Raises:
-        HTTPException: 小说不存在
+        current_user: 当前登录用户（必须为小说 owner）
     """
+    await verify_novel_owner(novel_id, current_user)
     try:
         from src.api.services.quality.foreshadow_tracker_service import (
             get_foreshadow_tracker_service,
@@ -375,18 +390,17 @@ async def get_foreshadow_tracker(novel_id: str) -> ForeshadowTrackerResult:
 
 
 @router.get("/{novel_id}/long-form/progress", response_model=LongFormProgressResponse)
-async def get_long_form_progress(novel_id: str) -> LongFormProgressResponse:
+async def get_long_form_progress(
+    novel_id: str,
+    current_user: User = Depends(get_current_user),
+) -> LongFormProgressResponse:
     """获取百万字长篇生成进度
 
     Args:
         novel_id: 小说 ID
-
-    Returns:
-        进度响应
-
-    Raises:
-        HTTPException: 小说不存在
+        current_user: 当前登录用户（必须为小说 owner）
     """
+    await verify_novel_owner(novel_id, current_user)
     try:
         from src.api.services.generation.long_form_progress_service import (
             get_long_form_progress_service,
@@ -408,6 +422,7 @@ async def trigger_volume_generate(
     novel_id: str,
     volume_number: int,
     request: VolumeGenerateRequest,
+    current_user: User = Depends(get_current_user),
 ):
     """按卷触发生成
 
@@ -415,12 +430,14 @@ async def trigger_volume_generate(
         novel_id: 小说 ID
         volume_number: 卷号
         request: 生成请求
+        current_user: 当前登录用户（必须为小说 owner）
     Returns:
         任务状态
 
     Raises:
-        HTTPException: 小说或卷不存在
+        HTTPException: 小说或卷不存在 / 非 owner
     """
+    await verify_novel_owner(novel_id, current_user)
     try:
         from src.api.services.generation.long_form_progress_service import (
             get_long_form_progress_service,
@@ -448,6 +465,7 @@ async def trigger_volume_generate(
             novel_type="long_form",
             target_words=0,
             novel_id=novel_id,
+            owner_id=current_user.id,
             task_type=TaskType.NOVEL_VOLUME.value,
             task_payload={
                 "novel_id": novel_id,
@@ -471,19 +489,13 @@ async def trigger_volume_generate(
 
 
 @router.post("/{novel_id}/volumes/{volume_number}/pause")
-async def pause_volume_generate(novel_id: str, volume_number: int):
-    """暂停指定卷生成
-
-    Args:
-        novel_id: 小说 ID
-        volume_number: 卷号
-
-    Returns:
-        状态响应
-
-    Raises:
-        HTTPException: 操作失败
-    """
+async def pause_volume_generate(
+    novel_id: str,
+    volume_number: int,
+    current_user: User = Depends(get_current_user),
+):
+    """暂停指定卷生成（仅小说 owner）。"""
+    await verify_novel_owner(novel_id, current_user)
     try:
         from src.api.services.generation.long_form_progress_service import (
             get_long_form_progress_service,
@@ -504,18 +516,10 @@ async def pause_volume_generate(novel_id: str, volume_number: int):
 async def resume_volume_generate(
     novel_id: str,
     volume_number: int,
+    current_user: User = Depends(get_current_user),
 ):
-    """恢复指定卷生成
-
-    Args:
-        novel_id: 小说 ID
-        volume_number: 卷号
-    Returns:
-        任务状态
-
-    Raises:
-        HTTPException: 操作失败
-    """
+    """恢复指定卷生成（仅小说 owner）。"""
+    await verify_novel_owner(novel_id, current_user)
     try:
         from src.api.services.generation.long_form_progress_service import (
             get_long_form_progress_service,
@@ -542,6 +546,7 @@ async def resume_volume_generate(
             novel_type="long_form",
             target_words=0,
             novel_id=novel_id,
+            owner_id=current_user.id,
             task_type=TaskType.NOVEL_VOLUME.value,
             task_payload={
                 "novel_id": novel_id,

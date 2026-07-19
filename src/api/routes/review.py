@@ -10,6 +10,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from src.api.owner_guard import verify_task_owner
 from src.api.services.tasks.task_dispatcher import TaskType
 from src.api.services.tasks.task_manager import get_task_manager
 from src.core.auth_models import User
@@ -71,12 +72,10 @@ async def submit_review(
         审核决策处理结果
 
     Raises:
-        HTTPException: 任务不存在或不在审核阶段
+        HTTPException: 任务不存在或不在审核阶段 / 非 owner
     """
+    task = await verify_task_owner(task_id, current_user)
     task_manager = get_task_manager()
-    task = await task_manager.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
 
     # 检查当前是否在 human_review 阶段
     progress = task.get("progress") or {}
@@ -161,13 +160,11 @@ async def get_review_data(task_id: str, current_user: User = Depends(get_current
         审核状态和待审数据
 
     Raises:
-        HTTPException: 任务不存在
+        HTTPException: 任务不存在 / 非 owner
     """
-    task_manager = get_task_manager()
-    task = await task_manager.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+    await verify_task_owner(task_id, current_user)
 
+    task_manager = get_task_manager()
     review_data = await task_manager.get_review_data(task_id)
 
     return ReviewDataResponse(

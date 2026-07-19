@@ -91,6 +91,8 @@ def pytest_configure(config):
     os.environ["DATABASE_URL"] = TEST_DATABASE_URL
     # Set LLM_ENCRYPTION_KEY for tests (overwrite any existing value)
     os.environ["LLM_ENCRYPTION_KEY"] = TEST_FERNET_KEY
+    # 测试环境强制关闭免登录，确保匿名请求真实返回 401（鉴权可测）
+    os.environ["DEV_AUTO_LOGIN"] = "false"
 
     from src.core.config import get_settings
     get_settings.cache_clear()
@@ -106,12 +108,29 @@ def pytest_configure(config):
     crypto._get_fernet.cache_clear()
 
     # Override authentication globally for integration tests
+    from fastapi import Header
+
     from src.api.main import app
     from src.core.auth_models import User
     from src.core.database import get_db_session
     from src.core.security.auth import get_current_user
+    from src.core.security.users import get_session_user
 
-    async def mock_get_current_user():
+    async def mock_get_current_user(
+        authorization: str | None = Header(default=None),
+        x_session_token: str | None = Header(default=None),
+    ):
+        # 鉴权测试带真实 session token 时走真实认证（以 DB 用户/owner 为准），
+        # 不再被 admin mock 掩盖越权。不带 token 的旧测试回退 admin user(1)。
+        token = x_session_token
+        if token is None and authorization:
+            scheme, _, tok = authorization.partition(" ")
+            if scheme.lower() == "bearer" and tok:
+                token = tok
+        if token:
+            user = await get_session_user(token)
+            if user is not None:
+                return user
         user = User(id=1, username="test_user", hashed_password="mocked_password", is_admin=True)
         try:
             async with get_db_session() as session:
