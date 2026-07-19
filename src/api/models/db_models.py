@@ -358,11 +358,18 @@ class Task(Base):
     lease_owner: Mapped[str | None] = mapped_column(String(120), nullable=True)
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    owner_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "task_id": self.task_id,
             "novel_id": self.novel_id,
+            "owner_id": self.owner_id,
             "status": self.status,
             "idea": self.idea,
             "novel_type": self.novel_type,

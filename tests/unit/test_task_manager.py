@@ -49,6 +49,7 @@ def _make_task_mock(**overrides):
     task = MagicMock()
     task.task_id = overrides.get("task_id", "novel-1")
     task.novel_id = overrides.get("novel_id", None)
+    task.owner_id = overrides.get("owner_id", None)
     task.status = overrides.get("status", "pending")
     task.idea = overrides.get("idea", "an idea")
     task.novel_type = overrides.get("novel_type", "都市")
@@ -74,6 +75,7 @@ def _make_task_mock(**overrides):
         return {
             "task_id": task.task_id,
             "novel_id": task.novel_id,
+            "owner_id": task.owner_id,
             "status": task.status,
             "idea": task.idea,
             "novel_type": task.novel_type,
@@ -143,6 +145,20 @@ class TestCreateTask:
             )
         added = session.add.call_args[0][0]
         assert added.novel_id == "novel-abc"
+
+    @pytest.mark.asyncio
+    async def test_create_task_persists_owner_id(self, manager):
+        session = _make_session()
+        with _patch_db(session):
+            await manager.create_task(
+                idea="idea",
+                novel_type="科幻",
+                target_words=3000,
+                owner_id=7,
+            )
+
+        added = session.add.call_args[0][0]
+        assert added.owner_id == 7
 
 
 class TestGetTask:
@@ -421,6 +437,25 @@ class TestListTasks:
 
         assert tasks == []
         assert total == 0
+
+    @pytest.mark.asyncio
+    async def test_list_tasks_for_owner_filters_every_query(self, manager):
+        session = _make_session()
+        count_result = MagicMock()
+        count_result.scalar_one.return_value = 1
+        list_result = MagicMock()
+        list_result.scalars.return_value.all.return_value = [
+            _make_task_mock(task_id="novel-7", owner_id=7)
+        ]
+        session.execute = AsyncMock(side_effect=[count_result, list_result])
+
+        with _patch_db(session):
+            tasks, total = await manager.list_tasks_for_owner(owner_id=7)
+
+        assert total == 1
+        assert tasks[0]["owner_id"] == 7
+        for call in session.execute.await_args_list:
+            assert "tasks.owner_id =" in str(call.args[0])
 
 
 class TestExpireStaleTasks:

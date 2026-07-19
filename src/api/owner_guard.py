@@ -45,3 +45,24 @@ async def verify_novel_owner(novel_id: str, current_user: User) -> dict:
     if novel.get("owner_id") != current_user.id:
         raise HTTPException(status_code=403, detail="Permission denied")
     return novel
+
+
+async def verify_task_owner(task_id: str, current_user: User) -> dict:
+    """校验 task 存在且 current_user 是其 owner。
+
+    历史任务 owner_id 为 NULL（迁移回填前的遗留）不得默认授权给普通用户：
+    NULL != current_user.id 必然为真 → 403。管理员由调用方自行放行（见 require_admin_user）。
+
+    Raises:
+        HTTPException 404: task 不存在
+        HTTPException 403: 当前用户非 owner（含 owner_id IS NULL 的历史任务）
+    """
+    from src.api.services.tasks.task_manager import get_task_manager
+
+    manager = get_task_manager()
+    task = await manager.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.get("owner_id") != current_user.id:
+        raise HTTPException(status_code=403, detail="Permission denied")
+    return task

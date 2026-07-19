@@ -32,6 +32,18 @@ def test_task_queue_ready_index_exists():
     assert indexes["ix_tasks_queue_ready"] == ("queue_state", "available_at")
 
 
+def test_task_model_has_owner_field_and_index():
+    from src.api.models.db_models import Task
+
+    columns = Task.__table__.c
+    assert columns.owner_id.nullable is True
+    indexes = {
+        index.name: tuple(column.name for column in index.columns)
+        for index in Task.__table__.indexes
+    }
+    assert indexes["ix_tasks_owner_id"] == ("owner_id",)
+
+
 def test_task_queue_migration_upgrade_and_downgrade_are_symmetric():
     migration_path = (
         Path(__file__).parents[2]
@@ -84,3 +96,49 @@ def test_task_queue_migration_upgrade_and_downgrade_are_symmetric():
         call.args[1] for call in fake_op.drop_column.call_args_list
     ]
     assert dropped_columns == list(reversed(added_columns))
+
+
+def test_task_owner_migration_backfills_and_is_symmetric():
+    migration_path = (
+        Path(__file__).parents[2]
+        / "alembic"
+        / "versions"
+        / "20260720_add_task_owner.py"
+    )
+    spec = importlib.util.spec_from_file_location("task_owner_migration", migration_path)
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    assert migration.revision == "20260720_task_owner"
+    assert migration.down_revision == "d7e4f9a2c1b0"
+
+    fake_op = MagicMock()
+    with patch.object(migration, "op", fake_op):
+        migration.upgrade()
+
+    assert fake_op.add_column.call_args.args[1].name == "owner_id"
+    fake_op.create_foreign_key.assert_called_once_with(
+        "fk_tasks_owner_id",
+        "tasks",
+        "users",
+        ["owner_id"],
+        ["id"],
+        ondelete="SET NULL",
+    )
+    fake_op.create_index.assert_called_once_with(
+        "ix_tasks_owner_id", "tasks", ["owner_id"]
+    )
+    assert "UPDATE tasks AS t" in fake_op.execute.call_args.args[0]
+
+    fake_op.reset_mock()
+    with patch.object(migration, "op", fake_op):
+        migration.downgrade()
+
+    fake_op.drop_index.assert_called_once_with(
+        "ix_tasks_owner_id", table_name="tasks"
+    )
+    fake_op.drop_constraint.assert_called_once_with(
+        "fk_tasks_owner_id", "tasks", type_="foreignkey"
+    )
+    fake_op.drop_column.assert_called_once_with("tasks", "owner_id")

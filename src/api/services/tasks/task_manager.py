@@ -55,6 +55,7 @@ class TaskManager:
         self, idea: str, novel_type: str, target_words: int,
         novel_id: str | None = None,
         *,
+        owner_id: int | None = None,
         task_type: str | None = None,
         task_payload: dict[str, Any] | None = None,
         max_attempts: int = 1,
@@ -68,6 +69,7 @@ class TaskManager:
             task = Task(
                 task_id=task_id,
                 novel_id=novel_id,
+                owner_id=owner_id,
                 status="pending",
                 idea=idea,
                 novel_type=novel_type,
@@ -396,6 +398,39 @@ class TaskManager:
             query = query.order_by(Task.created_at.desc()).limit(limit).offset(offset)
 
             # Execute query
+            result = await session.execute(query)
+            tasks = result.scalars().all()
+
+            return [task.to_dict() for task in tasks], total
+
+    async def list_tasks_for_owner(
+        self,
+        owner_id: int,
+        status: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """列出指定用户的任务（按 owner_id 过滤）。
+
+        Args:
+            owner_id: 任务所有者用户 ID
+            status: 过滤状态（可选）
+            limit: 返回数量
+            offset: 偏移量
+
+        Returns:
+            (任务列表, 总数)
+        """
+        async with get_db_session() as session:
+            query = select(Task).where(Task.owner_id == owner_id)
+            if status:
+                query = query.where(Task.status == status)
+
+            count_query = select(func.count()).select_from(query.subquery())
+            total_result = await session.execute(count_query)
+            total = total_result.scalar_one()
+
+            query = query.order_by(Task.created_at.desc()).limit(limit).offset(offset)
             result = await session.execute(query)
             tasks = result.scalars().all()
 
