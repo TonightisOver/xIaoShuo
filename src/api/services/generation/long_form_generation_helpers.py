@@ -50,11 +50,36 @@ async def persist_single_chapter(
 async def _persist_quality_for_gate(
     novel_id: str, chapter_number: int, scores: dict, warnings: list
 ) -> None:
-    """gate 的质量评分持久化回调。
+    """gate 的质量评分持久化回调：写进最新 ChapterVersion.quality_scores。
 
-    简化实现：仅记录日志。逐章评分持久化由后续扩展（更新 ChapterVersion.quality_scores）。
-    当前不阻断——卷级报告已能处理 None 评分。
+    定位 (novel_id, chapter_number) 下 version_number 最大的一条（当前活跃候选），
+    覆写 quality_scores。无匹配行则仅 log（不阻断——卷级报告能处理 None）。
     """
+    from sqlalchemy import desc, select
+
+    from src.api.models.db_models import ChapterVersion
+    from src.core.database import get_db_session
+
+    try:
+        async with get_db_session() as session:
+            stmt = (
+                select(ChapterVersion)
+                .where(
+                    ChapterVersion.novel_id == novel_id,
+                    ChapterVersion.chapter_number == chapter_number,
+                )
+                .order_by(desc(ChapterVersion.version_number))
+                .limit(1)
+            )
+            version = (await session.execute(stmt)).scalar_one_or_none()
+            if version is not None:
+                version.quality_scores = scores
+    except Exception as e:
+        logger.warning(
+            "gate_quality_scores_persist_failed",
+            novel_id=novel_id, chapter=chapter_number, error=str(e),
+        )
+
     logger.info(
         "gate_quality_scores",
         novel_id=novel_id, chapter=chapter_number,

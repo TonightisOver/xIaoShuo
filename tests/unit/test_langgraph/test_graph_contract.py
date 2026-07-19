@@ -100,3 +100,69 @@ async def test_quality_gate_marks_unverified_when_low_score(fake_llm):
     # 评分被持久化（不丢失）
     assert "scores" in persisted, "质量评分应被持久化回调记录"
 
+
+@pytest.mark.asyncio
+async def test_persist_quality_for_gate_writes_chapterversion():
+    """_persist_quality_for_gate 应把评分写进最新 ChapterVersion.quality_scores。"""
+    from src.api.models.db_models import ChapterVersion
+    from sqlalchemy import desc, select
+    from src.core.database import Base, get_db_session, get_engine
+
+    # 模块级建表（自含，不依赖 conftest 的 session fixture）
+    engine = get_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    try:
+        # seed：user(1) + novel + 两条 ChapterVersion（version_number 2 为最新候选）
+        async with get_db_session() as session:
+            from src.core.auth_models import User
+            if not await session.get(User, 1):
+                session.add(User(id=1, username="test_user", hashed_password="mocked", is_admin=True))
+                await session.flush()
+            session.add(_make_novel("persist-test"))
+            await session.flush()
+            session.add(ChapterVersion(
+                novel_id="persist-test", chapter_number=1, version_number=1,
+                content="v1", word_count=2, quality_scores={},
+            ))
+            session.add(ChapterVersion(
+                novel_id="persist-test", chapter_number=1, version_number=2,
+                content="v2", word_count=2, quality_scores={},
+            ))
+
+        from src.api.services.generation.long_form_generation_helpers import _persist_quality_for_gate
+        await _persist_quality_for_gate("persist-test", 1, {"overall": 0.85, "character_consistency": 0.9}, [])
+
+        async with get_db_session() as session:
+            stmt = (
+                select(ChapterVersion)
+                .where(ChapterVersion.novel_id == "persist-test", ChapterVersion.chapter_number == 1)
+                .order_by(desc(ChapterVersion.version_number))
+                .limit(1)
+            )
+            v = (await session.execute(stmt)).scalar_one()
+            assert v.version_number == 2
+            assert v.quality_scores["overall"] == 0.85
+    finally:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+
+
+def _make_novel(novel_id: str):
+    """构造测试用 Novel 行（满足非空约束）。"""
+    from src.api.models.db_models import Novel
+    from src.core.auth_models import User
+
+    # 返回一个可被 session.add 的 Novel；User(1) 需先存在
+    return Novel(
+        novel_id=novel_id,
+        title="persist 测试小说",
+        idea="测试",
+        novel_type="玄幻",
+        target_words=10000,
+        status="draft",
+        owner_id=1,
+    )
+
+

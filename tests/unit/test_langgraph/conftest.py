@@ -21,9 +21,14 @@ _LLM_MODULES = [
 ]
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def fake_llm(monkeypatch):
-    """所有 langgraph 测试默认注入 FakeLLMClient，不打外网。返回 client 供断言调用次数。"""
+    """显式请求时注入 FakeLLMClient，不打外网。
+
+    非 autouse：避免污染同目录既有 test_nodes.py / test_graph.py（它们各自 mock 或
+    不调 LLM）。需 mock 的契约测试在函数签名加 `fake_llm` 参数即可。
+    返回 client 供断言调用次数/顺序。
+    """
     client = FakeLLMClient()
     for mod in _LLM_MODULES:
         monkeypatch.setattr(f"{mod}.get_llm_client", lambda c=client: c)
