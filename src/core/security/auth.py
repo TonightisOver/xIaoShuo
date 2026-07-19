@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from secrets import compare_digest
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, WebSocket, status
 
 from src.core.auth_models import User
 from src.core.config import get_settings
@@ -86,3 +86,20 @@ async def require_admin_user(
         )
     return current_user
 
+
+
+async def get_websocket_user(websocket: WebSocket) -> User | None:
+    """从 Sec-WebSocket-Protocol 子协议中取 session token 认证。
+
+    浏览器 WebSocket API 无法发送自定义 Header，改用子协议传 token：
+        new WebSocket(url, ['xiaoshuo', token])
+    后端只接受 ['xiaoshuo', token] 形态，校验 token 返回 User；
+    无效或缺失返回 None（由路由 close 4401）。不回显 token。
+    """
+    raw = websocket.headers.get("sec-websocket-protocol", "")
+    protocols = [item.strip() for item in raw.split(",") if item.strip()]
+    if len(protocols) == 2 and protocols[0] == "xiaoshuo":
+        return await get_session_user(protocols[1])
+    if get_settings().DEV_AUTO_LOGIN:
+        return await get_or_create_dev_user()
+    return None

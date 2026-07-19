@@ -55,7 +55,11 @@ export function useWebSocket(taskId, { onMessage, reconnect: shouldReconnect = t
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
     const url = `${protocol}//${location.host}/ws/tasks/${taskId}`
 
-    const socket = new WebSocket(url)
+    // 通过 Sec-WebSocket-Protocol 子协议传 session token（浏览器 WS 无法发自定义 Header）
+    const token = localStorage.getItem('session_token')
+    const socket = token
+      ? new WebSocket(url, ['xiaoshuo', token])
+      : new WebSocket(url)
     ws.value = socket
     readyState.value = 'CONNECTING'
 

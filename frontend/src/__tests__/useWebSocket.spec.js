@@ -3,8 +3,9 @@ import { useWebSocket } from '../composables/useWebSocket.js'
 
 class MockWebSocket {
   static instances = []
-  constructor(url) {
+  constructor(url, protocols) {
     this.url = url
+    this.protocols = protocols
     this.readyState = 0
     this.sent = []
     this.onopen = null
@@ -27,11 +28,18 @@ beforeEach(() => {
   MockWebSocket.instances = []
   globalThis.WebSocket = MockWebSocket
   globalThis.location = { protocol: 'http:', host: 'localhost' }
+  const store = {}
+  globalThis.localStorage = {
+    getItem: (k) => (k in store ? store[k] : null),
+    setItem: (k, v) => { store[k] = String(v) },
+    removeItem: (k) => { delete store[k] },
+  }
 })
 
 afterEach(() => {
   vi.useRealTimers()
   delete globalThis.WebSocket
+  delete globalThis.localStorage
 })
 
 describe('useWebSocket', () => {
@@ -66,5 +74,19 @@ describe('useWebSocket', () => {
     disconnect()
     vi.advanceTimersByTime(5000)
     expect(MockWebSocket.instances).toHaveLength(1)
+  })
+
+  it('sends session token as xiaoshuo subprotocol when present', () => {
+    localStorage.setItem('session_token', 'valid-session')
+    const { connect } = useWebSocket('t1', { onMessage: () => {} })
+    connect()
+    expect(MockWebSocket.instances[0].url).toContain('/ws/tasks/t1')
+    expect(MockWebSocket.instances[0].protocols).toEqual(['xiaoshuo', 'valid-session'])
+  })
+
+  it('omits subprotocol when no session token', () => {
+    const { connect } = useWebSocket('t1', { onMessage: () => {} })
+    connect()
+    expect(MockWebSocket.instances[0].protocols).toBeUndefined()
   })
 })

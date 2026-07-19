@@ -4,12 +4,11 @@ import asyncio
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
+from src.api.owner_guard import verify_task_owner
 from src.api.services.generation.progress_event_bus import EventType, get_event_bus
-from src.api.services.tasks.task_manager import get_task_manager
-from src.core.auth_models import User
-from src.core.security.auth import get_current_user
+from src.core.security.auth import get_websocket_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -18,15 +17,21 @@ HEARTBEAT_INTERVAL = 30.0
 
 
 @router.websocket("/ws/tasks/{task_id}")
-async def task_progress_ws(websocket: WebSocket, task_id: str, current_user: User = Depends(get_current_user)):
-    task_manager = get_task_manager()
-    task = await task_manager.get_task(task_id)
-
-    if not task:
-        await websocket.close(code=4004, reason="Task not found")
+async def task_progress_ws(websocket: WebSocket, task_id: str):
+    current_user = await get_websocket_user(websocket)
+    if current_user is None:
+        await websocket.close(code=4401, reason="Authentication required")
+        return
+    try:
+        task = await verify_task_owner(task_id, current_user)
+    except HTTPException as exc:
+        await websocket.close(
+            code=4404 if exc.status_code == 404 else 4403,
+            reason=exc.detail,
+        )
         return
 
-    await websocket.accept()
+    await websocket.accept(subprotocol="xiaoshuo")
 
     await websocket.send_json({
         "type": "connected",
