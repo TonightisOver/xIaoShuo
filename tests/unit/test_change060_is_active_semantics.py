@@ -1,13 +1,15 @@
 # tests/unit/test_change060_is_active_semantics.py
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from src.api.services.chapter_service import ChapterService
+
+import pytest
+
+from src.api.services.content.chapter_service import ChapterService
 
 
 @pytest.mark.asyncio
 async def test_create_version_inactive_does_not_overwrite_chapter_content():
     svc = ChapterService()
-    with patch("src.api.services.chapter_service.get_db_session") as mock_session:
+    with patch("src.api.services.content.chapter_service.get_db_session") as mock_session:
         session = AsyncMock()
 
         ch = MagicMock(spec=["content", "word_count", "updated_at"])

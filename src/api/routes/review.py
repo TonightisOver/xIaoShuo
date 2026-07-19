@@ -7,11 +7,11 @@
 
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from src.api.services.novel_generator import resume_pipeline
-from src.api.services.task_manager import get_task_manager
+from src.api.services.tasks.task_dispatcher import TaskType
+from src.api.services.tasks.task_manager import get_task_manager
 from src.core.auth_models import User
 from src.core.security.auth import get_current_user
 
@@ -57,7 +57,6 @@ class ReviewDataResponse(BaseModel):
 async def submit_review(
     task_id: str,
     request: ReviewRequest,
-    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
 ) -> ReviewResponse:
     """提交人工审核决策
@@ -68,8 +67,6 @@ async def submit_review(
     Args:
         task_id: 任务 ID
         request: 审核决策
-        background_tasks: FastAPI 后台任务（用于 resume pipeline）
-
     Returns:
         审核决策处理结果
 
@@ -84,7 +81,13 @@ async def submit_review(
     # 检查当前是否在 human_review 阶段
     progress = task.get("progress") or {}
     current_stage = progress.get("current_stage", "")
-    if current_stage != "human_review" and task["status"] not in ("running", "pending"):
+    waiting_for_review = (
+        task["status"] == "running"
+        and current_stage == "human_review"
+        and progress.get("waiting_for_review") is True
+        and progress.get("review_decision", "pending") == "pending"
+    )
+    if not waiting_for_review:
         raise HTTPException(
             status_code=400,
             detail=f"Task is not waiting for review (current stage: {current_stage})",
@@ -98,22 +101,34 @@ async def submit_review(
         )
 
     try:
-        await task_manager.set_review_decision(
-            task_id=task_id,
-            status=request.approval_status,
-            instructions=request.revision_instructions,
-        )
-
         # approved/revision：后台 resume pipeline（LangGraph Command(resume=decision)）
         # rejected：标记任务失败，不 resume
         if request.approval_status == "rejected":
-            await task_manager.fail_task(task_id, "用户驳回审核")
+            rejected = await task_manager.reject_review_task(
+                task_id,
+                instructions=request.revision_instructions,
+            )
+            if not rejected:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Task review state changed; refresh and retry",
+                )
         else:
             decision = {
                 "approval_status": request.approval_status,
                 "revision_instructions": request.revision_instructions,
             }
-            background_tasks.add_task(resume_pipeline, task_id, decision)
+            queued = await task_manager.enqueue_existing_task(
+                task_id,
+                task_type=TaskType.PIPELINE_RESUME.value,
+                task_payload={"decision": decision},
+                max_attempts=1,
+            )
+            if not queued:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Task review state changed; refresh and retry",
+                )
 
         status_text_map = {
             "approved": "已通过，流水线将继续",
@@ -126,6 +141,8 @@ async def submit_review(
             approval_status=request.approval_status,
             message=f"审核决策已提交: {status_text_map.get(request.approval_status, '')}",
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(f"Failed to submit review for task {task_id}")
         raise HTTPException(status_code=500, detail=f"Failed to submit review: {str(e)}")

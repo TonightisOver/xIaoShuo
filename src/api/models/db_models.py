@@ -317,6 +317,9 @@ class Task(Base):
     """生成任务（保留兼容）"""
 
     __tablename__ = "tasks"
+    __table_args__ = (
+        Index("ix_tasks_queue_ready", "queue_state", "available_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     task_id: Mapped[str] = mapped_column(
@@ -342,6 +345,19 @@ class Task(Base):
     errors: Mapped[list[str]] = mapped_column(
         JSON, default=list, server_default="[]"
     )
+    task_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    task_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    queue_state: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    max_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    available_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_owner: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -922,4 +938,3 @@ class AgentJournal(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(),
         onupdate=func.now()
     )
-

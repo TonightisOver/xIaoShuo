@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from src.api.owner_guard import verify_novel_owner
 from src.core.auth_models import User
 from src.core.llm.client import get_llm_client
 from src.core.security.auth import get_current_user
-from src.api.owner_guard import verify_novel_owner
 
 router = APIRouter(prefix="/api/v1/projects", tags=["chapter-analysis"])
 
@@ -16,11 +16,11 @@ router = APIRouter(prefix="/api/v1/projects", tags=["chapter-analysis"])
 async def get_chapter_analysis(novel_id: str, chapter_number: int, current_user: User = Depends(get_current_user)):
     """Analyze chapter content and return structured annotations."""
     await verify_novel_owner(novel_id, current_user)
-    from src.api.services.chapter_analysis_service import (
+    from src.api.services.content.chapter_analysis_service import (
         analyze_chapter_content,
         get_analysis_summary,
     )
-    from src.api.services.novel_manager import get_novel_manager
+    from src.api.services.content.novel_manager import get_novel_manager
 
     manager = get_novel_manager()
     chapter = await manager.get_chapter(novel_id, chapter_number)

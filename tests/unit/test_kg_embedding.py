@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.api.services.knowledge_graph_service import (
+from src.api.services.knowledge.knowledge_graph_service import (
     _build_entity_embedding_text,
     _generate_entity_embedding,
 )
@@ -48,15 +48,15 @@ class TestBuildEntityEmbeddingText:
 class TestGenerateEntityEmbedding:
     @pytest.mark.asyncio
     async def test_returns_embedding_on_success(self):
-        with patch("src.api.services.knowledge_graph_service.get_settings") as ms, \
-             patch("src.api.services.knowledge_graph_service._embed_texts", AsyncMock(return_value=[[0.1, 0.2, 0.3]])):
+        with patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as ms, \
+             patch("src.api.services.knowledge.knowledge_graph_service._embed_texts", AsyncMock(return_value=[[0.1, 0.2, 0.3]])):
             ms.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
             result = await _generate_entity_embedding("张三", "character", ["小张"], {"status": "alive"})
         assert result == [0.1, 0.2, 0.3]
 
     @pytest.mark.asyncio
     async def test_returns_none_when_feature_disabled(self):
-        with patch("src.api.services.knowledge_graph_service.get_settings") as ms:
+        with patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as ms:
             ms.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=False)
             result = await _generate_entity_embedding("张三", "character", None, None)
         assert result is None
@@ -64,8 +64,8 @@ class TestGenerateEntityEmbedding:
     @pytest.mark.asyncio
     async def test_returns_none_on_embed_failure(self):
         """embed_texts 抛异常时返回 None，不传播（实体创建不阻断）。"""
-        with patch("src.api.services.knowledge_graph_service.get_settings") as ms, \
-             patch("src.api.services.knowledge_graph_service._embed_texts", AsyncMock(side_effect=RuntimeError("API down"))):
+        with patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as ms, \
+             patch("src.api.services.knowledge.knowledge_graph_service._embed_texts", AsyncMock(side_effect=RuntimeError("API down"))):
             ms.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
             result = await _generate_entity_embedding("张三", "character", None, None)
         assert result is None

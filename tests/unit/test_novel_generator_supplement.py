@@ -39,7 +39,9 @@ class TestCalculateLongFormChapterPlan:
 
     def test_auto_calc_true_clamps_to_min_20(self):
         """目标章节数过少时，chapters_per_volume 被 clamp 到下限 20。"""
-        from src.api.services.novel_generator import calculate_long_form_chapter_plan
+        from src.api.services.generation.novel_generator import (
+            calculate_long_form_chapter_plan,
+        )
 
         # 100000 字 / 5000 字每章 = 20 章; /10 卷 = 2 章/卷 → clamp 到 20
         req = _make_request(
@@ -53,7 +55,9 @@ class TestCalculateLongFormChapterPlan:
 
     def test_auto_calc_true_clamps_to_max_60(self):
         """目标章节数过多时，chapters_per_volume 被 clamp 到上限 60。"""
-        from src.api.services.novel_generator import calculate_long_form_chapter_plan
+        from src.api.services.generation.novel_generator import (
+            calculate_long_form_chapter_plan,
+        )
 
         # 10000000 字 / 1000 字每章 = 10000 章; /1 卷 = 10000 章/卷 → clamp 到 60
         req = _make_request(
@@ -66,7 +70,9 @@ class TestCalculateLongFormChapterPlan:
 
     def test_auto_calc_true_midrange_no_clamp(self):
         """中等规模时不触发 clamp。"""
-        from src.api.services.novel_generator import calculate_long_form_chapter_plan
+        from src.api.services.generation.novel_generator import (
+            calculate_long_form_chapter_plan,
+        )
 
         # 1500000 / 3000 = 500 章; /10 卷 = 50 章/卷 → 不 clamp
         req = _make_request(
@@ -80,7 +86,9 @@ class TestCalculateLongFormChapterPlan:
 
     def test_auto_calc_false_uses_request_value(self):
         """auto_calc_chapters=False 时直接用 request.chapters_per_volume。"""
-        from src.api.services.novel_generator import calculate_long_form_chapter_plan
+        from src.api.services.generation.novel_generator import (
+            calculate_long_form_chapter_plan,
+        )
 
         req = _make_request(
             auto_calc_chapters=False, volumes=5, chapters_per_volume=30,
@@ -94,7 +102,9 @@ class TestCalculateLongFormChapterPlan:
 
     def test_auto_calc_returns_all_keys(self):
         """返回的字典必须包含全部 4 个键。"""
-        from src.api.services.novel_generator import calculate_long_form_chapter_plan
+        from src.api.services.generation.novel_generator import (
+            calculate_long_form_chapter_plan,
+        )
 
         plan = calculate_long_form_chapter_plan(_make_request())
         assert set(plan.keys()) == {
@@ -107,11 +117,15 @@ class TestFullGeneratePercentage:
     """_full_generate_percentage 百分比计算。"""
 
     def test_first_stage_returns_positive(self):
-        from src.api.services.novel_generator import _full_generate_percentage
+        from src.api.services.generation.novel_generator import (
+            _full_generate_percentage,
+        )
         assert _full_generate_percentage(0) > 0
 
     def test_last_stage_returns_100(self):
-        from src.api.services.novel_generator import _full_generate_percentage
+        from src.api.services.generation.novel_generator import (
+            _full_generate_percentage,
+        )
         last = len([
             "idea_expansion", "world_building", "character_design",
             "outline_generation", "chapter_generation", "quality_check",
@@ -122,7 +136,9 @@ class TestFullGeneratePercentage:
 
     def test_monotonic_increasing(self):
         """百分比随 stage_index 单调递增。"""
-        from src.api.services.novel_generator import _full_generate_percentage
+        from src.api.services.generation.novel_generator import (
+            _full_generate_percentage,
+        )
 
         values = [_full_generate_percentage(i) for i in range(13)]
         for prev, curr in zip(values, values[1:]):
@@ -130,7 +146,9 @@ class TestFullGeneratePercentage:
 
     def test_override_total_stages(self):
         """total_stages 覆盖参数生效。"""
-        from src.api.services.novel_generator import _full_generate_percentage
+        from src.api.services.generation.novel_generator import (
+            _full_generate_percentage,
+        )
         # 4 阶段, index=0 → 25%
         assert _full_generate_percentage(0, total_stages=4) == 25
         # 4 阶段, index=3 → 100%
@@ -147,16 +165,16 @@ class TestTaskPauseResume:
 
     @pytest.mark.asyncio
     async def test_pause_task_sets_paused_and_emits(self):
-        from src.api.services.novel_generator import pause_task
+        from src.api.services.generation.novel_generator import pause_task
 
         store = MagicMock()
         store.set_paused = AsyncMock()
         emit = AsyncMock()
 
         with patch(
-            "src.api.services.pause_state_store.get_pause_state_store",
+            "src.api.services.generation.pause_state_store.get_pause_state_store",
             return_value=store,
-        ), patch("src.api.services.novel_generator._emit_progress", emit):
+        ), patch("src.api.services.generation.novel_generator._emit_progress", emit):
             await pause_task("task-1")
 
         store.set_paused.assert_awaited_once_with("task-1")
@@ -166,16 +184,16 @@ class TestTaskPauseResume:
 
     @pytest.mark.asyncio
     async def test_resume_task_clears_paused_and_emits(self):
-        from src.api.services.novel_generator import resume_task
+        from src.api.services.generation.novel_generator import resume_task
 
         store = MagicMock()
         store.clear_paused = AsyncMock()
         emit = AsyncMock()
 
         with patch(
-            "src.api.services.pause_state_store.get_pause_state_store",
+            "src.api.services.generation.pause_state_store.get_pause_state_store",
             return_value=store,
-        ), patch("src.api.services.novel_generator._emit_progress", emit):
+        ), patch("src.api.services.generation.novel_generator._emit_progress", emit):
             await resume_task("task-1")
 
         store.clear_paused.assert_awaited_once_with("task-1")
@@ -183,13 +201,13 @@ class TestTaskPauseResume:
 
     @pytest.mark.asyncio
     async def test_is_task_paused_delegates_to_store(self):
-        from src.api.services.novel_generator import is_task_paused
+        from src.api.services.generation.novel_generator import is_task_paused
 
         store = MagicMock()
         store.is_paused = AsyncMock(return_value=True)
 
         with patch(
-            "src.api.services.pause_state_store.get_pause_state_store",
+            "src.api.services.generation.pause_state_store.get_pause_state_store",
             return_value=store,
         ):
             result = await is_task_paused("task-1")
@@ -199,18 +217,104 @@ class TestTaskPauseResume:
 
     @pytest.mark.asyncio
     async def test_is_task_paused_returns_false_when_not_paused(self):
-        from src.api.services.novel_generator import is_task_paused
+        from src.api.services.generation.novel_generator import is_task_paused
 
         store = MagicMock()
         store.is_paused = AsyncMock(return_value=False)
 
         with patch(
-            "src.api.services.pause_state_store.get_pause_state_store",
+            "src.api.services.generation.pause_state_store.get_pause_state_store",
             return_value=store,
         ):
             result = await is_task_paused("task-2")
 
         assert result is False
+
+
+# ---------------------------------------------------------------------------
+# LangGraph quality dependency injection
+# ---------------------------------------------------------------------------
+
+
+class TestLangGraphQualityDependencyInjection:
+    """API 编排层为 quality_check 注入持久化和 L3 改写依赖。"""
+
+    @pytest.mark.asyncio
+    async def test_initial_pipeline_injects_quality_dependencies(self):
+        from src.api.services.generation.novel_generator import (
+            _persist_quality_to_version,
+            _run_langgraph_pipeline,
+        )
+        from src.api.services.quality.rewrite_loop_service import RewriteLoopService
+
+        captured = {}
+
+        async def fake_astream(state, config):
+            captured["config"] = config
+            if False:
+                yield {}
+
+        graph = MagicMock()
+        graph.astream = fake_astream
+
+        with patch(
+            "src.api.services.generation.novel_generator.get_task_manager",
+            return_value=MagicMock(),
+        ), patch(
+            "src.api.services.generation.novel_generator.get_event_bus",
+            return_value=MagicMock(),
+        ), patch(
+            "src.api.services.generation.novel_generator.create_novel_graph",
+            return_value=graph,
+        ), patch("src.core.config.get_settings") as mock_settings:
+            mock_settings.return_value.KNOWLEDGE_GRAPH_ENABLED = False
+            await _run_langgraph_pipeline("task-initial", {})
+
+        configurable = captured["config"]["configurable"]
+        assert configurable["persist_quality"] is _persist_quality_to_version
+        assert isinstance(configurable["rewrite_service"], RewriteLoopService)
+
+    @pytest.mark.asyncio
+    async def test_resume_pipeline_injects_quality_dependencies(self):
+        from src.api.services.generation.novel_generator import (
+            _persist_quality_to_version,
+            resume_pipeline,
+        )
+        from src.api.services.quality.rewrite_loop_service import RewriteLoopService
+
+        captured = {}
+
+        async def fake_astream(command, config):
+            captured["config"] = config
+            yield {"human_review": {"chapters": []}}
+
+        graph = MagicMock()
+        graph.astream = fake_astream
+        task_manager = MagicMock()
+        task_manager.get_task = AsyncMock(return_value=None)
+        task_manager.complete_task = AsyncMock()
+        task_manager.fail_task = AsyncMock()
+
+        with patch(
+            "src.api.services.generation.novel_generator.get_task_manager",
+            return_value=task_manager,
+        ), patch(
+            "src.api.services.generation.novel_generator.get_event_bus",
+            return_value=MagicMock(),
+        ), patch(
+            "src.api.services.generation.novel_generator.create_novel_graph",
+            return_value=graph,
+        ), patch(
+            "src.api.services.generation.novel_generator._emit_progress",
+            new=AsyncMock(),
+        ):
+            await resume_pipeline(
+                "task-resume", {"approval_status": "approved"}
+            )
+
+        configurable = captured["config"]["configurable"]
+        assert configurable["persist_quality"] is _persist_quality_to_version
+        assert isinstance(configurable["rewrite_service"], RewriteLoopService)
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +328,9 @@ class TestGenerateNovelBackgroundErrorRecovery:
     @pytest.mark.asyncio
     async def test_failure_marks_task_and_novel_failed(self):
         """_run_langgraph_pipeline 抛异常时，task 标记 failed，novel 标记 failed。"""
-        from src.api.services.novel_generator import generate_novel_background
+        from src.api.services.generation.novel_generator import (
+            generate_novel_background,
+        )
 
         tm = MagicMock()
         tm.update_status = AsyncMock()
@@ -237,12 +343,12 @@ class TestGenerateNovelBackgroundErrorRecovery:
 
         request = _make_request()
 
-        with patch("src.api.services.novel_generator.get_task_manager", return_value=tm), \
-             patch("src.api.services.novel_manager.get_novel_manager", return_value=nm), \
-             patch("src.api.services.novel_generator._emit_progress", AsyncMock()), \
-             patch("src.api.services.novel_generator._build_initial_state", AsyncMock(return_value=({}, "novel-99"))), \
-             patch("src.api.services.novel_generator._run_langgraph_pipeline", AsyncMock(side_effect=RuntimeError("LLM 超时"))), \
-             patch("src.api.services.novel_generator._persist_to_novel", AsyncMock()):
+        with patch("src.api.services.generation.novel_generator.get_task_manager", return_value=tm), \
+             patch("src.api.services.content.novel_manager.get_novel_manager", return_value=nm), \
+             patch("src.api.services.generation.novel_generator._emit_progress", AsyncMock()), \
+             patch("src.api.services.generation.novel_generator._build_initial_state", AsyncMock(return_value=({}, "novel-99"))), \
+             patch("src.api.services.generation.novel_generator._run_langgraph_pipeline", AsyncMock(side_effect=RuntimeError("LLM 超时"))), \
+             patch("src.api.services.generation.novel_generator._persist_to_novel", AsyncMock()):
             await generate_novel_background("task-fail", request)
 
         # task 标记失败
@@ -258,7 +364,9 @@ class TestGenerateNovelBackgroundErrorRecovery:
     @pytest.mark.asyncio
     async def test_success_completes_task_and_persists(self):
         """正常完成时，complete_task 被调用，结果持久化。"""
-        from src.api.services.novel_generator import generate_novel_background
+        from src.api.services.generation.novel_generator import (
+            generate_novel_background,
+        )
 
         tm = MagicMock()
         tm.update_status = AsyncMock()
@@ -271,11 +379,11 @@ class TestGenerateNovelBackgroundErrorRecovery:
         request = _make_request()
         pipeline_result = {"chapters": [{"title": "第1章"}]}
 
-        with patch("src.api.services.novel_generator.get_task_manager", return_value=tm), \
-             patch("src.api.services.novel_generator._emit_progress", AsyncMock()), \
-             patch("src.api.services.novel_generator._build_initial_state", AsyncMock(return_value=({}, "novel-100"))), \
-             patch("src.api.services.novel_generator._run_langgraph_pipeline", AsyncMock(return_value=pipeline_result)), \
-             patch("src.api.services.novel_generator._persist_to_novel", persist):
+        with patch("src.api.services.generation.novel_generator.get_task_manager", return_value=tm), \
+             patch("src.api.services.generation.novel_generator._emit_progress", AsyncMock()), \
+             patch("src.api.services.generation.novel_generator._build_initial_state", AsyncMock(return_value=({}, "novel-100"))), \
+             patch("src.api.services.generation.novel_generator._run_langgraph_pipeline", AsyncMock(return_value=pipeline_result)), \
+             patch("src.api.services.generation.novel_generator._persist_to_novel", persist):
             await generate_novel_background("task-ok", request)
 
         tm.complete_task.assert_awaited_once()
@@ -297,7 +405,7 @@ class TestRunSubFeatureIsolation:
     @pytest.mark.asyncio
     async def test_failure_does_not_raise(self):
         """子特性抛异常时，_run_sub_feature 自己吞掉，不向上传播。"""
-        from src.api.services.novel_generator import _run_sub_feature
+        from src.api.services.generation.novel_generator import _run_sub_feature
 
         tm = MagicMock()
         tm.update_status = AsyncMock()
@@ -309,11 +417,11 @@ class TestRunSubFeatureIsolation:
 
         emit = AsyncMock()
 
-        with patch("src.api.services.novel_generator.get_task_manager", return_value=tm), \
-             patch("src.api.services.novel_generator._emit_progress", emit), \
-             patch("src.api.services.ai_generation_service.get_ai_generation_service", return_value=ai_svc), \
-             patch("src.api.services.conversation_service.get_conversation_service"), \
-             patch("src.api.services.outline_service.get_outline_service"):
+        with patch("src.api.services.generation.novel_generator.get_task_manager", return_value=tm), \
+             patch("src.api.services.generation.novel_generator._emit_progress", emit), \
+             patch("src.api.services.generation.ai_generation_service.get_ai_generation_service", return_value=ai_svc), \
+             patch("src.api.services.content.conversation_service.get_conversation_service"), \
+             patch("src.api.services.content.outline_service.get_outline_service"):
             # 不应抛出
             await _run_sub_feature(
                 task_id="task-iso", novel_id="novel-iso", result={},
@@ -322,7 +430,7 @@ class TestRunSubFeatureIsolation:
             )
 
         # 失败时通过 _emit_progress 发出 ERROR 事件
-        from src.api.services.progress_event_bus import EventType
+        from src.api.services.generation.progress_event_bus import EventType
 
         error_emits = [
             c for c in emit.call_args_list
@@ -333,7 +441,7 @@ class TestRunSubFeatureIsolation:
     @pytest.mark.asyncio
     async def test_skips_when_novel_id_none(self):
         """novel_id=None 时跳过所有子特性逻辑，不调用 AI 服务。"""
-        from src.api.services.novel_generator import _run_sub_feature
+        from src.api.services.generation.novel_generator import _run_sub_feature
 
         tm = MagicMock()
         tm.update_status = AsyncMock()
@@ -341,11 +449,11 @@ class TestRunSubFeatureIsolation:
         ai_svc = MagicMock()
         ai_svc.generate_power_systems_ai = AsyncMock()
 
-        with patch("src.api.services.novel_generator.get_task_manager", return_value=tm), \
-             patch("src.api.services.novel_generator._emit_progress", AsyncMock()), \
-             patch("src.api.services.ai_generation_service.get_ai_generation_service", return_value=ai_svc), \
-             patch("src.api.services.conversation_service.get_conversation_service"), \
-             patch("src.api.services.outline_service.get_outline_service"):
+        with patch("src.api.services.generation.novel_generator.get_task_manager", return_value=tm), \
+             patch("src.api.services.generation.novel_generator._emit_progress", AsyncMock()), \
+             patch("src.api.services.generation.ai_generation_service.get_ai_generation_service", return_value=ai_svc), \
+             patch("src.api.services.content.conversation_service.get_conversation_service"), \
+             patch("src.api.services.content.outline_service.get_outline_service"):
             await _run_sub_feature(
                 task_id="task-none", novel_id=None, result={},
                 request=_make_request(),
@@ -371,7 +479,7 @@ class TestGenerateVolumeBackgroundFallback:
     @pytest.mark.asyncio
     async def test_fallback_to_outline_service_when_volume_has_no_outline(self):
         """volume_service.get_volume 返回无 outline 时，从 outline_service 取章节数据。"""
-        from src.api.services.long_form_generation_helpers import (
+        from src.api.services.generation.long_form_generation_helpers import (
             generate_volume_background,
         )
 
@@ -392,12 +500,12 @@ class TestGenerateVolumeBackgroundFallback:
             {"chapter_number": 1, "content": {"title": "第1章", "turning_point": "转折", "scenes": []}},
         ])
 
-        with patch("src.api.services.long_form_generation_helpers.get_task_manager", return_value=tm), \
-             patch("src.api.services.long_form_generation_helpers.get_volume_service", return_value=vol_service), \
-             patch("src.api.services.long_form_generation_helpers._emit_progress", AsyncMock()), \
-             patch("src.api.services.long_form_generation_helpers.generate_volume_chapters",
+        with patch("src.api.services.generation.long_form_generation_helpers.get_task_manager", return_value=tm), \
+             patch("src.api.services.generation.long_form_generation_helpers.get_volume_service", return_value=vol_service), \
+             patch("src.api.services.generation.long_form_generation_helpers._emit_progress", AsyncMock()), \
+             patch("src.api.services.generation.long_form_generation_helpers.generate_volume_chapters",
                    new=AsyncMock(return_value=[{"chapter": 1}])) as gen_vol_mock, \
-             patch("src.api.services.outline_service.get_outline_service", return_value=outline_svc):
+             patch("src.api.services.content.outline_service.get_outline_service", return_value=outline_svc):
             await generate_volume_background("task-vol", "novel-1", 1)
 
         # 走了 fallback：generate_volume_chapters 被调，vol_outline.chapters 从 outline_service 取
@@ -411,7 +519,7 @@ class TestGenerateVolumeBackgroundFallback:
     @pytest.mark.asyncio
     async def test_raises_when_no_outline_anywhere(self):
         """volume 和 outline_service 都无数据时抛 ValueError（被外层捕获标 task 失败）。"""
-        from src.api.services.long_form_generation_helpers import (
+        from src.api.services.generation.long_form_generation_helpers import (
             generate_volume_background,
         )
 
@@ -428,12 +536,12 @@ class TestGenerateVolumeBackgroundFallback:
         outline_svc.get_volume_outlines = AsyncMock(return_value=[])  # 无数据
         outline_svc.get_chapter_outlines = AsyncMock(return_value=[])
 
-        with patch("src.api.services.long_form_generation_helpers.get_task_manager", return_value=tm), \
-             patch("src.api.services.long_form_generation_helpers.get_volume_service", return_value=vol_service), \
-             patch("src.api.services.long_form_generation_helpers._emit_progress", AsyncMock()), \
-             patch("src.api.services.long_form_generation_helpers.generate_volume_chapters",
+        with patch("src.api.services.generation.long_form_generation_helpers.get_task_manager", return_value=tm), \
+             patch("src.api.services.generation.long_form_generation_helpers.get_volume_service", return_value=vol_service), \
+             patch("src.api.services.generation.long_form_generation_helpers._emit_progress", AsyncMock()), \
+             patch("src.api.services.generation.long_form_generation_helpers.generate_volume_chapters",
                    new=AsyncMock(return_value=[])), \
-             patch("src.api.services.outline_service.get_outline_service", return_value=outline_svc):
+             patch("src.api.services.content.outline_service.get_outline_service", return_value=outline_svc):
             await generate_volume_background("task-vol2", "novel-1", 1)
 
         # 抛 ValueError 被外层 try 捕获 → task 标记失败

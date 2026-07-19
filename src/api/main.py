@@ -36,8 +36,14 @@ from src.api.routes import (
     world_router,
     ws_router,
 )
+from src.api.services.tasks.task_manager import get_task_manager
+from src.api.services.tasks.task_worker import PersistentTaskWorker, get_task_worker
 from src.core.config import get_settings
 from src.core.database import close_db, init_db
+from src.core.langgraph.checkpointer import (
+    setup_persistent_checkpointer,
+    teardown_persistent_checkpointer,
+)
 from src.core.logging_config import setup_logging
 from src.core.security.auth import validate_admin_token
 from src.core.security.crypto import validate_encryption_key
@@ -55,6 +61,40 @@ logger = structlog.get_logger(__name__)
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 
+async def start_task_queue() -> PersistentTaskWorker | None:
+    """恢复可执行任务，并按配置启动当前进程的队列 worker。"""
+    if not settings.TASK_QUEUE_ENABLED:
+        logger.info("persistent_task_queue_disabled")
+        return None
+
+    recovered = await get_task_manager().recover_interrupted_tasks()
+    logger.info(
+        "persistent_task_queue_recovered",
+        queued_preserved=recovered.queued_preserved,
+        stale_requeued=recovered.stale_requeued,
+        stale_failed=recovered.stale_failed,
+        legacy_failed=recovered.legacy_failed,
+    )
+    task_worker = get_task_worker()
+    await task_worker.start()
+    logger.info("persistent_task_worker_started", worker_id=task_worker.worker_id)
+    return task_worker
+
+
+async def shutdown_application_services(
+    task_worker: PersistentTaskWorker | None,
+) -> None:
+    """按依赖顺序停止 worker、checkpointer 和数据库。"""
+    try:
+        if task_worker is not None:
+            await task_worker.stop()
+    finally:
+        try:
+            await teardown_persistent_checkpointer()
+        finally:
+            await close_db()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
@@ -66,84 +106,81 @@ async def lifespan(app: FastAPI):
     logger.info("Database initialized")
 
     # 初始化持久化 checkpointer（HITL interrupt/resume 必需，sqlite 模式持久化 graph 状态）
-    from src.core.langgraph.checkpointer import (
-        setup_persistent_checkpointer,
-        teardown_persistent_checkpointer,
-    )
-    await setup_persistent_checkpointer()
-
-    # 恢复服务重启时被中断的任务（孤儿 running 任务标记为 failed）
-    from src.api.services.task_manager import get_task_manager
-    recovered = await get_task_manager().recover_interrupted_tasks()
-    if recovered:
-        logger.info("interrupted_tasks_recovered", count=recovered)
-
-    # 注入 AgentJournal 服务到 core 层记录器端口（依赖反转）
-    # Sub-Agent 通过 get_journal_recorder() 访问日志记录器，无需直接依赖 api 层
-    from src.api.services.agent_journal_service import get_journal_service
-    get_journal_service()
-    logger.info("agent_journal_recorder_registered")
-
-    # 初始化 LLMClient 全局单例 — 优先使用数据库激活配置
-    from sqlalchemy import select as _sa_select
-
-    import src.core.llm.client as _llm_module
-    from src.api.models.db_models import LLMConfig as _LLMConfig
-    from src.core.database import get_db_session as _get_db_session
-    from src.core.llm.client import LLMClient as _LLMClient
-
     try:
-        async with _get_db_session() as _session:
-            _result = await _session.execute(
-                _sa_select(_LLMConfig).where(_LLMConfig.is_active.is_(True)).limit(1)
-            )
-            _active_config = _result.scalar_one_or_none()
+        await setup_persistent_checkpointer()
+    except BaseException:
+        await close_db()
+        raise
 
-        if _active_config is not None:
-            _llm_module._client = _LLMClient(llm_config=_active_config)
-            logger.info(
-                "llm_client_initialized_from_db",
-                config_name=_active_config.name,
+    task_worker = None
+    try:
+        # 注入 AgentJournal 服务到 core 层记录器端口（依赖反转）
+        # Sub-Agent 通过 get_journal_recorder() 访问日志记录器，无需直接依赖 api 层
+        from src.api.services.agent_journal_service import get_journal_service
+
+        get_journal_service()
+        logger.info("agent_journal_recorder_registered")
+
+        # 初始化 LLMClient 全局单例 — 优先使用数据库激活配置
+        from sqlalchemy import select as _sa_select
+
+        import src.core.llm.client as _llm_module
+        from src.api.models.db_models import LLMConfig as _LLMConfig
+        from src.core.database import get_db_session as _get_db_session
+        from src.core.llm.client import LLMClient as _LLMClient
+
+        try:
+            async with _get_db_session() as _session:
+                _result = await _session.execute(
+                    _sa_select(_LLMConfig)
+                    .where(_LLMConfig.is_active.is_(True))
+                    .limit(1)
+                )
+                _active_config = _result.scalar_one_or_none()
+
+            if _active_config is not None:
+                _llm_module._client = _LLMClient(llm_config=_active_config)
+                logger.info(
+                    "llm_client_initialized_from_db",
+                    config_name=_active_config.name,
+                )
+            else:
+                _llm_module._client = _LLMClient()
+                logger.info("llm_client_initialized_from_settings")
+        except Exception as _exc:
+            logger.warning(
+                "llm_client_init_fallback",
+                error=str(_exc),
+                message="Falling back to Settings-based LLMClient",
             )
-        else:
             _llm_module._client = _LLMClient()
-            logger.info("llm_client_initialized_from_settings")
-    except Exception as _exc:
-        logger.warning(
-            "llm_client_init_fallback",
-            error=str(_exc),
-            message="Falling back to Settings-based LLMClient",
-        )
-        _llm_module._client = _LLMClient()
 
-    # Validate API Key at startup
-    placeholder_keys = {
-        "",
-        "dummy_key_for_compilation",
-        "your-api-key-here",
-        "your_api_key_here",
-        "sk-placeholder",
-    }
-    api_key = (settings.DEEPSEEK_API_KEY or "").strip()
-    if not api_key or api_key.lower() in placeholder_keys:
-        logger.warning(
-            "api_key_not_configured",
-            message=(
-                "DEEPSEEK_API_KEY is a placeholder or empty. "
-                "Chapter generation will fail. "
-                "Please set a valid API key in .env and restart."
-            ),
-        )
+        # Validate API Key at startup
+        placeholder_keys = {
+            "",
+            "dummy_key_for_compilation",
+            "your-api-key-here",
+            "your_api_key_here",
+            "sk-placeholder",
+        }
+        api_key = (settings.DEEPSEEK_API_KEY or "").strip()
+        if not api_key or api_key.lower() in placeholder_keys:
+            logger.warning(
+                "api_key_not_configured",
+                message=(
+                    "DEEPSEEK_API_KEY is a placeholder or empty. "
+                    "Chapter generation will fail. "
+                    "Please set a valid API key in .env and restart."
+                ),
+            )
 
-    logger.info("API documentation available at http://localhost:8000/docs")
-
-    yield
-
-    # Shutdown
-    logger.info("xIaoShuo API shutting down...")
-    await teardown_persistent_checkpointer()
-    await close_db()
-    logger.info("Database connections closed")
+        task_worker = await start_task_queue()
+        logger.info("API documentation available at http://localhost:8000/docs")
+        yield
+    finally:
+        logger.info("xIaoShuo API shutting down...")
+        await shutdown_application_services(task_worker)
+        logger.info("Database connections closed")
 
 
 # 创建 FastAPI 应用

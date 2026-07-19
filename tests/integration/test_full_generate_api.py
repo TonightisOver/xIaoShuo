@@ -6,10 +6,9 @@ Tests:
 - Edge cases: validation, missing novel, etc.
 
 These tests use a real database connection (configured in tests/conftest.py).
-Background task execution (LLM) is mocked to avoid real API calls during tests.
+The ASGI transport does not run the application lifespan, so the persistent
+queue worker is not started and no LLM generation runs in these API tests.
 """
-
-from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -27,24 +26,6 @@ async def _db_setup():
     yield
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
-
-
-@pytest.fixture(autouse=True)
-def _mock_background_tasks():
-    """Globally mock background generation tasks to prevent real LLM calls.
-
-    The HTTP layer tests focus on request/response validation and DB
-    persistence.  Background task execution hits the real LLM API which
-    is out of scope for these API integration tests.
-    """
-    with patch(
-        "src.api.routes.projects.generate_novel_background",
-        new_callable=AsyncMock,
-    ), patch(
-        "src.api.routes.projects.generate_novel_full_background",
-        new_callable=AsyncMock,
-    ):
-        yield
 
 
 @pytest.fixture

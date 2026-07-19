@@ -14,8 +14,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.core.agents.journal_recorder import reset_journal_recorder, set_journal_recorder
-
+from src.core.agents.journal_recorder import (
+    reset_journal_recorder,
+    set_journal_recorder,
+)
 
 # ─────────────────────────────────────────────
 # Fixtures

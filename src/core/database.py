@@ -88,16 +88,15 @@ async def init_db() -> None:
 async def close_db() -> None:
     """Close database connections gracefully.
 
-    Disposes the engine and clears the session factory. Safe to call during
-    application shutdown: FastAPI's lifespan waits for in-flight BackgroundTasks
-    to complete before reaching here, so active generation tasks are not
-    interrupted. The engine's ``pool_pre_ping`` and connection recycling ensure
-    stale connections are dropped cleanly.
+    Disposes the engine and clears the session factory. The application lifespan
+    must stop ``PersistentTaskWorker`` before calling this function so an active
+    generation handler and its lease heartbeat are cancelled before the pool is
+    disposed. The engine's ``pool_pre_ping`` and connection recycling ensure stale
+    connections are dropped cleanly.
 
     After this call, any subsequent ``get_db_session()`` will lazily recreate a
-    fresh engine (useful in tests). Long-running background coroutines spawned
-    outside FastAPI's BackgroundTasks mechanism should drain themselves before
-    shutdown to avoid ClosedPoolError.
+    fresh engine (useful in tests). Other long-running background coroutines must
+    likewise drain themselves before shutdown to avoid ``ClosedPoolError``.
     """
     global _engine, _async_session_factory
     if _engine is not None:

@@ -4,12 +4,11 @@ Tests verify that:
 - GET /api/v1/projects/{novel_id}/chapters returns volume_number in each item
 - GET /api/v1/projects/{novel_id}/chapters/{chapter_number} returns volume_number
 
-Uses a real database connection (configured in tests/conftest.py).
-Background generation tasks are mocked to avoid real LLM calls.
+Uses a real database connection (configured in tests/conftest.py). The ASGI
+transport does not start the persistent queue worker, so no LLM generation runs.
 """
 
 from datetime import UTC
-from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -27,19 +26,6 @@ async def _db_setup():
     yield
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
-
-
-@pytest.fixture(autouse=True)
-def _mock_background_tasks():
-    """Mock background generation to prevent real LLM calls."""
-    with patch(
-        "src.api.routes.projects.generate_novel_background",
-        new_callable=AsyncMock,
-    ), patch(
-        "src.api.routes.projects.generate_novel_full_background",
-        new_callable=AsyncMock,
-    ):
-        yield
 
 
 @pytest.fixture
@@ -225,7 +211,7 @@ class TestGetChapterVolumeNumberAPI:
         novel_id, ch1_num, ch2_num, ch3_num = novel_with_chapters
 
         # Verify via service layer directly (bypassing the broken response_model)
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         service = get_chapter_service()
 
         ch1 = await service.get_chapter(novel_id, ch1_num)
@@ -259,7 +245,7 @@ class TestGetChapterVolumeNumberAPI:
         """Service layer dict always contains volume_number key (even when None)."""
         novel_id, ch1_num, ch2_num, ch3_num = novel_with_chapters
 
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         service = get_chapter_service()
 
         for ch_num in (ch1_num, ch2_num, ch3_num):

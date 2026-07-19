@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.api.services.progress_event_bus import EventType
+from src.api.services.generation.progress_event_bus import EventType
 
 # ============================================================
 #  generate_power_systems_ai  tests
@@ -23,7 +23,9 @@ class TestGeneratePowerSystemsAI:
     @pytest.mark.asyncio
     async def test_generates_power_systems_from_world_setting(self):
         """Happy path: world setting + novel info produce 1-3 power systems."""
-        from src.api.services.ai_generation_service import AIGenerationService
+        from src.api.services.generation.ai_generation_service import (
+            AIGenerationService,
+        )
 
         service = AIGenerationService()
 
@@ -54,8 +56,8 @@ class TestGeneratePowerSystemsAI:
                                "description": description, "levels": levels})
             return ps_id
 
-        with patch("src.api.services.world_service.get_world_service") as mock_ws, \
-             patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
+        with patch("src.api.services.content.world_service.get_world_service") as mock_ws, \
+             patch("src.api.services.content.novel_manager.get_novel_manager") as mock_mgr, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
              patch("src.core.llm.helpers.safe_json_parse", return_value=llm_response):
 
@@ -83,7 +85,9 @@ class TestGeneratePowerSystemsAI:
     @pytest.mark.asyncio
     async def test_generates_power_systems_with_empty_world(self):
         """When world_setting is None/empty, still generates with novel info only."""
-        from src.api.services.ai_generation_service import AIGenerationService
+        from src.api.services.generation.ai_generation_service import (
+            AIGenerationService,
+        )
 
         service = AIGenerationService()
 
@@ -104,8 +108,8 @@ class TestGeneratePowerSystemsAI:
             created_ps.append({"name": name, "description": description})
             return 1
 
-        with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
-             patch("src.api.services.world_service.get_world_service") as mock_ws, \
+        with patch("src.api.services.content.novel_manager.get_novel_manager") as mock_mgr, \
+             patch("src.api.services.content.world_service.get_world_service") as mock_ws, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
              patch("src.core.llm.helpers.safe_json_parse", return_value=llm_response):
 
@@ -130,11 +134,13 @@ class TestGeneratePowerSystemsAI:
     @pytest.mark.asyncio
     async def test_raises_when_novel_not_found(self):
         """Raises ValueError when novel does not exist."""
-        from src.api.services.ai_generation_service import AIGenerationService
+        from src.api.services.generation.ai_generation_service import (
+            AIGenerationService,
+        )
 
         service = AIGenerationService()
 
-        with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr:
+        with patch("src.api.services.content.novel_manager.get_novel_manager") as mock_mgr:
             mock_manager = AsyncMock()
             mock_manager.get_novel = AsyncMock(return_value=None)
             mock_mgr.return_value = mock_manager
@@ -145,7 +151,9 @@ class TestGeneratePowerSystemsAI:
     @pytest.mark.asyncio
     async def test_handles_llm_returning_invalid_json(self):
         """Falls back to empty list when LLM returns unparseable content."""
-        from src.api.services.ai_generation_service import AIGenerationService
+        from src.api.services.generation.ai_generation_service import (
+            AIGenerationService,
+        )
 
         service = AIGenerationService()
 
@@ -155,8 +163,8 @@ class TestGeneratePowerSystemsAI:
             "writing_style": "现代白话", "status": "draft",
         }
 
-        with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
-             patch("src.api.services.world_service.get_world_service") as mock_ws, \
+        with patch("src.api.services.content.novel_manager.get_novel_manager") as mock_mgr, \
+             patch("src.api.services.content.world_service.get_world_service") as mock_ws, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
              patch("src.core.llm.helpers.safe_json_parse", return_value=[]) as mock_parse:
 
@@ -180,7 +188,9 @@ class TestGeneratePowerSystemsAI:
     @pytest.mark.asyncio
     async def test_handles_llm_returning_singular_dict(self):
         """Falls back to empty list when LLM returns a dict instead of list."""
-        from src.api.services.ai_generation_service import AIGenerationService
+        from src.api.services.generation.ai_generation_service import (
+            AIGenerationService,
+        )
 
         service = AIGenerationService()
 
@@ -190,8 +200,8 @@ class TestGeneratePowerSystemsAI:
             "writing_style": "现代白话", "status": "draft",
         }
 
-        with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
-             patch("src.api.services.world_service.get_world_service") as mock_ws, \
+        with patch("src.api.services.content.novel_manager.get_novel_manager") as mock_mgr, \
+             patch("src.api.services.content.world_service.get_world_service") as mock_ws, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
              patch("src.core.llm.helpers.safe_json_parse", return_value={"name": "单一体系"}):
 
@@ -214,7 +224,9 @@ class TestGeneratePowerSystemsAI:
     @pytest.mark.asyncio
     async def test_skips_items_without_name(self):
         """Items in the LLM response without a 'name' field are skipped."""
-        from src.api.services.ai_generation_service import AIGenerationService
+        from src.api.services.generation.ai_generation_service import (
+            AIGenerationService,
+        )
 
         service = AIGenerationService()
 
@@ -236,8 +248,8 @@ class TestGeneratePowerSystemsAI:
             created_ps.append({"name": name})
             return len(created_ps)
 
-        with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
-             patch("src.api.services.world_service.get_world_service") as mock_ws, \
+        with patch("src.api.services.content.novel_manager.get_novel_manager") as mock_mgr, \
+             patch("src.api.services.content.world_service.get_world_service") as mock_ws, \
              patch("src.core.llm.client.get_llm_client") as mock_llm, \
              patch("src.core.llm.helpers.safe_json_parse", return_value=llm_response):
 
@@ -272,7 +284,7 @@ class TestPersistOutlinesFromResult:
     @pytest.mark.asyncio
     async def test_persists_master_volumes_and_chapters(self):
         """Full result with master_outline, volumes with chapters."""
-        from src.api.services.outline_service import OutlineService
+        from src.api.services.content.outline_service import OutlineService
 
         service = OutlineService()
 
@@ -349,7 +361,7 @@ class TestPersistOutlinesFromResult:
     @pytest.mark.asyncio
     async def test_persists_standalone_chapters_only(self):
         """Result with only chapter_outlines (no volumes)."""
-        from src.api.services.outline_service import OutlineService
+        from src.api.services.content.outline_service import OutlineService
 
         service = OutlineService()
 
@@ -381,7 +393,7 @@ class TestPersistOutlinesFromResult:
     @pytest.mark.asyncio
     async def test_persists_empty_result_gracefully(self):
         """Empty result dict produces zero counts, no errors."""
-        from src.api.services.outline_service import OutlineService
+        from src.api.services.content.outline_service import OutlineService
 
         service = OutlineService()
 
@@ -392,7 +404,7 @@ class TestPersistOutlinesFromResult:
     @pytest.mark.asyncio
     async def test_persists_volumes_without_chapters(self):
         """Volumes with no nested chapters key are handled."""
-        from src.api.services.outline_service import OutlineService
+        from src.api.services.content.outline_service import OutlineService
 
         service = OutlineService()
 
@@ -422,7 +434,7 @@ class TestPersistOutlinesFromResult:
     async def test_plot_arcs_fallback_not_dict(self):
         """When master_outline is missing and plot_arcs is a list (not dict),
         the master outline should still be created via the else branch."""
-        from src.api.services.outline_service import OutlineService
+        from src.api.services.content.outline_service import OutlineService
 
         service = OutlineService()
 
@@ -452,7 +464,7 @@ class TestPersistOutlinesFromResult:
     @pytest.mark.asyncio
     async def test_skips_non_dict_chapters_in_volumes(self):
         """Chapters that are not dicts are skipped."""
-        from src.api.services.outline_service import OutlineService
+        from src.api.services.content.outline_service import OutlineService
 
         service = OutlineService()
 
@@ -497,7 +509,7 @@ class TestGenerateAutoConversation:
     @pytest.mark.asyncio
     async def test_creates_conversation_with_ai_suggestion(self):
         """Happy path: creates conversation with user+assistant messages."""
-        from src.api.services.conversation_service import ConversationService
+        from src.api.services.content.conversation_service import ConversationService
 
         service = ConversationService()
 
@@ -523,9 +535,9 @@ class TestGenerateAutoConversation:
             messages_added.append(kwargs)
             return len(messages_added)
 
-        with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
-             patch("src.api.services.character_service.get_character_service") as mock_cs, \
-             patch("src.api.services.conversation_service.get_llm_client") as mock_llm, \
+        with patch("src.api.services.content.novel_manager.get_novel_manager") as mock_mgr, \
+             patch("src.api.services.content.character_service.get_character_service") as mock_cs, \
+             patch("src.api.services.content.conversation_service.get_llm_client") as mock_llm, \
              patch.object(service, "create_conversation") as mock_create_conv:
 
             mock_llm_client = AsyncMock()
@@ -547,8 +559,8 @@ class TestGenerateAutoConversation:
             mock_create_conv.return_value = 42  # conv_id
 
             # Patch Message model and get_db_session to avoid real DB
-            with patch("src.api.services.conversation_service.Message") as mock_msg_cls, \
-                 patch("src.api.services.conversation_service.get_db_session") as mock_db_session:
+            with patch("src.api.services.content.conversation_service.Message") as mock_msg_cls, \
+                 patch("src.api.services.content.conversation_service.get_db_session") as mock_db_session:
 
                 mock_msg_instance = MagicMock()
                 mock_msg_cls.return_value = mock_msg_instance
@@ -569,11 +581,11 @@ class TestGenerateAutoConversation:
     @pytest.mark.asyncio
     async def test_raises_when_novel_not_found(self):
         """Raises ValueError when novel does not exist."""
-        from src.api.services.conversation_service import ConversationService
+        from src.api.services.content.conversation_service import ConversationService
 
         service = ConversationService()
 
-        with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr:
+        with patch("src.api.services.content.novel_manager.get_novel_manager") as mock_mgr:
             mock_manager = AsyncMock()
             mock_manager.get_novel = AsyncMock(return_value=None)
             mock_mgr.return_value = mock_manager
@@ -584,7 +596,7 @@ class TestGenerateAutoConversation:
     @pytest.mark.asyncio
     async def test_handles_minimal_settings(self):
         """Works with novel that has no world_setting or characters."""
-        from src.api.services.conversation_service import ConversationService
+        from src.api.services.content.conversation_service import ConversationService
 
         service = ConversationService()
 
@@ -594,12 +606,12 @@ class TestGenerateAutoConversation:
             "writing_style": "现代白话", "status": "draft",
         }
 
-        with patch("src.api.services.novel_manager.get_novel_manager") as mock_mgr, \
-             patch("src.api.services.character_service.get_character_service") as mock_cs, \
-             patch("src.api.services.conversation_service.get_llm_client") as mock_llm, \
+        with patch("src.api.services.content.novel_manager.get_novel_manager") as mock_mgr, \
+             patch("src.api.services.content.character_service.get_character_service") as mock_cs, \
+             patch("src.api.services.content.conversation_service.get_llm_client") as mock_llm, \
              patch.object(service, "create_conversation") as mock_create_conv, \
-             patch("src.api.services.conversation_service.Message") as mock_msg_cls, \
-             patch("src.api.services.conversation_service.get_db_session") as mock_db_session:
+             patch("src.api.services.content.conversation_service.Message") as mock_msg_cls, \
+             patch("src.api.services.content.conversation_service.get_db_session") as mock_db_session:
 
             mock_llm_client = AsyncMock()
             mock_llm_client.generate = AsyncMock(return_value="设定较为简单，建议补充更多细节。")
@@ -644,7 +656,7 @@ class TestRunSubFeature:
     async def test_sub_feature_power_systems(self):
         """_run_sub_feature dispatches to generate_power_systems_ai correctly."""
         from src.api.models.requests import CreateNovelRequest
-        from src.api.services.novel_generator import _run_sub_feature
+        from src.api.services.generation.novel_generator import _run_sub_feature
 
         event_bus_events = []
 
@@ -664,11 +676,11 @@ class TestRunSubFeature:
         )
 
         with patch(
-            "src.api.services.chapter_generation_utils.get_event_bus"
+            "src.api.services.generation.chapter_generation_utils.get_event_bus"
         ) as mock_bus, patch(
-            "src.api.services.novel_generator.get_task_manager"
+            "src.api.services.generation.novel_generator.get_task_manager"
         ) as mock_tm, patch(
-            "src.api.services.ai_generation_service.get_ai_generation_service"
+            "src.api.services.generation.ai_generation_service.get_ai_generation_service"
         ) as mock_sl:
 
             mock_bus.return_value = FakeEventBus()
@@ -713,7 +725,7 @@ class TestRunSubFeature:
         """When novel_id is None, sub-feature should be skipped (only events
         emitted, no service methods called)."""
         from src.api.models.requests import CreateNovelRequest
-        from src.api.services.novel_generator import _run_sub_feature
+        from src.api.services.generation.novel_generator import _run_sub_feature
 
         event_bus_events = []
 
@@ -732,8 +744,8 @@ class TestRunSubFeature:
             writing_style="现代白话",
         )
 
-        with patch("src.api.services.chapter_generation_utils.get_event_bus") as mock_bus, \
-             patch("src.api.services.novel_generator.get_task_manager") as mock_tm:
+        with patch("src.api.services.generation.chapter_generation_utils.get_event_bus") as mock_bus, \
+             patch("src.api.services.generation.novel_generator.get_task_manager") as mock_tm:
 
             mock_bus.return_value = FakeEventBus()
             mock_tm.return_value = FakeTaskManager()
@@ -750,7 +762,7 @@ class TestRunSubFeature:
 
         # Should emit start (since feature matches none of the
         # branches that need novel_id), then update_status
-        from src.api.services.progress_event_bus import EventType
+        from src.api.services.generation.progress_event_bus import EventType
         start_exists = any(
             getattr(e, 'event_type', None) is EventType.SUB_FEATURE_START
             for e in event_bus_events
@@ -762,7 +774,7 @@ class TestRunSubFeature:
         """When a sub-feature throws, it should emit an ERROR event with
         non_blocking=True and NOT re-raise."""
         from src.api.models.requests import CreateNovelRequest
-        from src.api.services.novel_generator import _run_sub_feature
+        from src.api.services.generation.novel_generator import _run_sub_feature
 
         event_bus_events = []
 
@@ -781,10 +793,10 @@ class TestRunSubFeature:
             writing_style="现代白话",
         )
 
-        with patch("src.api.services.chapter_generation_utils.get_event_bus") as mock_bus, \
-             patch("src.api.services.novel_generator.get_task_manager") as mock_tm, \
+        with patch("src.api.services.generation.chapter_generation_utils.get_event_bus") as mock_bus, \
+             patch("src.api.services.generation.novel_generator.get_task_manager") as mock_tm, \
              patch(
-                "src.api.services.ai_generation_service.get_ai_generation_service"
+                "src.api.services.generation.ai_generation_service.get_ai_generation_service"
              ) as mock_sl:
 
             mock_bus.return_value = FakeEventBus()
@@ -808,7 +820,7 @@ class TestRunSubFeature:
             )
 
         # Should have START, ERROR (non_blocking) events
-        from src.api.services.progress_event_bus import EventType
+        from src.api.services.generation.progress_event_bus import EventType
         error_event = next(
             (e for e in event_bus_events if e.event_type is EventType.ERROR), None
         )
@@ -820,7 +832,9 @@ class TestRunSubFeature:
     @pytest.mark.asyncio
     async def test_sub_feature_percentage_calculation(self):
         """Verify percentage is calculated for each feature_index."""
-        from src.api.services.novel_generator import _full_generate_percentage
+        from src.api.services.generation.novel_generator import (
+            _full_generate_percentage,
+        )
 
         # 13 stages, 0-based index
         assert _full_generate_percentage(0) == 7    # 1/13 ~= 7%
@@ -837,7 +851,9 @@ class TestFullGeneratePercentage:
     """Tests for percentage calculation helper."""
 
     def test_boundaries(self):
-        from src.api.services.novel_generator import _full_generate_percentage
+        from src.api.services.generation.novel_generator import (
+            _full_generate_percentage,
+        )
 
         # First stage = 1/13 * 100 = 7 (floor)
         assert _full_generate_percentage(0) == 7
@@ -850,7 +866,9 @@ class TestFullGeneratePercentage:
 
     def test_monotonic(self):
         """Percentage should increase monotonically with index."""
-        from src.api.services.novel_generator import _full_generate_percentage
+        from src.api.services.generation.novel_generator import (
+            _full_generate_percentage,
+        )
 
         prev = -1
         for i in range(13):

@@ -1,5 +1,7 @@
 """LangGraph graph 模块单元测试"""
 
+from unittest.mock import MagicMock, patch
+
 from src.core.langgraph.graph import create_novel_graph, should_continue
 from src.core.langgraph.state import NovelState
 
@@ -102,7 +104,6 @@ def test_create_novel_graph() -> None:
 
 
 # ── I1: 质量循环可配置测试 ──────────────────────────────────────
-from unittest.mock import MagicMock, patch
 
 
 def _quality_state(overall: float, regen_count: int = 0) -> NovelState:

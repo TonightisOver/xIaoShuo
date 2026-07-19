@@ -24,7 +24,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # 测试夹具：构造 StoryBible mock 与 mock_db_session
 # ---------------------------------------------------------------------------
@@ -89,7 +88,9 @@ class TestExtractRelevantConstraints:
 
     def test_global_constraints_included_with_unfilled_fields(self):
         """未设定字段（空串/None）应回退为「未设定」占位。"""
-        from src.api.services.story_bible_service import extract_relevant_constraints
+        from src.api.services.content.story_bible_service import (
+            extract_relevant_constraints,
+        )
 
         bible = _make_bible(worldview_rules="", hard_settings=None, banned_elements=[])
         result = extract_relevant_constraints(bible, {}, 1)
@@ -100,7 +101,9 @@ class TestExtractRelevantConstraints:
 
     def test_banned_elements_listed(self):
         """banned_elements 非空时应列出每一项 element 与 reason。"""
-        from src.api.services.story_bible_service import extract_relevant_constraints
+        from src.api.services.content.story_bible_service import (
+            extract_relevant_constraints,
+        )
 
         bible = _make_bible(banned_elements=[
             {"element": "魔法", "reason": "低魔世界"},
@@ -112,7 +115,9 @@ class TestExtractRelevantConstraints:
 
     def test_foreshadowing_filtered_by_chapter_characters(self):
         """伏笔只抽取与本章出场人物相关的，不相关的应被过滤掉。"""
-        from src.api.services.story_bible_service import extract_relevant_constraints
+        from src.api.services.content.story_bible_service import (
+            extract_relevant_constraints,
+        )
 
         bible = _make_bible(foreshadowing_list=[
             {"description": "张三发现的秘密", "related_characters": ["张三"]},
@@ -125,7 +130,9 @@ class TestExtractRelevantConstraints:
 
     def test_foreshadowing_kept_all_when_no_chapter_characters(self):
         """章节无出场人物时，伏笔不过滤（全部保留）。"""
-        from src.api.services.story_bible_service import extract_relevant_constraints
+        from src.api.services.content.story_bible_service import (
+            extract_relevant_constraints,
+        )
 
         bible = _make_bible(foreshadowing_list=[
             {"description": "伏笔A", "related_characters": ["路人甲"]},
@@ -135,7 +142,9 @@ class TestExtractRelevantConstraints:
 
     def test_active_goals_only_included(self):
         """仅活跃（status=active）主线目标被纳入。"""
-        from src.api.services.story_bible_service import extract_relevant_constraints
+        from src.api.services.content.story_bible_service import (
+            extract_relevant_constraints,
+        )
 
         bible = _make_bible(main_goals=[
             {"description": "目标A", "status": "active"},
@@ -147,7 +156,9 @@ class TestExtractRelevantConstraints:
 
     def test_resolved_hooks_excluded(self):
         """已回收（status=resolved）悬念不纳入未回收悬念段。"""
-        from src.api.services.story_bible_service import extract_relevant_constraints
+        from src.api.services.content.story_bible_service import (
+            extract_relevant_constraints,
+        )
 
         bible = _make_bible(unresolved_hooks=[
             {"description": "悬念A", "status": "hanging"},
@@ -166,13 +177,17 @@ class TestBuildConstraintSummaryForDetection:
     """测试用于冲突检测的约束摘要构建。"""
 
     def test_empty_bible_returns_empty_string(self):
-        from src.api.services.story_bible_service import _build_constraint_summary_for_detection
+        from src.api.services.content.story_bible_service import (
+            _build_constraint_summary_for_detection,
+        )
 
         bible = _make_bible()
         assert _build_constraint_summary_for_detection(bible) == ""
 
     def test_all_sections_present(self):
-        from src.api.services.story_bible_service import _build_constraint_summary_for_detection
+        from src.api.services.content.story_bible_service import (
+            _build_constraint_summary_for_detection,
+        )
 
         bible = _make_bible(
             character_cards=[{"name": "张三"}],
@@ -193,7 +208,9 @@ class TestBuildConstraintSummaryForDetection:
         """近期时间线只取最后 10 条。"""
         import json
 
-        from src.api.services.story_bible_service import _build_constraint_summary_for_detection
+        from src.api.services.content.story_bible_service import (
+            _build_constraint_summary_for_detection,
+        )
 
         events = [{"chapter": i, "event": f"e{i}"} for i in range(20)]
         bible = _make_bible(timeline_events=events)
@@ -216,7 +233,7 @@ class TestDetectBibleConflicts:
     @pytest.mark.asyncio
     async def test_no_bible_returns_empty(self):
         """无 StoryBible 时返回空列表，不调用 LLM。"""
-        from src.api.services.story_bible_service import detect_bible_conflicts
+        from src.api.services.content.story_bible_service import detect_bible_conflicts
 
         mock_session = _make_db_session(bible=None)
         llm_patch, mock_client = _patch_llm()
@@ -230,7 +247,7 @@ class TestDetectBibleConflicts:
     @pytest.mark.asyncio
     async def test_forgotten_hook_over_10_chapters(self):
         """planted_chapter 超过 10 章未回收 → forgotten_hook 冲突。"""
-        from src.api.services.story_bible_service import detect_bible_conflicts
+        from src.api.services.content.story_bible_service import detect_bible_conflicts
 
         bible = _make_bible(unresolved_hooks=[
             {"description": "远古伏笔", "status": "hanging", "planted_chapter": 1},
@@ -249,7 +266,7 @@ class TestDetectBibleConflicts:
     @pytest.mark.asyncio
     async def test_forgotten_hook_boundary_exactly_10_no_conflict(self):
         """恰好 10 章差（chapter - planted == 10）不触发，需 >10。"""
-        from src.api.services.story_bible_service import detect_bible_conflicts
+        from src.api.services.content.story_bible_service import detect_bible_conflicts
 
         bible = _make_bible(unresolved_hooks=[
             {"description": "伏笔", "status": "hanging", "planted_chapter": 5},
@@ -266,7 +283,7 @@ class TestDetectBibleConflicts:
     @pytest.mark.asyncio
     async def test_resolved_hook_skipped_in_rule_check(self):
         """已回收伏笔即使 planted 很久也不触发 forgotten_hook。"""
-        from src.api.services.story_bible_service import detect_bible_conflicts
+        from src.api.services.content.story_bible_service import detect_bible_conflicts
 
         bible = _make_bible(unresolved_hooks=[
             {"description": "已解决伏笔", "status": "resolved", "planted_chapter": 1},
@@ -282,7 +299,7 @@ class TestDetectBibleConflicts:
     @pytest.mark.asyncio
     async def test_hook_without_planted_chapter_skipped(self):
         """planted_chapter 缺失或非 int 时跳过规则检测。"""
-        from src.api.services.story_bible_service import detect_bible_conflicts
+        from src.api.services.content.story_bible_service import detect_bible_conflicts
 
         bible = _make_bible(unresolved_hooks=[
             {"description": "无章节伏笔", "status": "hanging"},  # 无 planted_chapter
@@ -299,7 +316,7 @@ class TestDetectBibleConflicts:
     @pytest.mark.asyncio
     async def test_llm_conflicts_merged(self):
         """LLM 返回的冲突应合并进结果。"""
-        from src.api.services.story_bible_service import detect_bible_conflicts
+        from src.api.services.content.story_bible_service import detect_bible_conflicts
 
         bible = _make_bible()
         mock_session = _make_db_session(bible=bible)
@@ -319,7 +336,7 @@ class TestDetectBibleConflicts:
     @pytest.mark.asyncio
     async def test_llm_parse_failure_returns_empty_llm_conflicts(self):
         """LLM 响应解析失败（返回 None）时，不应追加 LLM 冲突（规则冲突仍保留）。"""
-        from src.api.services.story_bible_service import detect_bible_conflicts
+        from src.api.services.content.story_bible_service import detect_bible_conflicts
 
         bible = _make_bible(unresolved_hooks=[
             {"description": "远古", "status": "hanging", "planted_chapter": 1},
@@ -338,7 +355,7 @@ class TestDetectBibleConflicts:
     @pytest.mark.asyncio
     async def test_llm_exception_degraded_gracefully(self):
         """LLM 调用抛异常时，捕获并降级（规则冲突仍返回，不炸）。"""
-        from src.api.services.story_bible_service import detect_bible_conflicts
+        from src.api.services.content.story_bible_service import detect_bible_conflicts
 
         bible = _make_bible(unresolved_hooks=[
             {"description": "远古", "status": "hanging", "planted_chapter": 1},
@@ -359,7 +376,7 @@ class TestDetectBibleConflicts:
     @pytest.mark.asyncio
     async def test_llm_conflicts_not_dict_ignored(self):
         """LLM 解析结果不是 dict 时，不追加冲突。"""
-        from src.api.services.story_bible_service import detect_bible_conflicts
+        from src.api.services.content.story_bible_service import detect_bible_conflicts
 
         bible = _make_bible()
         mock_session = _make_db_session(bible=bible)
@@ -383,7 +400,9 @@ class TestUpdateBibleAfterGeneration:
     @pytest.mark.asyncio
     async def test_no_bible_returns_zero_summary(self):
         """无 StoryBible 时返回全 0 摘要，不调用 LLM。"""
-        from src.api.services.story_bible_service import update_bible_after_generation
+        from src.api.services.content.story_bible_service import (
+            update_bible_after_generation,
+        )
 
         mock_session = _make_db_session(bible=None)
         llm_patch, mock_client = _patch_llm()
@@ -400,7 +419,9 @@ class TestUpdateBibleAfterGeneration:
     @pytest.mark.asyncio
     async def test_timeline_events_merged(self):
         """new_events 应追加到 timeline_events 并计数。"""
-        from src.api.services.story_bible_service import update_bible_after_generation
+        from src.api.services.content.story_bible_service import (
+            update_bible_after_generation,
+        )
 
         bible = _make_bible(timeline_events=[{"chapter": 1, "event": "旧事件"}])
         mock_session = _make_db_session(bible=bible)
@@ -421,7 +442,9 @@ class TestUpdateBibleAfterGeneration:
     @pytest.mark.asyncio
     async def test_hooks_new_and_resolved(self):
         """new_hooks 追加，resolved_hooks 关键词匹配回收旧悬念。"""
-        from src.api.services.story_bible_service import update_bible_after_generation
+        from src.api.services.content.story_bible_service import (
+            update_bible_after_generation,
+        )
 
         bible = _make_bible(unresolved_hooks=[
             {"description": "神秘宝藏", "status": "hanging"},
@@ -452,7 +475,9 @@ class TestUpdateBibleAfterGeneration:
     @pytest.mark.asyncio
     async def test_already_resolved_hook_not_re_counted(self):
         """已 resolved 的悬念在 resolved_keywords 处理时应跳过（不重复计数）。"""
-        from src.api.services.story_bible_service import update_bible_after_generation
+        from src.api.services.content.story_bible_service import (
+            update_bible_after_generation,
+        )
 
         bible = _make_bible(unresolved_hooks=[
             {"description": "宝藏X", "status": "resolved"},
@@ -470,7 +495,9 @@ class TestUpdateBibleAfterGeneration:
     @pytest.mark.asyncio
     async def test_character_update_matches_existing_card(self):
         """character_updates 命中已有人物卡 → 更新该卡，计数 +1。"""
-        from src.api.services.story_bible_service import update_bible_after_generation
+        from src.api.services.content.story_bible_service import (
+            update_bible_after_generation,
+        )
 
         bible = _make_bible(character_cards=[
             {"name": "张三", "personality": "冷酷", "level": 1},
@@ -498,7 +525,9 @@ class TestUpdateBibleAfterGeneration:
     @pytest.mark.asyncio
     async def test_character_update_creates_new_card_when_no_match(self):
         """character_updates 未命中 → 新建人物卡。"""
-        from src.api.services.story_bible_service import update_bible_after_generation
+        from src.api.services.content.story_bible_service import (
+            update_bible_after_generation,
+        )
 
         bible = _make_bible(character_cards=[{"name": "李四"}])
         mock_session = _make_db_session(bible=bible)
@@ -521,7 +550,9 @@ class TestUpdateBibleAfterGeneration:
     @pytest.mark.asyncio
     async def test_goal_progress_updates_matched_goal(self):
         """goal_progress 命中目标描述关键词 → 更新 progress。"""
-        from src.api.services.story_bible_service import update_bible_after_generation
+        from src.api.services.content.story_bible_service import (
+            update_bible_after_generation,
+        )
 
         bible = _make_bible(main_goals=[
             {"description": "寻找上古神器", "status": "active", "progress": ""},
@@ -543,7 +574,9 @@ class TestUpdateBibleAfterGeneration:
     @pytest.mark.asyncio
     async def test_llm_parse_failure_returns_zero_summary(self):
         """LLM 响应解析失败 → 返回全 0 摘要，不修改 bible。"""
-        from src.api.services.story_bible_service import update_bible_after_generation
+        from src.api.services.content.story_bible_service import (
+            update_bible_after_generation,
+        )
 
         bible = _make_bible(timeline_events=[], unresolved_hooks=[], character_cards=[])
         mock_session = _make_db_session(bible=bible)
@@ -560,7 +593,9 @@ class TestUpdateBibleAfterGeneration:
     @pytest.mark.asyncio
     async def test_empty_updates_dict_treated_as_no_update(self):
         """safe_json_parse 返回空 dict {} → `not updates` 为真，走早 return，不 commit。"""
-        from src.api.services.story_bible_service import update_bible_after_generation
+        from src.api.services.content.story_bible_service import (
+            update_bible_after_generation,
+        )
 
         bible = _make_bible(
             timeline_events=[{"chapter": 1}],
@@ -582,7 +617,9 @@ class TestUpdateBibleAfterGeneration:
     @pytest.mark.asyncio
     async def test_chapter_content_truncated_to_6000(self):
         """超长章节正文应被截断到 6000 字符再传给 LLM。"""
-        from src.api.services.story_bible_service import update_bible_after_generation
+        from src.api.services.content.story_bible_service import (
+            update_bible_after_generation,
+        )
 
         bible = _make_bible()
         mock_session = _make_db_session(bible=bible)

@@ -131,13 +131,14 @@ async def test_quality_check_node():
     result = await quality_check.node(state)
 
     assert "overall" in result["quality_scores"]
-    assert result["quality_scores"]["overall"] > 0
+    assert result["quality_scores"]["overall"] is None
+    assert result["quality_scores"]["status"] == "unverified"
+    assert result["quality_scores"]["consistency_blocked"] is False
     assert result["current_stage"] == "quality_check_completed"
 
 
 def test_human_review_node():
     """测试人工审核节点（真 HITL 模式：HITL_AUTO_APPROVE=False 时返回 pending）"""
-    from src.core.config import get_settings
     with patch("src.core.langgraph.nodes.human_review.get_settings") as ms:
         ms.return_value = MagicMock(HITL_AUTO_APPROVE=False)
         state = create_initial_state()

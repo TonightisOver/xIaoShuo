@@ -3,14 +3,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.api.services.chapter_service import ChapterService
+from src.api.services.content.chapter_service import ChapterService
 
 
 @pytest.mark.asyncio
 async def test_update_state_delta_writes_json():
     """update_state_delta 应把 state_delta JSON 写入 Chapter，不污染 status。"""
     svc = ChapterService()
-    with patch("src.api.services.chapter_service.get_db_session") as mock_db:
+    with patch("src.api.services.content.chapter_service.get_db_session") as mock_db:
         session = AsyncMock()
         ch = MagicMock()
         ch.state_delta = None
@@ -27,7 +27,7 @@ async def test_update_state_delta_writes_json():
 @pytest.mark.asyncio
 async def test_update_quality_status_writes_status():
     svc = ChapterService()
-    with patch("src.api.services.chapter_service.get_db_session") as mock_db:
+    with patch("src.api.services.content.chapter_service.get_db_session") as mock_db:
         session = AsyncMock()
         ch = MagicMock()
         ch.quality_status = None
@@ -44,7 +44,7 @@ async def test_update_quality_status_writes_status():
 @pytest.mark.asyncio
 async def test_update_state_delta_chapter_not_found_returns_false():
     svc = ChapterService()
-    with patch("src.api.services.chapter_service.get_db_session") as mock_db:
+    with patch("src.api.services.content.chapter_service.get_db_session") as mock_db:
         session = AsyncMock()
         session.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None)))
         mock_db.return_value.__aenter__ = AsyncMock(return_value=session)

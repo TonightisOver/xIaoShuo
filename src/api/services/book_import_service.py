@@ -10,8 +10,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from src.api.services.character_service import get_character_service
-from src.api.services.novel_manager import get_novel_manager
+from src.api.services.content.character_service import get_character_service
+from src.api.services.content.novel_manager import get_novel_manager
 from src.core.llm.helpers import generate_and_parse_json
 
 CHAPTER_PATTERN = re.compile(r"(?im)(第.{1,5}章[^\n\r]*|Chapter\s+\d+[^\n\r]*)")

@@ -10,7 +10,7 @@ import asyncio
 
 import pytest
 
-from src.api.services.progress_event_bus import (
+from src.api.services.generation.progress_event_bus import (
     EventType,
     ProgressEvent,
     ProgressEventBus,
@@ -28,7 +28,7 @@ class TestProgressCallbackRegistry:
 
     def setup_method(self):
         """每个测试前清理全局注册表"""
-        from src.api.services import progress_event_bus
+        from src.api.services.generation import progress_event_bus
         progress_event_bus._progress_callbacks.clear()
 
     def test_register_and_get(self):

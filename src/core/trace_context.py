@@ -13,8 +13,8 @@ trace_id 格式：``task-{task_id}[:8]`` 截断，避免过长。若 task_id 为
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 import structlog
 

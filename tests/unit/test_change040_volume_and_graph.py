@@ -192,12 +192,16 @@ class TestQualityScorePersistence:
     def test_persist_function_exists(self):
         import inspect
 
-        from src.api.services.novel_generator import _persist_quality_to_version
+        from src.api.services.generation.novel_generator import (
+            _persist_quality_to_version,
+        )
         assert inspect.iscoroutinefunction(_persist_quality_to_version)
 
     @pytest.mark.asyncio
     async def test_persist_handles_missing_novel_id_gracefully(self):
-        from src.api.services.novel_generator import _persist_quality_to_version
+        from src.api.services.generation.novel_generator import (
+            _persist_quality_to_version,
+        )
         # Should not raise even with invalid novel_id
         await _persist_quality_to_version(
             novel_id="nonexistent-novel",

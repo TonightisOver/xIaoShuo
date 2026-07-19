@@ -192,3 +192,9 @@ cat .harness/changes/CHANGE-XXX-描述/summary.md
 ---
 
 **文档状态**: ✅ 已生效
+
+---
+
+## 已完成变更归档
+
+Gate 2 完成并确认不再作为活动任务后，将整个 `CHANGE-*` 目录移动到 `archive/changes/`，保留全部原始文件，并生成 `archive-record.md`。活动变更仍在本目录创建和处理。

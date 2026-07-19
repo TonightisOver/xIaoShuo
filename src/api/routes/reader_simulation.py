@@ -4,13 +4,13 @@ import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from src.api.owner_guard import verify_novel_owner
 from src.api.services.reader_simulation_service import (
     READER_PERSONAS,
     get_reader_simulation_service,
 )
 from src.core.auth_models import User
 from src.core.security.auth import get_current_user
-from src.api.owner_guard import verify_novel_owner
 
 logger = structlog.get_logger(__name__)
 

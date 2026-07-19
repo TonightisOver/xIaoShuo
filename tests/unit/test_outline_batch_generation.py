@@ -25,7 +25,9 @@ def _make_master_outline() -> dict:
 
 
 async def test_generate_outline_batch_pads_missing_chapters_with_expected_numbers():
-    from src.api.services.long_form_generation_helpers import _generate_outline_batch
+    from src.api.services.generation.long_form_generation_helpers import (
+        _generate_outline_batch,
+    )
 
     with patch(
         "src.core.llm.helpers.generate_and_parse_json",
@@ -63,7 +65,9 @@ async def test_generate_outline_batch_pads_missing_chapters_with_expected_number
 
 
 async def test_generate_volume_outline_splits_large_volume_into_batches():
-    from src.api.services.long_form_generation_helpers import generate_volume_outline
+    from src.api.services.generation.long_form_generation_helpers import (
+        generate_volume_outline,
+    )
 
     async def make_batch(**kwargs):
         return [
@@ -78,7 +82,7 @@ async def test_generate_volume_outline_splits_large_volume_into_batches():
         patch("src.core.llm.client.get_llm_client", return_value=MagicMock()),
         patch("src.core.validation.get_style_instruction", return_value=""),
         patch(
-            "src.api.services.long_form_generation_helpers._generate_outline_batch",
+            "src.api.services.generation.long_form_generation_helpers._generate_outline_batch",
             new_callable=AsyncMock,
             side_effect=make_batch,
         ) as mock_batch,
@@ -104,7 +108,10 @@ async def test_generate_volume_outline_splits_large_volume_into_batches():
 
 
 async def test_chapter_generation_uses_target_word_based_max_tokens():
-    from src.core.llm.chapter_generator import ChapterGenContext, _generate_single_chapter_inner
+    from src.core.llm.chapter_generator import (
+        ChapterGenContext,
+        _generate_single_chapter_inner,
+    )
 
     client = AsyncMock()
     client.generate = AsyncMock(return_value="字" * 4000)

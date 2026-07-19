@@ -19,13 +19,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.api.services.novel_context_service import (
+from src.api.services.quality.novel_context_service import (
     BlueprintContext,
     GenerationContext,
     NovelContextBuilder,
     RewriteContext,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -102,6 +101,7 @@ def _chapter(**kwargs):
     ch = MagicMock()
     ch.content = kwargs.get("content", "章节正文内容")
     ch.volume_number = kwargs.get("volume_number", None)
+    ch.state_delta = kwargs.get("state_delta", None)
     return ch
 
 

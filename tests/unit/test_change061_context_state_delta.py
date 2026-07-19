@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.api.services.novel_context_service import NovelContextBuilder
+from src.api.services.quality.novel_context_service import NovelContextBuilder
 
 
 @pytest.mark.asyncio

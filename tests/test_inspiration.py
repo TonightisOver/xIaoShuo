@@ -4,7 +4,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from src.api.main import app
-from src.api.services.inspiration_service import get_inspiration_wizard
+from src.api.services.content.inspiration_service import get_inspiration_wizard
 
 
 @pytest.fixture(autouse=True)
@@ -38,7 +38,7 @@ async def test_process_step_sends_previous_context_to_llm(client):
         '{"reply": "书名很棒！接下来写一句话简介。", "suggestions": ["程序员用代码改写梦境", "梦里的 bug 会变成现实", "他能调试所有人的梦"]}',
     ])
 
-    with patch("src.api.services.inspiration_service.get_llm_client", return_value=llm):
+    with patch("src.api.services.content.inspiration_service.get_llm_client", return_value=llm):
         start = await client.post("/api/v1/inspiration/start")
         session_id = start.json()["session_id"]
 
@@ -72,7 +72,7 @@ async def test_process_step_falls_back_on_malformed_llm_output(client):
     llm = Mock()
     llm.generate = AsyncMock(return_value="这不是 JSON 格式的回复")
 
-    with patch("src.api.services.inspiration_service.get_llm_client", return_value=llm):
+    with patch("src.api.services.content.inspiration_service.get_llm_client", return_value=llm):
         start = await client.post("/api/v1/inspiration/start")
         session_id = start.json()["session_id"]
         response = await client.post(
@@ -92,7 +92,7 @@ async def test_genre_step_uses_fixed_type_list(client):
     llm = Mock()
     llm.generate = AsyncMock(return_value="很好，请选择类型。")
 
-    with patch("src.api.services.inspiration_service.get_llm_client", return_value=llm):
+    with patch("src.api.services.content.inspiration_service.get_llm_client", return_value=llm):
         start = await client.post("/api/v1/inspiration/start")
         session_id = start.json()["session_id"]
         wizard = get_inspiration_wizard()
@@ -117,7 +117,7 @@ async def test_generate_outline_stores_collected_data(client):
     llm = Mock()
     llm.generate = AsyncMock(return_value="大纲内容")
 
-    with patch("src.api.services.inspiration_service.get_llm_client", return_value=llm):
+    with patch("src.api.services.content.inspiration_service.get_llm_client", return_value=llm):
         start = await client.post("/api/v1/inspiration/start")
         session_id = start.json()["session_id"]
         await client.post(
@@ -139,7 +139,7 @@ async def test_create_project_uses_novel_manager(client):
     manager.create_novel = AsyncMock(return_value="novel-123")
 
     with patch(
-        "src.api.services.inspiration_service.get_novel_manager",
+        "src.api.services.content.inspiration_service.get_novel_manager",
         return_value=manager,
     ):
         start = await client.post("/api/v1/inspiration/start")
@@ -166,7 +166,7 @@ async def test_generate_outline_stateless_with_collected_in_body(client):
     llm = Mock()
     llm.generate = AsyncMock(return_value="无状态大纲内容")
 
-    with patch("src.api.services.inspiration_service.get_llm_client", return_value=llm):
+    with patch("src.api.services.content.inspiration_service.get_llm_client", return_value=llm):
         # 不 start session，直接传 collected
         response = await client.post(
             "/api/v1/inspiration/nostate/generate",
@@ -187,7 +187,7 @@ async def test_create_project_stateless_with_collected_in_body(client):
     manager.create_novel = AsyncMock(return_value="novel-stateless")
 
     with patch(
-        "src.api.services.inspiration_service.get_novel_manager",
+        "src.api.services.content.inspiration_service.get_novel_manager",
         return_value=manager,
     ):
         response = await client.post(

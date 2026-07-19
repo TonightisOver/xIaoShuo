@@ -43,14 +43,14 @@ def _patch_db_session(session):
     which imports get_db_session at module level from src.core.database.
     We need to patch both:
     - src.core.database.get_db_session (for core modules)
-    - src.api.services.chapter_service.get_db_session (for ChapterService)
-    - src.api.services.novel_manager.get_db_session (for NovelManager direct use)
+    - src.api.services.content.chapter_service.get_db_session (for ChapterService)
+    - src.api.services.content.novel_manager.get_db_session (for NovelManager direct use)
     """
     mock_ctx = _make_mock_context(session)
     return _CombinedPatcher([
         patch("src.core.database.get_db_session", return_value=mock_ctx),
-        patch("src.api.services.chapter_service.get_db_session", return_value=mock_ctx),
-        patch("src.api.services.novel_manager.get_db_session", return_value=mock_ctx),
+        patch("src.api.services.content.chapter_service.get_db_session", return_value=mock_ctx),
+        patch("src.api.services.content.novel_manager.get_db_session", return_value=mock_ctx),
     ])
 
 
@@ -101,7 +101,7 @@ class TestChapterVersionModel:
 class TestCreateChapterVersion:
     @pytest.mark.asyncio
     async def test_first_version_is_1_when_no_existing_version(self):
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         session = _make_mock_session()
         chapter_result = MagicMock()
@@ -122,7 +122,7 @@ class TestCreateChapterVersion:
 
     @pytest.mark.asyncio
     async def test_version_increments_from_existing_max(self):
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         session = _make_mock_session()
         chapter_result = MagicMock()
@@ -144,7 +144,7 @@ class TestCreateChapterVersion:
     @pytest.mark.asyncio
     async def test_updates_locked_chapter_content_and_word_count(self):
         from src.api.models.db_models import ChapterVersion
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         session = _make_mock_session()
         chapter = MagicMock()
@@ -152,7 +152,9 @@ class TestCreateChapterVersion:
         chapter_result.scalar_one_or_none.return_value = chapter
         max_result = MagicMock()
         max_result.scalar_one_or_none.return_value = 0
-        session.execute = AsyncMock(side_effect=[chapter_result, max_result])
+        session.execute = AsyncMock(
+            side_effect=[chapter_result, max_result, MagicMock()]
+        )
 
         added_objects = []
         session.add = MagicMock(side_effect=added_objects.append)
@@ -164,6 +166,7 @@ class TestCreateChapterVersion:
                 chapter_number=1,
                 content=content,
                 source="manual",
+                is_active=True,
             )
 
         version = next(obj for obj in added_objects if isinstance(obj, ChapterVersion))
@@ -173,7 +176,7 @@ class TestCreateChapterVersion:
 
     @pytest.mark.asyncio
     async def test_locks_chapter_row_not_aggregate_max_query(self):
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         session = _make_mock_session()
         captured_queries = []
@@ -199,7 +202,7 @@ class TestCreateChapterVersion:
 
     @pytest.mark.asyncio
     async def test_raises_when_chapter_is_missing(self):
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         session = _make_mock_session()
         chapter_result = MagicMock()
@@ -217,7 +220,7 @@ class TestCreateChapterVersion:
 class TestVersionQueries:
     @pytest.mark.asyncio
     async def test_list_versions_excludes_content(self):
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         session = _make_mock_session()
         version = MagicMock()
@@ -241,7 +244,7 @@ class TestVersionQueries:
 
     @pytest.mark.asyncio
     async def test_get_version_returns_full_content(self):
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         session = _make_mock_session()
         version = MagicMock()
@@ -264,7 +267,7 @@ class TestVersionQueries:
 
     @pytest.mark.asyncio
     async def test_rollback_creates_new_version_from_target(self):
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         manager = NovelManager()
         target = {"content": "old content", "version_number": 2}
@@ -398,7 +401,7 @@ class TestChapterEditorEndpoints:
         ) as mock_get_db, patch(
             "src.core.llm.chapter_rewriter.get_llm_client",
         ) as mock_llm, patch(
-            "src.api.services.novel_context_service.NovelContextBuilder",
+            "src.api.services.quality.novel_context_service.NovelContextBuilder",
             return_value=mock_builder,
         ):
             mock_llm.return_value.generate = AsyncMock(return_value="rewritten")
@@ -451,7 +454,7 @@ class TestChapterEditorEndpoints:
         ) as mock_get_db, patch(
             "src.core.llm.chapter_rewriter.get_llm_client",
         ) as mock_llm, patch(
-            "src.api.services.novel_context_service.NovelContextBuilder",
+            "src.api.services.quality.novel_context_service.NovelContextBuilder",
             return_value=mock_builder,
         ):
             mock_llm.return_value.generate = AsyncMock(

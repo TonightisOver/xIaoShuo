@@ -1,7 +1,7 @@
 """Unit tests for CHANGE-050: 工程质量修复 — 层级边界与前端测试。
 
 覆盖模块:
-- src/api/services/novel_context_service.py (NovelContextBuilder 实现)
+- src/api/services/quality/novel_context_service.py (NovelContextBuilder 实现)
 - 层级边界静态检查（src/core/** 不允许任何 src.api import）
 """
 
@@ -112,14 +112,14 @@ class TestNovelContextBuilderImport:
     """验证 NovelContextBuilder 只从 api.services 层导入。"""
 
     def test_import_from_api_services(self):
-        """从 src.api.services.novel_context_service 导入 NovelContextBuilder 成功。"""
-        from src.api.services.novel_context_service import NovelContextBuilder
+        """从 src.api.services.quality.novel_context_service 导入 NovelContextBuilder 成功。"""
+        from src.api.services.quality.novel_context_service import NovelContextBuilder
 
         assert NovelContextBuilder is not None
 
     def test_import_context_dataclasses_from_api_services(self):
-        """从 src.api.services.novel_context_service 导入三个 Context dataclass 成功。"""
-        from src.api.services.novel_context_service import (
+        """从 src.api.services.quality.novel_context_service 导入三个 Context dataclass 成功。"""
+        from src.api.services.quality.novel_context_service import (
             BlueprintContext,
             GenerationContext,
             RewriteContext,
@@ -149,7 +149,7 @@ class TestNovelContextBuilderBasic:
 
     @pytest.fixture
     def builder(self):
-        from src.api.services.novel_context_service import NovelContextBuilder
+        from src.api.services.quality.novel_context_service import NovelContextBuilder
 
         return NovelContextBuilder()
 
@@ -181,7 +181,7 @@ class TestNovelContextBuilderBasic:
         self, builder, mock_session
     ):
         """build_generation_context 返回 GenerationContext 实例。"""
-        from src.api.services.novel_context_service import GenerationContext
+        from src.api.services.quality.novel_context_service import GenerationContext
 
         none_result = MagicMock()
         none_result.scalar_one_or_none.return_value = None

@@ -7,9 +7,10 @@ generate_volume_chapters。差异点在章号推断——有卷时用 chapter_st
 提取纯函数 compute_chapter_numbering 承载此逻辑，TDD 锁住。
 """
 
-import pytest
 
-from src.api.services.long_form_generation_helpers import compute_chapter_numbering
+from src.api.services.generation.long_form_generation_helpers import (
+    compute_chapter_numbering,
+)
 
 
 def _outline(ch_num: int) -> dict:

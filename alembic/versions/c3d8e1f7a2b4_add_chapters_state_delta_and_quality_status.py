@@ -10,16 +10,17 @@ Create Date: 2026-07-16
 
 此前模型已定义这两列但无对应迁移，导致线上库缺列、章节相关接口 500。
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
+
+import sqlalchemy as sa
 
 from alembic import op
-import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = "c3d8e1f7a2b4"
-down_revision: Union[str, Sequence[str], None] = "a1f3e7c2d9b8"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "a1f3e7c2d9b8"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

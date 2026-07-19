@@ -1,7 +1,7 @@
 """服务模块"""
 
-from .novel_generator import generate_novel_background
-from .task_manager import TaskManager, get_task_manager
+from .generation.novel_generator import generate_novel_background
+from .tasks.task_manager import TaskManager, get_task_manager
 
 __all__ = [
     "TaskManager",

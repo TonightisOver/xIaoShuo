@@ -6,8 +6,8 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
-from src.api.services.progress_event_bus import EventType, get_event_bus
-from src.api.services.task_manager import get_task_manager
+from src.api.services.generation.progress_event_bus import EventType, get_event_bus
+from src.api.services.tasks.task_manager import get_task_manager
 from src.core.auth_models import User
 from src.core.security.auth import get_current_user
 

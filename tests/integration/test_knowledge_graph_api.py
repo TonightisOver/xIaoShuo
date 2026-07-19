@@ -35,19 +35,6 @@ async def _db_setup():
         await conn.run_sync(Base.metadata.drop_all)
 
 
-@pytest.fixture(autouse=True)
-def _mock_background_tasks():
-    """Mock background generation to prevent real LLM calls."""
-    with patch(
-        "src.api.routes.projects.generate_novel_background",
-        new_callable=AsyncMock,
-    ), patch(
-        "src.api.routes.projects.generate_novel_full_background",
-        new_callable=AsyncMock,
-    ):
-        yield
-
-
 @pytest.fixture
 async def client(_db_setup):
     """Async HTTP client for API testing."""
@@ -375,7 +362,7 @@ class TestExtraction:
         })
 
         with patch(
-            "src.api.services.knowledge_graph_service.get_llm_client"
+            "src.api.services.knowledge.knowledge_graph_service.get_llm_client"
         ) as mock_llm:
             mock_llm.return_value.generate = AsyncMock(return_value=llm_response)
 

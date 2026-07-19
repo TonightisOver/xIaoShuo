@@ -3,13 +3,10 @@
 记录 Sub-Agent 每次执行的输入、输出、状态变更等关键信息，
 提供可观测性和审计能力。
 """
-import time
 from datetime import datetime
 
 import structlog
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from src.api.models.db_models import AgentJournal
 from src.core.database import get_db_session

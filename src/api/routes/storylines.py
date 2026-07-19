@@ -3,11 +3,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from src.api.services.ai_generation_service import get_ai_generation_service
-from src.api.services.storyline_service import get_storyline_service
+from src.api.owner_guard import verify_novel_owner
+from src.api.services.content.storyline_service import get_storyline_service
+from src.api.services.generation.ai_generation_service import get_ai_generation_service
 from src.core.auth_models import User
 from src.core.security.auth import get_current_user
-from src.api.owner_guard import verify_novel_owner
 
 router = APIRouter(prefix="/api/v1/projects", tags=["storylines"])
 

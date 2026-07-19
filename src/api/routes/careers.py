@@ -15,7 +15,8 @@ from src.api.models.db_models import (
     CharacterCareer,
     Novel,
 )
-from src.api.services.career_service import (
+from src.api.owner_guard import verify_novel_owner
+from src.api.services.content.career_service import (
     delete_career,
     generate_career_system,
     list_character_career_assignments,
@@ -26,7 +27,6 @@ from src.core.auth_models import User
 from src.core.database import get_db_session
 from src.core.llm.client import get_llm_client
 from src.core.security.auth import get_current_user
-from src.api.owner_guard import verify_novel_owner
 
 logger = structlog.get_logger(__name__)
 

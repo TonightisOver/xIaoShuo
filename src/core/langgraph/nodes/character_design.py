@@ -3,7 +3,6 @@
 import json
 import logging
 
-from src.core.json_utils import safe_json_parse, validate_json_structure
 from src.core.langgraph.state import NovelState
 from src.core.llm.client import get_llm_client
 from src.core.llm.prompts import CHARACTER_DESIGN_PROMPT

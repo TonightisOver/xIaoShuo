@@ -46,7 +46,7 @@ class TestGenerateRewriteActions:
     """Tests for QualityActionService.generate_rewrite_actions."""
 
     def _get_service(self):
-        from src.api.services.quality_action_service import QualityActionService
+        from src.api.services.quality.quality_action_service import QualityActionService
         return QualityActionService()
 
     def test_low_scores_generate_actions(self):
@@ -116,7 +116,7 @@ class TestPersistActions:
     @pytest.mark.asyncio
     async def test_persist_actions_updates_blueprint(self):
         """persist_actions writes actions to existing blueprint."""
-        from src.api.services.quality_action_service import QualityActionService
+        from src.api.services.quality.quality_action_service import QualityActionService
 
         mock_bp = MagicMock()
         mock_bp.rewrite_actions = None
@@ -125,7 +125,7 @@ class TestPersistActions:
         svc = QualityActionService()
         actions = [{"action_type": "enhance_plot", "dimension": "advancement"}]
 
-        with patch("src.api.services.quality_action_service.get_db_session", ctx_factory):
+        with patch("src.api.services.quality.quality_action_service.get_db_session", ctx_factory):
             await svc.persist_actions(_novel_id(), 1, actions)
 
         assert mock_bp.rewrite_actions == actions
@@ -133,13 +133,13 @@ class TestPersistActions:
     @pytest.mark.asyncio
     async def test_persist_actions_no_blueprint_does_not_raise(self):
         """persist_actions with no existing blueprint logs warning but does not raise."""
-        from src.api.services.quality_action_service import QualityActionService
+        from src.api.services.quality.quality_action_service import QualityActionService
 
         ctx_factory, _ = _fake_session(bp=None)
 
         svc = QualityActionService()
         actions = [{"action_type": "enhance_plot"}]
 
-        with patch("src.api.services.quality_action_service.get_db_session", ctx_factory):
+        with patch("src.api.services.quality.quality_action_service.get_db_session", ctx_factory):
             # Should not raise
             await svc.persist_actions(_novel_id(), 1, actions)

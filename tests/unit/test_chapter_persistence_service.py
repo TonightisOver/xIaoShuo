@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.api.services.chapter_persistence_service import (
+from src.api.services.generation.chapter_persistence_service import (
     persist_chapters_with_replace,
     persist_generated_chapters,
     persist_langgraph_result,
@@ -172,8 +172,8 @@ class TestPersistChaptersWithReplace:
         mock_manager.create_chapter_version = AsyncMock()
 
         with patch("src.core.database.get_db_session", return_value=cm), \
-             patch("src.api.services.novel_manager.get_novel_manager", return_value=mock_manager), \
-             patch("src.api.services.story_bible_service.update_bible_after_generation",
+             patch("src.api.services.content.novel_manager.get_novel_manager", return_value=mock_manager), \
+             patch("src.api.services.content.story_bible_service.update_bible_after_generation",
                    new_callable=AsyncMock) as mock_bible:
             await persist_chapters_with_replace("novel-1", chapters, volumes)
 
@@ -203,8 +203,8 @@ class TestPersistChaptersWithReplace:
         mock_manager.create_chapter_version = AsyncMock()
 
         with patch("src.core.database.get_db_session", return_value=cm), \
-             patch("src.api.services.novel_manager.get_novel_manager", return_value=mock_manager), \
-             patch("src.api.services.story_bible_service.update_bible_after_generation",
+             patch("src.api.services.content.novel_manager.get_novel_manager", return_value=mock_manager), \
+             patch("src.api.services.content.story_bible_service.update_bible_after_generation",
                    new_callable=AsyncMock):
             await persist_chapters_with_replace("novel-1", chapters, volumes)
 
@@ -226,8 +226,8 @@ class TestPersistChaptersWithReplace:
         mock_manager.create_chapter_version = AsyncMock()
 
         with patch("src.core.database.get_db_session", return_value=cm), \
-             patch("src.api.services.novel_manager.get_novel_manager", return_value=mock_manager), \
-             patch("src.api.services.story_bible_service.update_bible_after_generation",
+             patch("src.api.services.content.novel_manager.get_novel_manager", return_value=mock_manager), \
+             patch("src.api.services.content.story_bible_service.update_bible_after_generation",
                    new_callable=AsyncMock):
             await persist_chapters_with_replace("novel-1", chapters, volumes)
 
@@ -247,8 +247,8 @@ class TestPersistChaptersWithReplace:
             side_effect=ValueError("boom"))
 
         with patch("src.core.database.get_db_session", return_value=cm), \
-             patch("src.api.services.novel_manager.get_novel_manager", return_value=mock_manager), \
-             patch("src.api.services.story_bible_service.update_bible_after_generation",
+             patch("src.api.services.content.novel_manager.get_novel_manager", return_value=mock_manager), \
+             patch("src.api.services.content.story_bible_service.update_bible_after_generation",
                    new_callable=AsyncMock) as mock_bible:
             # 不应抛异常
             await persist_chapters_with_replace("novel-1", chapters, volumes)
@@ -269,8 +269,8 @@ class TestPersistChaptersWithReplace:
         mock_manager.create_chapter_version = AsyncMock()
 
         with patch("src.core.database.get_db_session", return_value=cm), \
-             patch("src.api.services.novel_manager.get_novel_manager", return_value=mock_manager), \
-             patch("src.api.services.story_bible_service.update_bible_after_generation",
+             patch("src.api.services.content.novel_manager.get_novel_manager", return_value=mock_manager), \
+             patch("src.api.services.content.story_bible_service.update_bible_after_generation",
                    new_callable=AsyncMock, side_effect=RuntimeError("bible boom")):
             # 不应抛异常
             await persist_chapters_with_replace("novel-1", chapters, volumes)
@@ -325,9 +325,9 @@ class TestPersistLanggraphResult:
         mock_volume_svc.create_volume = AsyncMock()
 
         with patch("src.core.database.get_db_session", return_value=cm), \
-             patch("src.api.services.novel_manager.get_novel_manager", return_value=mock_manager), \
-             patch("src.api.services.character_service.get_character_service", return_value=mock_char_svc), \
-             patch("src.api.services.volume_service.get_volume_service", return_value=mock_volume_svc):
+             patch("src.api.services.content.novel_manager.get_novel_manager", return_value=mock_manager), \
+             patch("src.api.services.content.character_service.get_character_service", return_value=mock_char_svc), \
+             patch("src.api.services.content.volume_service.get_volume_service", return_value=mock_volume_svc):
             await persist_langgraph_result("novel-1", result)
 
         # world_setting upsert 调用 1 次
@@ -370,9 +370,9 @@ class TestPersistLanggraphResult:
         mock_volume_svc.create_volume = AsyncMock()
 
         with patch("src.core.database.get_db_session", return_value=cm), \
-             patch("src.api.services.novel_manager.get_novel_manager", return_value=mock_manager), \
-             patch("src.api.services.character_service.get_character_service", return_value=mock_char_svc), \
-             patch("src.api.services.volume_service.get_volume_service", return_value=mock_volume_svc):
+             patch("src.api.services.content.novel_manager.get_novel_manager", return_value=mock_manager), \
+             patch("src.api.services.content.character_service.get_character_service", return_value=mock_char_svc), \
+             patch("src.api.services.content.volume_service.get_volume_service", return_value=mock_volume_svc):
             await persist_langgraph_result("novel-1", result)
 
         # 已存在 → update，未 → create
@@ -395,9 +395,9 @@ class TestPersistLanggraphResult:
         mock_volume_svc.create_volume = AsyncMock()
 
         with patch("src.core.database.get_db_session", return_value=cm), \
-             patch("src.api.services.novel_manager.get_novel_manager", return_value=mock_manager), \
-             patch("src.api.services.character_service.get_character_service", return_value=mock_char_svc), \
-             patch("src.api.services.volume_service.get_volume_service", return_value=mock_volume_svc):
+             patch("src.api.services.content.novel_manager.get_novel_manager", return_value=mock_manager), \
+             patch("src.api.services.content.character_service.get_character_service", return_value=mock_char_svc), \
+             patch("src.api.services.content.volume_service.get_volume_service", return_value=mock_volume_svc):
             await persist_langgraph_result("novel-1", {})
 
         # 没有任何章节写入
@@ -427,9 +427,9 @@ class TestPersistLanggraphResult:
         mock_volume_svc.create_volume = AsyncMock()
 
         with patch("src.core.database.get_db_session", return_value=cm), \
-             patch("src.api.services.novel_manager.get_novel_manager", return_value=mock_manager), \
-             patch("src.api.services.character_service.get_character_service", return_value=mock_char_svc), \
-             patch("src.api.services.volume_service.get_volume_service", return_value=mock_volume_svc):
+             patch("src.api.services.content.novel_manager.get_novel_manager", return_value=mock_manager), \
+             patch("src.api.services.content.character_service.get_character_service", return_value=mock_char_svc), \
+             patch("src.api.services.content.volume_service.get_volume_service", return_value=mock_volume_svc):
             # 不应抛异常
             await persist_langgraph_result("novel-1", result)
 
@@ -447,7 +447,7 @@ class TestPersistLanggraphResult:
         mock_manager.upsert_world_setting = AsyncMock(side_effect=RuntimeError("inner boom"))
 
         with patch("src.core.database.get_db_session", return_value=cm), \
-             patch("src.api.services.novel_manager.get_novel_manager", return_value=mock_manager):
+             patch("src.api.services.content.novel_manager.get_novel_manager", return_value=mock_manager):
             from src.core.exceptions import PersistenceError
             with pytest.raises(PersistenceError):
                 await persist_langgraph_result("novel-1", {"world_setting": {"background": "x"}})
@@ -539,8 +539,8 @@ class TestRecordChapterArtifacts:
         mock_manager = MagicMock()
         mock_manager.create_chapter_version = AsyncMock()
 
-        with patch("src.api.services.novel_manager.get_novel_manager", return_value=mock_manager), \
-             patch("src.api.services.story_bible_service.update_bible_after_generation",
+        with patch("src.api.services.content.novel_manager.get_novel_manager", return_value=mock_manager), \
+             patch("src.api.services.content.story_bible_service.update_bible_after_generation",
                    new_callable=AsyncMock) as mock_bible:
             await record_chapter_artifacts("novel-1", chapters)
 
@@ -558,8 +558,8 @@ class TestRecordChapterArtifacts:
         mock_manager = MagicMock()
         mock_manager.create_chapter_version = AsyncMock()
 
-        with patch("src.api.services.novel_manager.get_novel_manager", return_value=mock_manager), \
-             patch("src.api.services.story_bible_service.update_bible_after_generation",
+        with patch("src.api.services.content.novel_manager.get_novel_manager", return_value=mock_manager), \
+             patch("src.api.services.content.story_bible_service.update_bible_after_generation",
                    new_callable=AsyncMock) as mock_bible:
             await record_chapter_artifacts("novel-1", chapters)
 
@@ -576,8 +576,8 @@ class TestRecordChapterArtifacts:
         mock_manager = MagicMock()
         mock_manager.create_chapter_version = AsyncMock(side_effect=[None, ValueError("x")])
 
-        with patch("src.api.services.novel_manager.get_novel_manager", return_value=mock_manager), \
-             patch("src.api.services.story_bible_service.update_bible_after_generation",
+        with patch("src.api.services.content.novel_manager.get_novel_manager", return_value=mock_manager), \
+             patch("src.api.services.content.story_bible_service.update_bible_after_generation",
                    new_callable=AsyncMock) as mock_bible:
             # 不应抛异常
             await record_chapter_artifacts("novel-1", chapters)

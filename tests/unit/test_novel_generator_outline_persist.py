@@ -72,20 +72,22 @@ class TestVolumeOutlinePersistence:
         ])
 
         with (
-            patch("src.api.services.novel_generator.get_task_manager") as mock_tm,
-            patch("src.api.services.novel_generator.get_long_form_progress_service") as mock_ps,
-            patch("src.api.services.novel_generator.generate_master_outline", AsyncMock(return_value={"volumes": [], "title": "t"})),
-            patch("src.api.services.novel_generator.generate_volume_outline", vol_outline_mock),
-            patch("src.api.services.novel_generator.generate_volume_chapters", AsyncMock(return_value=[])),
-            patch("src.api.services.novel_generator.generate_volume_quality_report", AsyncMock(return_value={})),
-            patch("src.api.services.novel_generator._emit_progress", AsyncMock()),
-            patch("src.api.services.outline_service.get_outline_service", return_value=outline_svc),
-            patch("src.api.services.novel_manager.get_novel_manager") as mock_nm,
+            patch("src.api.services.generation.long_form_generation_helpers.get_task_manager") as mock_tm,
+            patch("src.api.services.generation.long_form_generation_helpers.get_long_form_progress_service") as mock_ps,
+            patch("src.api.services.generation.long_form_generation_helpers.generate_master_outline", AsyncMock(return_value={"volumes": [], "title": "t"})),
+            patch("src.api.services.generation.long_form_generation_helpers.generate_volume_outline", vol_outline_mock),
+            patch("src.api.services.generation.long_form_generation_helpers.generate_volume_chapters", AsyncMock(return_value=[])),
+            patch("src.api.services.generation.long_form_generation_helpers.generate_volume_quality_report", AsyncMock(return_value={})),
+            patch("src.api.services.generation.long_form_generation_helpers._emit_progress", AsyncMock()),
+            patch("src.api.services.content.outline_service.get_outline_service", return_value=outline_svc),
+            patch("src.api.services.content.novel_manager.get_novel_manager") as mock_nm,
         ):
             _standard_mocks(mock_tm, mock_ps)
             mock_nm.return_value.update_novel = AsyncMock()
 
-            from src.api.services.novel_generator import generate_long_form_background
+            from src.api.services.generation.novel_generator import (
+                generate_long_form_background,
+            )
             await generate_long_form_background("task-p1", "novel-p1", request)
 
         assert outline_svc.upsert_volume_outline.call_count == 2
@@ -108,20 +110,22 @@ class TestVolumeOutlinePersistence:
         ])
 
         with (
-            patch("src.api.services.novel_generator.get_task_manager") as mock_tm,
-            patch("src.api.services.novel_generator.get_long_form_progress_service") as mock_ps,
-            patch("src.api.services.novel_generator.generate_master_outline", AsyncMock(return_value={"volumes": [], "title": "t"})),
-            patch("src.api.services.novel_generator.generate_volume_outline", vol_outline_mock),
-            patch("src.api.services.novel_generator.generate_volume_chapters", AsyncMock(return_value=[])),
-            patch("src.api.services.novel_generator.generate_volume_quality_report", AsyncMock(return_value={})),
-            patch("src.api.services.novel_generator._emit_progress", AsyncMock()),
-            patch("src.api.services.outline_service.get_outline_service", return_value=outline_svc),
-            patch("src.api.services.novel_manager.get_novel_manager") as mock_nm,
+            patch("src.api.services.generation.long_form_generation_helpers.get_task_manager") as mock_tm,
+            patch("src.api.services.generation.long_form_generation_helpers.get_long_form_progress_service") as mock_ps,
+            patch("src.api.services.generation.long_form_generation_helpers.generate_master_outline", AsyncMock(return_value={"volumes": [], "title": "t"})),
+            patch("src.api.services.generation.long_form_generation_helpers.generate_volume_outline", vol_outline_mock),
+            patch("src.api.services.generation.long_form_generation_helpers.generate_volume_chapters", AsyncMock(return_value=[])),
+            patch("src.api.services.generation.long_form_generation_helpers.generate_volume_quality_report", AsyncMock(return_value={})),
+            patch("src.api.services.generation.long_form_generation_helpers._emit_progress", AsyncMock()),
+            patch("src.api.services.content.outline_service.get_outline_service", return_value=outline_svc),
+            patch("src.api.services.content.novel_manager.get_novel_manager") as mock_nm,
         ):
             _standard_mocks(mock_tm, mock_ps)
             mock_nm.return_value.update_novel = AsyncMock()
 
-            from src.api.services.novel_generator import generate_long_form_background
+            from src.api.services.generation.novel_generator import (
+                generate_long_form_background,
+            )
             await generate_long_form_background("task-p2", "novel-p2", request)
 
         # 2 volumes × 3 chapters = 6 calls, chapter numbers are continuous across volumes
@@ -143,20 +147,22 @@ class TestVolumeOutlinePersistence:
         vol_chapters_mock = AsyncMock(return_value=[{"chapter": 1}, {"chapter": 2}])
 
         with (
-            patch("src.api.services.novel_generator.get_task_manager") as mock_tm,
-            patch("src.api.services.novel_generator.get_long_form_progress_service") as mock_ps,
-            patch("src.api.services.novel_generator.generate_master_outline", AsyncMock(return_value={"volumes": [], "title": "t"})),
-            patch("src.api.services.novel_generator.generate_volume_outline", AsyncMock(return_value=_make_vol_outline(1, 2))),
-            patch("src.api.services.novel_generator.generate_volume_chapters", vol_chapters_mock),
-            patch("src.api.services.novel_generator.generate_volume_quality_report", AsyncMock(return_value={})),
-            patch("src.api.services.novel_generator._emit_progress", AsyncMock()),
-            patch("src.api.services.outline_service.get_outline_service", return_value=failing_outline_svc),
-            patch("src.api.services.novel_manager.get_novel_manager") as mock_nm,
+            patch("src.api.services.generation.long_form_generation_helpers.get_task_manager") as mock_tm,
+            patch("src.api.services.generation.long_form_generation_helpers.get_long_form_progress_service") as mock_ps,
+            patch("src.api.services.generation.long_form_generation_helpers.generate_master_outline", AsyncMock(return_value={"volumes": [], "title": "t"})),
+            patch("src.api.services.generation.long_form_generation_helpers.generate_volume_outline", AsyncMock(return_value=_make_vol_outline(1, 2))),
+            patch("src.api.services.generation.long_form_generation_helpers.generate_volume_chapters", vol_chapters_mock),
+            patch("src.api.services.generation.long_form_generation_helpers.generate_volume_quality_report", AsyncMock(return_value={})),
+            patch("src.api.services.generation.long_form_generation_helpers._emit_progress", AsyncMock()),
+            patch("src.api.services.content.outline_service.get_outline_service", return_value=failing_outline_svc),
+            patch("src.api.services.content.novel_manager.get_novel_manager") as mock_nm,
         ):
             _standard_mocks(mock_tm, mock_ps)
             mock_nm.return_value.update_novel = AsyncMock()
 
-            from src.api.services.novel_generator import generate_long_form_background
+            from src.api.services.generation.novel_generator import (
+                generate_long_form_background,
+            )
             # Must NOT raise despite persistence failure
             await generate_long_form_background("task-p3", "novel-p3", request)
 

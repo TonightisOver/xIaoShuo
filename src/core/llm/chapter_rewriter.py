@@ -4,8 +4,8 @@ import asyncio
 
 import structlog
 
-from src.core.llm.client import get_llm_client
 from src.core.llm.chapter_generator import post_process_chapter
+from src.core.llm.client import get_llm_client
 from src.core.llm.prompts import TARGETED_REWRITE_PROMPTS
 
 logger = structlog.get_logger(__name__)

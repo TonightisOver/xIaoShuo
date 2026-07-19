@@ -20,7 +20,7 @@
 
 from fastapi import HTTPException
 
-from src.api.services.novel_manager import get_novel_manager
+from src.api.services.content.novel_manager import get_novel_manager
 from src.core.auth_models import User
 
 

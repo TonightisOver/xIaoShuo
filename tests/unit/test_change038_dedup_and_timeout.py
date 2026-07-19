@@ -20,7 +20,10 @@ class TestChapterTimeout:
     @pytest.mark.asyncio
     async def test_timeout_error_message_no_api_key(self):
         """Timeout error message should NOT mention API Key."""
-        from src.core.llm.chapter_generator import generate_single_chapter
+        from src.core.llm.chapter_generator import (
+            ChapterGenContext,
+            generate_single_chapter,
+        )
 
         async def _hang(*args, **kwargs):
             await asyncio.sleep(9999)
@@ -32,15 +35,15 @@ class TestChapterTimeout:
             with patch(
                 "src.core.llm.chapter_generator.CHAPTER_TIMEOUT_SECONDS", 0.1
             ):
+                ctx = ChapterGenContext(
+                    client=MagicMock(),
+                    chapter_outline={"chapter": 1, "title": "Test"},
+                    previous_chapter="",
+                    characters_json="[]",
+                    world_setting_json="{}",
+                )
                 result = await asyncio.wait_for(
-                    generate_single_chapter(
-                        client=MagicMock(),
-                        chapter_outline={"chapter": 1, "title": "Test"},
-                        previous_chapter="",
-                        characters_json="[]",
-                        world_setting_json="{}",
-                    ),
-                    timeout=5,
+                    generate_single_chapter(ctx), timeout=5
                 )
         assert "API Key" not in result["content"]
         assert result["generation_failed"] is True
@@ -53,6 +56,6 @@ class TestChapterTimeout:
 class TestGetCharacterByName:
 
     def test_method_exists(self):
-        from src.api.services.character_service import CharacterService
+        from src.api.services.content.character_service import CharacterService
         assert hasattr(CharacterService, "get_character_by_name")
         assert callable(getattr(CharacterService, "get_character_by_name"))

@@ -4,10 +4,10 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from src.api.services.outline_sync_service import get_outline_sync_service
+from src.api.owner_guard import verify_novel_owner
+from src.api.services.content.outline_sync_service import get_outline_sync_service
 from src.core.auth_models import User
 from src.core.security.auth import get_current_user
-from src.api.owner_guard import verify_novel_owner
 
 logger = structlog.get_logger(__name__)
 

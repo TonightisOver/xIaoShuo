@@ -72,9 +72,11 @@ class TestExtractFromChapter:
     @pytest.mark.asyncio
     async def test_feature_flag_disabled_returns_zero(self):
         """When KNOWLEDGE_GRAPH_ENABLED=False, returns zero counts immediately."""
-        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+        with patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=False)
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             result = await service.extract_from_chapter("novel-1", 1, "章节内容")
             assert result == {"entities_count": 0, "triples_count": 0}
@@ -99,9 +101,9 @@ class TestExtractFromChapter:
         mock_session.add = MagicMock()
 
         with (
-            patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings,
-            patch("src.api.services.knowledge_graph_service.get_llm_client") as mock_llm,
-            patch("src.api.services.knowledge_graph_service.get_db_session") as mock_db,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_llm_client") as mock_llm,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_db_session") as mock_db,
         ):
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
             mock_llm.return_value.generate = AsyncMock(return_value=llm_response)
@@ -110,7 +112,9 @@ class TestExtractFromChapter:
             mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             result = await service.extract_from_chapter("novel-030", 1, "张三来到长安城")
 
@@ -136,16 +140,18 @@ class TestExtractFromChapter:
         mock_session.add = MagicMock()
 
         with (
-            patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings,
-            patch("src.api.services.knowledge_graph_service.get_llm_client") as mock_llm,
-            patch("src.api.services.knowledge_graph_service.get_db_session") as mock_db,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_llm_client") as mock_llm,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_db_session") as mock_db,
         ):
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
             mock_llm.return_value.generate = AsyncMock(return_value=llm_response)
             mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             result = await service.extract_from_chapter("novel-030", 5, "张三继续修炼")
 
@@ -173,16 +179,18 @@ class TestExtractFromChapter:
         mock_session.add = MagicMock()
 
         with (
-            patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings,
-            patch("src.api.services.knowledge_graph_service.get_llm_client") as mock_llm,
-            patch("src.api.services.knowledge_graph_service.get_db_session") as mock_db,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_llm_client") as mock_llm,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_db_session") as mock_db,
         ):
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
             mock_llm.return_value.generate = AsyncMock(return_value=llm_response)
             mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             result = await service.extract_from_chapter("novel-030", 2, "小张出现了")
 
@@ -209,16 +217,18 @@ class TestExtractFromChapter:
         mock_session.add = MagicMock()
 
         with (
-            patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings,
-            patch("src.api.services.knowledge_graph_service.get_llm_client") as mock_llm,
-            patch("src.api.services.knowledge_graph_service.get_db_session") as mock_db,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_llm_client") as mock_llm,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_db_session") as mock_db,
         ):
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
             mock_llm.return_value.generate = AsyncMock(return_value=llm_response)
             mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             result = await service.extract_from_chapter("novel-030", 1, "内容")
 
@@ -244,16 +254,18 @@ class TestExtractFromChapter:
         mock_session.add = MagicMock()
 
         with (
-            patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings,
-            patch("src.api.services.knowledge_graph_service.get_llm_client") as mock_llm,
-            patch("src.api.services.knowledge_graph_service.get_db_session") as mock_db,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_llm_client") as mock_llm,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_db_session") as mock_db,
         ):
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
             mock_llm.return_value.generate = AsyncMock(return_value=llm_response)
             mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             result = await service.extract_from_chapter("novel-030", 1, "内容")
 
@@ -270,16 +282,18 @@ class TestExtractFromChapter:
         mock_session.add = MagicMock()
 
         with (
-            patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings,
-            patch("src.api.services.knowledge_graph_service.get_llm_client") as mock_llm,
-            patch("src.api.services.knowledge_graph_service.get_db_session") as mock_db,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_llm_client") as mock_llm,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_db_session") as mock_db,
         ):
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
             mock_llm.return_value.generate = AsyncMock(side_effect=RuntimeError("API timeout"))
             mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             result = await service.extract_from_chapter("novel-030", 1, "内容")
 
@@ -298,9 +312,11 @@ class TestRetrieveContext:
     @pytest.mark.asyncio
     async def test_feature_flag_disabled_returns_empty(self):
         """When flag is off, returns empty string."""
-        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+        with patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=False)
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             result = await service.retrieve_context("novel-1", {"chapter": 5, "title": "测试"})
             assert result == ""
@@ -316,14 +332,16 @@ class TestRetrieveContext:
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         with (
-            patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings,
-            patch("src.api.services.knowledge_graph_service.get_db_session") as mock_db,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_db_session") as mock_db,
         ):
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
             mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             # Outline mentions no known entity
             result = await service.retrieve_context(
@@ -340,14 +358,16 @@ class TestRetrieveContext:
         mock_session = AsyncMock()
 
         with (
-            patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings,
-            patch("src.api.services.knowledge_graph_service.get_db_session") as mock_db,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_db_session") as mock_db,
         ):
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
             mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             service._get_existing_entities = AsyncMock(return_value=[entity_zhang, entity_li])
 
@@ -387,14 +407,16 @@ class TestRetrieveContext:
         mock_session = AsyncMock()
 
         with (
-            patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings,
-            patch("src.api.services.knowledge_graph_service.get_db_session") as mock_db,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_db_session") as mock_db,
         ):
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
             mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             service._get_existing_entities = AsyncMock(return_value=entities)
 
@@ -442,14 +464,16 @@ class TestRetrieveContext:
         mock_session = AsyncMock()
 
         with (
-            patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings,
-            patch("src.api.services.knowledge_graph_service.get_db_session") as mock_db,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings,
+            patch("src.api.services.knowledge.knowledge_graph_service.get_db_session") as mock_db,
         ):
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
             mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             service._get_existing_entities = AsyncMock(return_value=[entity_char, entity_fs])
 
@@ -482,10 +506,12 @@ class TestRetrieveContext:
     @pytest.mark.asyncio
     async def test_retrieve_context_exception_returns_empty(self):
         """Exception during retrieval returns empty string (graceful degradation)."""
-        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+        with patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             service._get_existing_entities = AsyncMock(side_effect=RuntimeError("DB error"))
 
@@ -505,9 +531,11 @@ class TestCheckConsistency:
     @pytest.mark.asyncio
     async def test_feature_flag_disabled_returns_empty(self):
         """When flag is off, returns empty list."""
-        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+        with patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=False)
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             result = await service.check_consistency("novel-1", 5, "内容")
             assert result == []
@@ -525,10 +553,12 @@ class TestCheckConsistency:
             chapter_number=5,
         )
 
-        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+        with patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             service._get_chapter_triples = AsyncMock(return_value=[triple])
             service._get_existing_entities = AsyncMock(return_value=[dead_char, alive_char])
@@ -556,10 +586,12 @@ class TestCheckConsistency:
             chapter_number=5,
         )
 
-        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+        with patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             service._get_chapter_triples = AsyncMock(return_value=[triple])
             service._get_existing_entities = AsyncMock(return_value=[alive_char, location])
@@ -589,10 +621,12 @@ class TestCheckConsistency:
              "message": "张三在第3章已死亡", "entity": "张三"}
         ]
 
-        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+        with patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             service._get_chapter_triples = AsyncMock(return_value=[triple])
             service._get_existing_entities = AsyncMock(return_value=[dead_char, location])
@@ -608,10 +642,12 @@ class TestCheckConsistency:
     @pytest.mark.asyncio
     async def test_consistency_check_exception_returns_empty(self):
         """Exception during check returns empty list (graceful degradation)."""
-        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+        with patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             service._get_chapter_triples = AsyncMock(side_effect=RuntimeError("DB error"))
 
@@ -631,10 +667,12 @@ class TestCheckConsistency:
             chapter_number=5,
         )
 
-        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+        with patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             service._get_chapter_triples = AsyncMock(return_value=[triple])
             service._get_existing_entities = AsyncMock(return_value=[dead_char, alive_char])
@@ -664,10 +702,12 @@ class TestCheckConsistency:
             chapter_number=3,
         )
 
-        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+        with patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             service._get_chapter_triples = AsyncMock(return_value=[triple_a, triple_b])
             service._get_existing_entities = AsyncMock(
@@ -694,10 +734,12 @@ class TestCheckConsistency:
         )
         triple.metadata_ = {"reason": "退化"}
 
-        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+        with patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             service._get_chapter_triples = AsyncMock(return_value=[triple])
             service._get_existing_entities = AsyncMock(return_value=[character])
@@ -722,10 +764,12 @@ class TestCheckConsistency:
             chapter_number=5,
         )
 
-        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+        with patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             service._get_chapter_triples = AsyncMock(return_value=[triple])
             service._get_existing_entities = AsyncMock(return_value=[character, event])
@@ -757,10 +801,12 @@ class TestCheckConsistency:
             chapter_number=5,
         )
 
-        with patch("src.api.services.knowledge_graph_service.get_settings") as mock_settings:
+        with patch("src.api.services.knowledge.knowledge_graph_service.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=True)
 
-            from src.api.services.knowledge_graph_service import KnowledgeGraphService
+            from src.api.services.knowledge.knowledge_graph_service import (
+                KnowledgeGraphService,
+            )
             service = KnowledgeGraphService()
             service._get_chapter_triples = AsyncMock(return_value=[triple_a, triple_b])
             service._get_existing_entities = AsyncMock(return_value=[character, item])
@@ -783,14 +829,18 @@ class TestFormatContext:
 
     def test_empty_inputs_returns_header_only(self):
         """With no data, returns just the header."""
-        from src.api.services.knowledge_graph_service import KnowledgeGraphService
+        from src.api.services.knowledge.knowledge_graph_service import (
+            KnowledgeGraphService,
+        )
         service = KnowledgeGraphService()
         result = service._format_context([], [], [], [])
         assert "已知设定" in result
 
     def test_includes_character_status(self):
         """Character status section is included."""
-        from src.api.services.knowledge_graph_service import KnowledgeGraphService
+        from src.api.services.knowledge.knowledge_graph_service import (
+            KnowledgeGraphService,
+        )
         service = KnowledgeGraphService()
         char = _make_entity("张三", attributes={"status": "alive"})
         result = service._format_context([], [], [], [char])
@@ -799,7 +849,9 @@ class TestFormatContext:
 
     def test_includes_foreshadowing(self):
         """Foreshadowing section is included."""
-        from src.api.services.knowledge_graph_service import KnowledgeGraphService
+        from src.api.services.knowledge.knowledge_graph_service import (
+            KnowledgeGraphService,
+        )
         service = KnowledgeGraphService()
         fs = _make_entity("神秘信件", entity_type="foreshadowing", first_chapter=3)
         result = service._format_context([], [fs], [], [])

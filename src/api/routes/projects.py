@@ -1,7 +1,7 @@
 """小说项目管理 API 路由"""
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.api.models.db_models import User
@@ -12,14 +12,11 @@ from src.api.models.responses import (
     NovelListResponse,
     StatusResponse,
 )
-from src.api.services.chapter_service import get_chapter_service
-from src.api.services.novel_generator import (
-    generate_novel_background,
-    generate_novel_full_background,
-)
-from src.api.services.novel_manager import get_novel_manager
-from src.api.services.task_manager import get_task_manager
-from src.api.services.volume_service import get_volume_service
+from src.api.services.content.chapter_service import get_chapter_service
+from src.api.services.content.novel_manager import get_novel_manager
+from src.api.services.content.volume_service import get_volume_service
+from src.api.services.tasks.task_dispatcher import TaskType
+from src.api.services.tasks.task_manager import get_task_manager
 from src.core.security.auth import get_current_user
 from src.core.validation import ValidationError, validate_idea, validate_novel_type
 
@@ -160,18 +157,9 @@ async def delete_project(
 @router.post("/{novel_id}/generate", status_code=202)
 async def generate_novel(
     novel_id: str,
-    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
 ):
     novel = await _get_project_and_verify_owner(novel_id, current_user)
-
-    task_manager = get_task_manager()
-    task_id = await task_manager.create_task(
-        idea=novel["idea"],
-        novel_type=novel["novel_type"],
-        target_words=novel["target_words"],
-        novel_id=novel_id,
-    )
 
     request = CreateNovelRequest(
         idea=novel["idea"],
@@ -180,7 +168,16 @@ async def generate_novel(
         writing_style=novel.get("writing_style", "现代白话"),
         writing_style_prompt=novel.get("writing_style_prompt", ""),
     )
-    background_tasks.add_task(generate_novel_background, task_id, request)
+    task_manager = get_task_manager()
+    task_id = await task_manager.create_task(
+        idea=novel["idea"],
+        novel_type=novel["novel_type"],
+        target_words=novel["target_words"],
+        novel_id=novel_id,
+        task_type=TaskType.NOVEL_GENERATE.value,
+        task_payload={"request": request.model_dump(mode="json")},
+        max_attempts=1,
+    )
 
     manager = get_novel_manager()
     await manager.update_novel(novel_id, status="generating")
@@ -204,7 +201,6 @@ class FullGenerateRequest(BaseModel):
 @router.post("/full-generate", status_code=202)
 async def full_generate_project(
     request: FullGenerateRequest,
-    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
 ):
     """创建项目并启动 13 阶段全功能生成"""
@@ -226,14 +222,6 @@ async def full_generate_project(
         owner_id=current_user.id,
     )
 
-    task_manager = get_task_manager()
-    task_id = await task_manager.create_task(
-        idea=request.idea,
-        novel_type=request.novel_type,
-        target_words=request.target_words,
-        novel_id=novel_id,
-    )
-
     gen_request = CreateNovelRequest(
         idea=request.idea,
         novel_type=request.novel_type,
@@ -241,7 +229,16 @@ async def full_generate_project(
         writing_style=request.writing_style,
         writing_style_prompt=request.writing_style_prompt or "",
     )
-    background_tasks.add_task(generate_novel_full_background, task_id, gen_request)
+    task_manager = get_task_manager()
+    task_id = await task_manager.create_task(
+        idea=request.idea,
+        novel_type=request.novel_type,
+        target_words=request.target_words,
+        novel_id=novel_id,
+        task_type=TaskType.NOVEL_FULL_GENERATE.value,
+        task_payload={"request": gen_request.model_dump(mode="json")},
+        max_attempts=1,
+    )
 
     await manager.update_novel(novel_id, status="generating")
 
@@ -256,7 +253,6 @@ async def full_generate_project(
 @router.post("/{novel_id}/generate-full", status_code=202)
 async def full_generate_existing(
     novel_id: str,
-    background_tasks: BackgroundTasks,
     force: bool = False,
     current_user: User = Depends(get_current_user),
 ):
@@ -291,13 +287,6 @@ async def full_generate_existing(
                 detail=f"该小说已有 {len(valid_chapters)} 个有效章节，全流程生成会覆盖所有内容。如确认要重新生成，请传入 force=true 参数",
             )
 
-    task_id = await task_manager.create_task(
-        idea=novel["idea"],
-        novel_type=novel["novel_type"],
-        target_words=novel["target_words"],
-        novel_id=novel_id,
-    )
-
     gen_request = CreateNovelRequest(
         idea=novel["idea"],
         novel_type=novel["novel_type"],
@@ -305,7 +294,15 @@ async def full_generate_existing(
         writing_style=novel.get("writing_style", "现代白话"),
         writing_style_prompt=novel.get("writing_style_prompt", ""),
     )
-    background_tasks.add_task(generate_novel_full_background, task_id, gen_request)
+    task_id = await task_manager.create_task(
+        idea=novel["idea"],
+        novel_type=novel["novel_type"],
+        target_words=novel["target_words"],
+        novel_id=novel_id,
+        task_type=TaskType.NOVEL_FULL_GENERATE.value,
+        task_payload={"request": gen_request.model_dump(mode="json")},
+        max_attempts=1,
+    )
 
     manager = get_novel_manager()
     await manager.update_novel(novel_id, status="generating")
@@ -326,7 +323,6 @@ class GenerateVolumeRequest(BaseModel):
 async def generate_volume(
     novel_id: str,
     request: GenerateVolumeRequest,
-    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
 ):
     novel = await _get_project_and_verify_owner(novel_id, current_user)
@@ -350,7 +346,7 @@ async def generate_volume(
     vol = await volume_service.get_volume(novel_id, request.volume_number)
     if not vol:
         # Fallback: check outlines table for volume data
-        from src.api.services.outline_service import get_outline_service
+        from src.api.services.content.outline_service import get_outline_service
 
         outline_svc = get_outline_service()
         vol_outlines = await outline_svc.get_volume_outlines(novel_id)
@@ -361,17 +357,17 @@ async def generate_volume(
         if not outline_vol:
             raise HTTPException(status_code=404, detail="Volume not found")
 
-    from src.api.services.novel_generator import generate_volume_background
-
     task_id = await task_manager.create_task(
         idea=novel["idea"],
         novel_type=novel["novel_type"],
         target_words=novel["target_words"],
         novel_id=novel_id,
-    )
-
-    background_tasks.add_task(
-        generate_volume_background, task_id, novel_id, request.volume_number
+        task_type=TaskType.NOVEL_VOLUME.value,
+        task_payload={
+            "novel_id": novel_id,
+            "volume_number": request.volume_number,
+        },
+        max_attempts=1,
     )
     await volume_service.update_volume(
         novel_id, request.volume_number, status="generating"
@@ -394,7 +390,6 @@ class GenerateChaptersRequest(BaseModel):
 async def generate_chapters(
     novel_id: str,
     request: GenerateChaptersRequest,
-    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
 ):
     novel = await _get_project_and_verify_owner(novel_id, current_user)
@@ -419,21 +414,18 @@ async def generate_chapters(
             detail=f"该小说已有正在运行的生成任务 (task_id={running_tasks[0].get('task_id')}), 请等待完成或取消后再试",
         )
 
-    from src.api.services.novel_generator import generate_chapters_background
-
     task_id = await task_manager.create_task(
         idea=novel["idea"],
         novel_type=novel["novel_type"],
         target_words=novel["target_words"],
         novel_id=novel_id,
-    )
-
-    background_tasks.add_task(
-        generate_chapters_background,
-        task_id,
-        novel_id,
-        request.chapter_start,
-        request.chapter_end,
+        task_type=TaskType.NOVEL_CHAPTERS.value,
+        task_payload={
+            "novel_id": novel_id,
+            "chapter_start": request.chapter_start,
+            "chapter_end": request.chapter_end,
+        },
+        max_attempts=1,
     )
 
     return {
@@ -452,9 +444,10 @@ async def get_project_quality_report(
 ):
     """Retrieve the multi-dimensional quality report of a novel."""
     await _get_project_and_verify_owner(novel_id, current_user)
-    from src.api.services.quality_report_service import get_quality_report_service
+    from src.api.services.quality.quality_report_service import (
+        get_quality_report_service,
+    )
 
     report_service = get_quality_report_service()
     report = await report_service.generate_novel_quality_report(novel_id)
     return report
-

@@ -138,8 +138,8 @@ class TestLongFormProgressService:
             session.add = MagicMock()
             yield session
 
-        with patch("src.api.services.long_form_progress_service.get_db_session", _ctx):
-            from src.api.services.long_form_progress_service import (
+        with patch("src.api.services.generation.long_form_progress_service.get_db_session", _ctx):
+            from src.api.services.generation.long_form_progress_service import (
                 LongFormProgressService,
             )
             svc = LongFormProgressService()
@@ -167,8 +167,8 @@ class TestLongFormProgressService:
             session.add = MagicMock()
             yield session
 
-        with patch("src.api.services.long_form_progress_service.get_db_session", _ctx):
-            from src.api.services.long_form_progress_service import (
+        with patch("src.api.services.generation.long_form_progress_service.get_db_session", _ctx):
+            from src.api.services.generation.long_form_progress_service import (
                 LongFormProgressService,
             )
             svc = LongFormProgressService()
@@ -187,8 +187,8 @@ class TestLongFormProgressService:
         record = _make_lfp(nid=nid, volume_number=1, status="pending", errors=[])
         ctx_fn, session = _fake_session(record)
 
-        with patch("src.api.services.long_form_progress_service.get_db_session", ctx_fn):
-            from src.api.services.long_form_progress_service import (
+        with patch("src.api.services.generation.long_form_progress_service.get_db_session", ctx_fn):
+            from src.api.services.generation.long_form_progress_service import (
                 LongFormProgressService,
             )
             svc = LongFormProgressService()
@@ -207,8 +207,8 @@ class TestLongFormProgressService:
         """update_volume_status silently returns when record not found."""
         ctx_fn, session = _fake_session(None)
 
-        with patch("src.api.services.long_form_progress_service.get_db_session", ctx_fn):
-            from src.api.services.long_form_progress_service import (
+        with patch("src.api.services.generation.long_form_progress_service.get_db_session", ctx_fn):
+            from src.api.services.generation.long_form_progress_service import (
                 LongFormProgressService,
             )
             svc = LongFormProgressService()
@@ -222,8 +222,8 @@ class TestLongFormProgressService:
         record = _make_lfp(nid=nid, volume_number=1, status="generating", completed_at=None)
         ctx_fn, _ = _fake_session(record)
 
-        with patch("src.api.services.long_form_progress_service.get_db_session", ctx_fn):
-            from src.api.services.long_form_progress_service import (
+        with patch("src.api.services.generation.long_form_progress_service.get_db_session", ctx_fn):
+            from src.api.services.generation.long_form_progress_service import (
                 LongFormProgressService,
             )
             svc = LongFormProgressService()
@@ -238,8 +238,8 @@ class TestLongFormProgressService:
         record = _make_lfp(nid=nid, volume_number=1, errors=["old error"])
         ctx_fn, _ = _fake_session(record)
 
-        with patch("src.api.services.long_form_progress_service.get_db_session", ctx_fn):
-            from src.api.services.long_form_progress_service import (
+        with patch("src.api.services.generation.long_form_progress_service.get_db_session", ctx_fn):
+            from src.api.services.generation.long_form_progress_service import (
                 LongFormProgressService,
             )
             svc = LongFormProgressService()
@@ -257,8 +257,8 @@ class TestLongFormProgressService:
         qr = {"avg_quality_score": 0.8}
         fr = {"filler_ratio": 0.1}
 
-        with patch("src.api.services.long_form_progress_service.get_db_session", ctx_fn):
-            from src.api.services.long_form_progress_service import (
+        with patch("src.api.services.generation.long_form_progress_service.get_db_session", ctx_fn):
+            from src.api.services.generation.long_form_progress_service import (
                 LongFormProgressService,
             )
             svc = LongFormProgressService()
@@ -276,8 +276,8 @@ class TestLongFormProgressService:
         """get_progress returns error when novel not found."""
         ctx_fn, _ = _fake_session(None)
 
-        with patch("src.api.services.long_form_progress_service.get_db_session", ctx_fn):
-            from src.api.services.long_form_progress_service import (
+        with patch("src.api.services.generation.long_form_progress_service.get_db_session", ctx_fn):
+            from src.api.services.generation.long_form_progress_service import (
                 LongFormProgressService,
             )
             svc = LongFormProgressService()
@@ -312,8 +312,8 @@ class TestLongFormProgressService:
         async def _ctx():
             yield session
 
-        with patch("src.api.services.long_form_progress_service.get_db_session", _ctx):
-            from src.api.services.long_form_progress_service import (
+        with patch("src.api.services.generation.long_form_progress_service.get_db_session", _ctx):
+            from src.api.services.generation.long_form_progress_service import (
                 LongFormProgressService,
             )
             svc = LongFormProgressService()
@@ -338,8 +338,8 @@ class TestLongFormProgressService:
         record = _make_lfp(nid=nid, volume_number=1, status="completed", chapters_completed=10)
         ctx_fn, _ = _fake_session(record)
 
-        with patch("src.api.services.long_form_progress_service.get_db_session", ctx_fn):
-            from src.api.services.long_form_progress_service import (
+        with patch("src.api.services.generation.long_form_progress_service.get_db_session", ctx_fn):
+            from src.api.services.generation.long_form_progress_service import (
                 LongFormProgressService,
             )
             svc = LongFormProgressService()
@@ -356,8 +356,8 @@ class TestLongFormProgressService:
         """Returns None when record not found."""
         ctx_fn, _ = _fake_session(None)
 
-        with patch("src.api.services.long_form_progress_service.get_db_session", ctx_fn):
-            from src.api.services.long_form_progress_service import (
+        with patch("src.api.services.generation.long_form_progress_service.get_db_session", ctx_fn):
+            from src.api.services.generation.long_form_progress_service import (
                 LongFormProgressService,
             )
             svc = LongFormProgressService()
@@ -369,7 +369,7 @@ class TestLongFormProgressService:
 
     def test_get_long_form_progress_service_singleton(self):
         """get_long_form_progress_service returns singleton."""
-        import src.api.services.long_form_progress_service as mod
+        import src.api.services.generation.long_form_progress_service as mod
         original = mod._progress_service
         try:
             mod._progress_service = None
@@ -381,7 +381,7 @@ class TestLongFormProgressService:
 
     def test_get_long_form_progress_service_with_session(self):
         """Passing a session creates a new instance."""
-        import src.api.services.long_form_progress_service as mod
+        import src.api.services.generation.long_form_progress_service as mod
         original = mod._progress_service
         try:
             mod._progress_service = None
@@ -412,7 +412,7 @@ class TestQualityReportService:
 
     def test_build_volume_report_empty_chapters(self):
         """Empty chapter list returns zeroed report."""
-        from src.api.services.quality_report_service import QualityReportService
+        from src.api.services.quality.quality_report_service import QualityReportService
         svc = QualityReportService()
         report = svc._build_volume_report(1, [], {}, {})  # volume_number, chapters, version_map, overall_score_map
 
@@ -424,7 +424,7 @@ class TestQualityReportService:
 
     def test_build_volume_report_with_chapters(self):
         """Report includes scores, word count, and trends."""
-        from src.api.services.quality_report_service import QualityReportService
+        from src.api.services.quality.quality_report_service import QualityReportService
         svc = QualityReportService()
         chapters = self._make_chapters(3, word_count=4000)
         report = svc._build_volume_report(1, chapters, {}, {})  # volume_number, chapters, version_map, overall_score_map
@@ -438,7 +438,7 @@ class TestQualityReportService:
 
     def test_build_volume_report_has_unverified_when_no_scores(self):
         """无任何评分的章节应标记 has_unverified=True（供前端诚实提示）。"""
-        from src.api.services.quality_report_service import QualityReportService
+        from src.api.services.quality.quality_report_service import QualityReportService
         svc = QualityReportService()
         chapters = self._make_chapters(2, word_count=4000)
         # 空 version_map + 空 overall_score_map → 从未评估
@@ -447,7 +447,7 @@ class TestQualityReportService:
 
     def test_build_volume_report_no_unverified_when_scored(self):
         """所有章节有评分时 has_unverified=False。"""
-        from src.api.services.quality_report_service import QualityReportService
+        from src.api.services.quality.quality_report_service import QualityReportService
         svc = QualityReportService()
         chapters = self._make_chapters(2, word_count=4000)
         # 每章都有 overall 分 → 已评估
@@ -457,14 +457,14 @@ class TestQualityReportService:
 
     def test_build_volume_report_empty_no_unverified(self):
         """空卷 has_unverified=False。"""
-        from src.api.services.quality_report_service import QualityReportService
+        from src.api.services.quality.quality_report_service import QualityReportService
         svc = QualityReportService()
         report = svc._build_volume_report(1, [], {}, {})
         assert report["has_unverified"] is False
 
     def test_build_volume_report_detects_low_word_count_warning(self):
         """Warning generated when a chapter has abnormally low word count."""
-        from src.api.services.quality_report_service import QualityReportService
+        from src.api.services.quality.quality_report_service import QualityReportService
         svc = QualityReportService()
         chapters = [
             _make_chapter(volume_number=1, chapter_number=1, word_count=4000),
@@ -481,7 +481,7 @@ class TestQualityReportService:
 
     def test_detect_warnings_consecutive_low_advancement(self):
         """Consecutive low advancement scores trigger warning."""
-        from src.api.services.quality_report_service import (
+        from src.api.services.quality.quality_report_service import (
             CONSECUTIVE_LOW_THRESHOLD,
             QualityReportService,
         )
@@ -495,7 +495,7 @@ class TestQualityReportService:
 
     def test_detect_warnings_no_issues(self):
         """No warnings when scores are all healthy."""
-        from src.api.services.quality_report_service import QualityReportService
+        from src.api.services.quality.quality_report_service import QualityReportService
         svc = QualityReportService()
         scores = [{"advancement": 0.8, "pacing": 0.9} for _ in range(5)]
         avg_scores = {"advancement": 0.8, "pacing": 0.9, "character_consistency": 0,
@@ -510,7 +510,7 @@ class TestQualityReportService:
 
     def test_detect_filler_chapters_none_below_threshold(self):
         """No filler when all chapters score above threshold."""
-        from src.api.services.quality_report_service import QualityReportService
+        from src.api.services.quality.quality_report_service import QualityReportService
         svc = QualityReportService()
         chapters = self._make_chapters(3)
         scores = [{"advancement": 0.7, "pacing": 0.7} for _ in range(3)]
@@ -522,7 +522,7 @@ class TestQualityReportService:
 
     def test_detect_stalled_chapters(self):
         """Chapters with low advancement are detected as stalled."""
-        from src.api.services.quality_report_service import QualityReportService
+        from src.api.services.quality.quality_report_service import QualityReportService
         svc = QualityReportService()
         scores = [
             {"advancement": 0.8},  # fine
@@ -539,7 +539,7 @@ class TestQualityReportService:
 
     def test_extract_chapter_scores_returns_default(self):
         """Default scores are all 0.7 when no version data available."""
-        from src.api.services.quality_report_service import (
+        from src.api.services.quality.quality_report_service import (
             QUALITY_DIMENSIONS,
             QualityReportService,
         )
@@ -552,7 +552,7 @@ class TestQualityReportService:
     # --- _get_foreshadow_summary / _get_character_appearance ---
 
     def test_foreshadow_summary_returns_zeros(self):
-        from src.api.services.quality_report_service import QualityReportService
+        from src.api.services.quality.quality_report_service import QualityReportService
         svc = QualityReportService()
         result = svc._get_foreshadow_summary([])
         assert result["total_planted"] == 0
@@ -560,7 +560,7 @@ class TestQualityReportService:
         assert result["dangling_count"] == 0
 
     def test_character_appearance_returns_zeros(self):
-        from src.api.services.quality_report_service import QualityReportService
+        from src.api.services.quality.quality_report_service import QualityReportService
         svc = QualityReportService()
         result = svc._get_character_appearance([])
         assert result["total_characters"] == 0
@@ -581,8 +581,10 @@ class TestQualityReportService:
         async def _ctx():
             yield session
 
-        with patch("src.api.services.quality_report_service.get_db_session", _ctx):
-            from src.api.services.quality_report_service import QualityReportService
+        with patch("src.api.services.quality.quality_report_service.get_db_session", _ctx):
+            from src.api.services.quality.quality_report_service import (
+                QualityReportService,
+            )
             svc = QualityReportService()
             report = await svc.generate_novel_quality_report("test-novel")
 
@@ -615,8 +617,10 @@ class TestQualityReportService:
         async def _ctx():
             yield session
 
-        with patch("src.api.services.quality_report_service.get_db_session", _ctx):
-            from src.api.services.quality_report_service import QualityReportService
+        with patch("src.api.services.quality.quality_report_service.get_db_session", _ctx):
+            from src.api.services.quality.quality_report_service import (
+                QualityReportService,
+            )
             svc = QualityReportService()
             report = await svc.generate_novel_quality_report(novel.novel_id)
 
@@ -630,7 +634,7 @@ class TestQualityReportService:
     # --- singleton factory ---
 
     def test_get_quality_report_service_singleton(self):
-        import src.api.services.quality_report_service as mod
+        import src.api.services.quality.quality_report_service as mod
         original = mod._quality_report_service
         try:
             mod._quality_report_service = None
@@ -652,7 +656,9 @@ class TestFillerDetectionService:
 
     def test_filler_score_normal_chapter(self):
         """Normal chapter (avg word count) should have low filler score."""
-        from src.api.services.filler_detection_service import FillerDetectionService
+        from src.api.services.quality.filler_detection_service import (
+            FillerDetectionService,
+        )
         svc = FillerDetectionService()
         ch = _make_chapter(word_count=3000)
         score = svc._calculate_filler_score(ch, avg_word_count=3000)
@@ -660,7 +666,9 @@ class TestFillerDetectionService:
 
     def test_filler_score_short_chapter(self):
         """Very short chapter gets high filler score."""
-        from src.api.services.filler_detection_service import FillerDetectionService
+        from src.api.services.quality.filler_detection_service import (
+            FillerDetectionService,
+        )
         svc = FillerDetectionService()
         ch = _make_chapter(word_count=500)
         score = svc._calculate_filler_score(ch, avg_word_count=3000)
@@ -668,7 +676,9 @@ class TestFillerDetectionService:
 
     def test_filler_score_marked_filler(self):
         """Chapter explicitly marked as 'filler' type gets bonus score (L0 分 + 显式标记 +0.5)。"""
-        from src.api.services.filler_detection_service import FillerDetectionService
+        from src.api.services.quality.filler_detection_service import (
+            FillerDetectionService,
+        )
         svc = FillerDetectionService()
         ch = _make_chapter(word_count=5000, chapter_type="filler")
         score = svc._calculate_filler_score(ch, avg_word_count=3000)
@@ -677,7 +687,9 @@ class TestFillerDetectionService:
 
     def test_filler_score_very_low_word_count(self):
         """Chapter with < 1000 words gets additional penalty."""
-        from src.api.services.filler_detection_service import FillerDetectionService
+        from src.api.services.quality.filler_detection_service import (
+            FillerDetectionService,
+        )
         svc = FillerDetectionService()
         ch = _make_chapter(word_count=500)
         score = svc._calculate_filler_score(ch, avg_word_count=3000)
@@ -685,7 +697,9 @@ class TestFillerDetectionService:
 
     def test_filler_score_zero_avg_no_division_error(self):
         """Zero average word count should not cause division error."""
-        from src.api.services.filler_detection_service import FillerDetectionService
+        from src.api.services.quality.filler_detection_service import (
+            FillerDetectionService,
+        )
         svc = FillerDetectionService()
         ch = _make_chapter(word_count=0)
         score = svc._calculate_filler_score(ch, avg_word_count=0)
@@ -695,7 +709,9 @@ class TestFillerDetectionService:
 
     def test_get_filler_reasons_short_word_count(self):
         """Reason includes word count for short chapters."""
-        from src.api.services.filler_detection_service import FillerDetectionService
+        from src.api.services.quality.filler_detection_service import (
+            FillerDetectionService,
+        )
         svc = FillerDetectionService()
         ch = _make_chapter(word_count=500)
         reasons = svc._get_filler_reasons(ch, avg_word_count=3000)
@@ -703,7 +719,9 @@ class TestFillerDetectionService:
 
     def test_get_filler_reasons_filler_type(self):
         """Reason includes filler type when marked."""
-        from src.api.services.filler_detection_service import FillerDetectionService
+        from src.api.services.quality.filler_detection_service import (
+            FillerDetectionService,
+        )
         svc = FillerDetectionService()
         ch = _make_chapter(word_count=5000, chapter_type="filler")
         reasons = svc._get_filler_reasons(ch, avg_word_count=3000)
@@ -711,7 +729,9 @@ class TestFillerDetectionService:
 
     def test_get_filler_reasons_low_word_count(self):
         """Reason includes low word count."""
-        from src.api.services.filler_detection_service import FillerDetectionService
+        from src.api.services.quality.filler_detection_service import (
+            FillerDetectionService,
+        )
         svc = FillerDetectionService()
         ch = _make_chapter(word_count=800)
         reasons = svc._get_filler_reasons(ch, avg_word_count=3000)
@@ -721,7 +741,9 @@ class TestFillerDetectionService:
 
     def test_recommendations_no_filler(self):
         """Empty filler list yields 'quality good' recommendation."""
-        from src.api.services.filler_detection_service import FillerDetectionService
+        from src.api.services.quality.filler_detection_service import (
+            FillerDetectionService,
+        )
         svc = FillerDetectionService()
         recs = svc._generate_recommendations([], 0.0, 100)
         assert len(recs) == 1
@@ -729,7 +751,9 @@ class TestFillerDetectionService:
 
     def test_recommendations_high_ratio(self):
         """High filler ratio triggers ratio warning."""
-        from src.api.services.filler_detection_service import FillerDetectionService
+        from src.api.services.quality.filler_detection_service import (
+            FillerDetectionService,
+        )
         svc = FillerDetectionService()
         filler_chapters = [{"chapter_number": i, "reasons": []} for i in range(1, 6)]
         recs = svc._generate_recommendations(filler_chapters, 0.3, 20)
@@ -737,7 +761,9 @@ class TestFillerDetectionService:
 
     def test_recommendations_many_filler(self):
         """More than 5 filler chapters triggers batch regeneration suggestion."""
-        from src.api.services.filler_detection_service import FillerDetectionService
+        from src.api.services.quality.filler_detection_service import (
+            FillerDetectionService,
+        )
         svc = FillerDetectionService()
         filler_chapters = [{"chapter_number": i, "reasons": ["reason"]} for i in range(1, 8)]
         recs = svc._generate_recommendations(filler_chapters, 0.35, 20)
@@ -750,8 +776,10 @@ class TestFillerDetectionService:
         """Novel with no chapters returns empty filler list."""
         ctx_fn, _ = _fake_session([])
 
-        with patch("src.api.services.filler_detection_service.get_db_session", ctx_fn):
-            from src.api.services.filler_detection_service import FillerDetectionService
+        with patch("src.api.services.quality.filler_detection_service.get_db_session", ctx_fn):
+            from src.api.services.quality.filler_detection_service import (
+                FillerDetectionService,
+            )
             svc = FillerDetectionService()
             result = await svc.detect_filler_chapters("novel-123")
 
@@ -768,8 +796,10 @@ class TestFillerDetectionService:
         ]
         ctx_fn, _ = _fake_session(chapters)
 
-        with patch("src.api.services.filler_detection_service.get_db_session", ctx_fn):
-            from src.api.services.filler_detection_service import FillerDetectionService
+        with patch("src.api.services.quality.filler_detection_service.get_db_session", ctx_fn):
+            from src.api.services.quality.filler_detection_service import (
+                FillerDetectionService,
+            )
             svc = FillerDetectionService()
             result = await svc.detect_filler_chapters("novel-123")
 
@@ -787,8 +817,10 @@ class TestFillerDetectionService:
         ]
         ctx_fn, _ = _fake_session(chapters)
 
-        with patch("src.api.services.filler_detection_service.get_db_session", ctx_fn):
-            from src.api.services.filler_detection_service import FillerDetectionService
+        with patch("src.api.services.quality.filler_detection_service.get_db_session", ctx_fn):
+            from src.api.services.quality.filler_detection_service import (
+                FillerDetectionService,
+            )
             svc = FillerDetectionService()
             result = await svc.detect_filler_chapters("novel-123")
 
@@ -798,7 +830,7 @@ class TestFillerDetectionService:
     # --- singleton factory ---
 
     def test_get_filler_detection_service_singleton(self):
-        import src.api.services.filler_detection_service as mod
+        import src.api.services.quality.filler_detection_service as mod
         original = mod._filler_detection_service
         try:
             mod._filler_detection_service = None
@@ -823,8 +855,8 @@ class TestForeshadowTrackerService:
         """When story bible not found, returns zero counts."""
         ctx_fn, _ = _fake_session(None)
 
-        with patch("src.api.services.foreshadow_tracker_service.get_db_session", ctx_fn):
-            from src.api.services.foreshadow_tracker_service import (
+        with patch("src.api.services.quality.foreshadow_tracker_service.get_db_session", ctx_fn):
+            from src.api.services.quality.foreshadow_tracker_service import (
                 ForeshadowTrackerService,
             )
             svc = ForeshadowTrackerService()
@@ -853,8 +885,8 @@ class TestForeshadowTrackerService:
         )
         ctx_fn, _ = _fake_session(bible)
 
-        with patch("src.api.services.foreshadow_tracker_service.get_db_session", ctx_fn):
-            from src.api.services.foreshadow_tracker_service import (
+        with patch("src.api.services.quality.foreshadow_tracker_service.get_db_session", ctx_fn):
+            from src.api.services.quality.foreshadow_tracker_service import (
                 ForeshadowTrackerService,
             )
             svc = ForeshadowTrackerService()
@@ -883,8 +915,8 @@ class TestForeshadowTrackerService:
         )
         ctx_fn, _ = _fake_session(bible)
 
-        with patch("src.api.services.foreshadow_tracker_service.get_db_session", ctx_fn):
-            from src.api.services.foreshadow_tracker_service import (
+        with patch("src.api.services.quality.foreshadow_tracker_service.get_db_session", ctx_fn):
+            from src.api.services.quality.foreshadow_tracker_service import (
                 ForeshadowTrackerService,
             )
             svc = ForeshadowTrackerService()
@@ -900,8 +932,8 @@ class TestForeshadowTrackerService:
         bible = _make_story_bible(nid=nid, foreshadowing_list=[], unresolved_hooks=[])
         ctx_fn, _ = _fake_session(bible)
 
-        with patch("src.api.services.foreshadow_tracker_service.get_db_session", ctx_fn):
-            from src.api.services.foreshadow_tracker_service import (
+        with patch("src.api.services.quality.foreshadow_tracker_service.get_db_session", ctx_fn):
+            from src.api.services.quality.foreshadow_tracker_service import (
                 ForeshadowTrackerService,
             )
             svc = ForeshadowTrackerService()
@@ -928,8 +960,8 @@ class TestForeshadowTrackerService:
         )
         ctx_fn, _ = _fake_session(bible)
 
-        with patch("src.api.services.foreshadow_tracker_service.get_db_session", ctx_fn):
-            from src.api.services.foreshadow_tracker_service import (
+        with patch("src.api.services.quality.foreshadow_tracker_service.get_db_session", ctx_fn):
+            from src.api.services.quality.foreshadow_tracker_service import (
                 ForeshadowTrackerService,
             )
             svc = ForeshadowTrackerService()
@@ -949,8 +981,8 @@ class TestForeshadowTrackerService:
         bible = _make_story_bible(nid=nid, foreshadowing_list=[], unresolved_hooks=[])
         ctx_fn, _ = _fake_session(bible)
 
-        with patch("src.api.services.foreshadow_tracker_service.get_db_session", ctx_fn):
-            from src.api.services.foreshadow_tracker_service import (
+        with patch("src.api.services.quality.foreshadow_tracker_service.get_db_session", ctx_fn):
+            from src.api.services.quality.foreshadow_tracker_service import (
                 ForeshadowTrackerService,
             )
             svc = ForeshadowTrackerService()
@@ -967,8 +999,8 @@ class TestForeshadowTrackerService:
         bible = _make_story_bible(nid=nid, foreshadowing_list=[], unresolved_hooks=hooks)
         ctx_fn, _ = _fake_session(bible)
 
-        with patch("src.api.services.foreshadow_tracker_service.get_db_session", ctx_fn):
-            from src.api.services.foreshadow_tracker_service import (
+        with patch("src.api.services.quality.foreshadow_tracker_service.get_db_session", ctx_fn):
+            from src.api.services.quality.foreshadow_tracker_service import (
                 ForeshadowTrackerService,
             )
             svc = ForeshadowTrackerService()
@@ -991,8 +1023,8 @@ class TestForeshadowTrackerService:
         bible = _make_story_bible(nid=nid, foreshadowing_list=foreshadows, unresolved_hooks=[])
         ctx_fn, _ = _fake_session(bible)
 
-        with patch("src.api.services.foreshadow_tracker_service.get_db_session", ctx_fn):
-            from src.api.services.foreshadow_tracker_service import (
+        with patch("src.api.services.quality.foreshadow_tracker_service.get_db_session", ctx_fn):
+            from src.api.services.quality.foreshadow_tracker_service import (
                 ForeshadowTrackerService,
             )
             svc = ForeshadowTrackerService()
@@ -1014,8 +1046,8 @@ class TestForeshadowTrackerService:
         bible = _make_story_bible(nid=nid, foreshadowing_list=foreshadows, unresolved_hooks=[])
         ctx_fn, _ = _fake_session(bible)
 
-        with patch("src.api.services.foreshadow_tracker_service.get_db_session", ctx_fn):
-            from src.api.services.foreshadow_tracker_service import (
+        with patch("src.api.services.quality.foreshadow_tracker_service.get_db_session", ctx_fn):
+            from src.api.services.quality.foreshadow_tracker_service import (
                 ForeshadowTrackerService,
             )
             svc = ForeshadowTrackerService()
@@ -1027,7 +1059,7 @@ class TestForeshadowTrackerService:
     # --- singleton factory ---
 
     def test_get_foreshadow_tracker_service_singleton(self):
-        import src.api.services.foreshadow_tracker_service as mod
+        import src.api.services.quality.foreshadow_tracker_service as mod
         original = mod._foreshadow_tracker_service
         try:
             mod._foreshadow_tracker_service = None

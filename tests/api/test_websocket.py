@@ -7,7 +7,7 @@ from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from src.api.main import app
-from src.api.services.progress_event_bus import (
+from src.api.services.generation.progress_event_bus import (
     EventType,
     ProgressEvent,
     get_event_bus,

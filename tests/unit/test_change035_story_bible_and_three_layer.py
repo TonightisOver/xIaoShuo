@@ -6,7 +6,7 @@ import pytest
 
 from src.api.models.db_models import StoryBible
 from src.api.routes.story_bible import get_story_bible, update_story_bible
-from src.api.services.knowledge_graph_service import KnowledgeGraphService
+from src.api.services.knowledge.knowledge_graph_service import KnowledgeGraphService
 from src.core.llm.chapter_generator import ChapterGenContext, generate_single_chapter
 
 # ---------------------------------------------------------------------------
@@ -178,7 +178,7 @@ class TestThreeLayerGraph:
         # First query: entities, Second query: triples
         mock_session.execute = AsyncMock(side_effect=[mock_result_ent, mock_result_trip])
 
-        with patch("src.api.services.knowledge_graph_service.get_db_session") as mock_db:
+        with patch("src.api.services.knowledge.knowledge_graph_service.get_db_session") as mock_db:
             mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
 

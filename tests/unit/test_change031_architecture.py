@@ -24,7 +24,7 @@ class TestBuildInitialState:
     async def test_builds_basic_state_without_novel_id(self):
         """When task has no novel_id, returns base state only."""
         from src.api.models.requests import CreateNovelRequest
-        from src.api.services.novel_generator import _build_initial_state
+        from src.api.services.generation.novel_generator import _build_initial_state
 
         request = CreateNovelRequest(
             idea="一个修仙者穿越到现代都市的奇幻故事",
@@ -34,7 +34,7 @@ class TestBuildInitialState:
             writing_style_prompt="",
         )
 
-        with patch("src.api.services.novel_generator.get_task_manager") as mock_tm:
+        with patch("src.api.services.generation.novel_generator.get_task_manager") as mock_tm:
             mock_task_mgr = AsyncMock()
             mock_task_mgr.get_task = AsyncMock(return_value={"novel_id": None})
             mock_tm.return_value = mock_task_mgr
@@ -58,7 +58,7 @@ class TestBuildInitialState:
     async def test_builds_state_with_existing_world_and_characters(self):
         """When novel has world_setting and characters, they are injected."""
         from src.api.models.requests import CreateNovelRequest
-        from src.api.services.novel_generator import _build_initial_state
+        from src.api.services.generation.novel_generator import _build_initial_state
 
         request = CreateNovelRequest(
             idea="星际冒险故事，主角是年轻舰长",
@@ -78,10 +78,10 @@ class TestBuildInitialState:
             {"name": "艾米", "role": "女主"},
         ]
 
-        with patch("src.api.services.novel_generator.get_task_manager") as mock_tm, \
-             patch("src.api.services.world_service.get_world_service") as mock_ws, \
-             patch("src.api.services.character_service.get_character_service") as mock_cs, \
-             patch("src.api.services.storyline_service.get_storyline_service") as mock_sl:
+        with patch("src.api.services.generation.novel_generator.get_task_manager") as mock_tm, \
+             patch("src.api.services.content.world_service.get_world_service") as mock_ws, \
+             patch("src.api.services.content.character_service.get_character_service") as mock_cs, \
+             patch("src.api.services.content.storyline_service.get_storyline_service") as mock_sl:
 
             mock_task_mgr = AsyncMock()
             mock_task_mgr.get_task = AsyncMock(return_value={"novel_id": "novel-123"})
@@ -109,7 +109,7 @@ class TestBuildInitialState:
     async def test_builds_state_with_storylines_appended_to_idea(self):
         """When novel has storylines, they are appended to idea."""
         from src.api.models.requests import CreateNovelRequest
-        from src.api.services.novel_generator import _build_initial_state
+        from src.api.services.generation.novel_generator import _build_initial_state
 
         request = CreateNovelRequest(
             idea="修仙世界的冒险故事，主角从凡人成长",
@@ -123,10 +123,10 @@ class TestBuildInitialState:
             {"name": "感情线", "type": "sub", "description": "师妹情缘"},
         ]
 
-        with patch("src.api.services.novel_generator.get_task_manager") as mock_tm, \
-             patch("src.api.services.world_service.get_world_service") as mock_ws, \
-             patch("src.api.services.character_service.get_character_service") as mock_cs, \
-             patch("src.api.services.storyline_service.get_storyline_service") as mock_sl:
+        with patch("src.api.services.generation.novel_generator.get_task_manager") as mock_tm, \
+             patch("src.api.services.content.world_service.get_world_service") as mock_ws, \
+             patch("src.api.services.content.character_service.get_character_service") as mock_cs, \
+             patch("src.api.services.content.storyline_service.get_storyline_service") as mock_sl:
 
             mock_task_mgr = AsyncMock()
             mock_task_mgr.get_task = AsyncMock(return_value={"novel_id": "novel-456"})
@@ -155,7 +155,7 @@ class TestBuildInitialState:
     async def test_builds_state_skips_empty_world_setting(self):
         """World setting with all empty fields is not injected."""
         from src.api.models.requests import CreateNovelRequest
-        from src.api.services.novel_generator import _build_initial_state
+        from src.api.services.generation.novel_generator import _build_initial_state
 
         request = CreateNovelRequest(
             idea="一个简单的都市故事，主角是普通上班族",
@@ -171,10 +171,10 @@ class TestBuildInitialState:
             "geography": None,
         }
 
-        with patch("src.api.services.novel_generator.get_task_manager") as mock_tm, \
-             patch("src.api.services.world_service.get_world_service") as mock_ws, \
-             patch("src.api.services.character_service.get_character_service") as mock_cs, \
-             patch("src.api.services.storyline_service.get_storyline_service") as mock_sl:
+        with patch("src.api.services.generation.novel_generator.get_task_manager") as mock_tm, \
+             patch("src.api.services.content.world_service.get_world_service") as mock_ws, \
+             patch("src.api.services.content.character_service.get_character_service") as mock_cs, \
+             patch("src.api.services.content.storyline_service.get_storyline_service") as mock_sl:
 
             mock_task_mgr = AsyncMock()
             mock_task_mgr.get_task = AsyncMock(return_value={"novel_id": "novel-789"})
@@ -208,7 +208,10 @@ class TestGenerateSingleChapter:
     @pytest.mark.asyncio
     async def test_basic_generation_returns_correct_format(self):
         """Happy path: returns dict with chapter, title, content, word_count."""
-        from src.core.llm.chapter_generator import ChapterGenContext, generate_single_chapter
+        from src.core.llm.chapter_generator import (
+            ChapterGenContext,
+            generate_single_chapter,
+        )
 
         mock_client = AsyncMock()
         mock_client.generate = AsyncMock(return_value="这是生成的章节内容，包含精彩的情节。")
@@ -233,7 +236,10 @@ class TestGenerateSingleChapter:
     @pytest.mark.asyncio
     async def test_first_chapter_uses_default_previous(self):
         """When previous_chapter is empty, prompt uses '这是第一章'."""
-        from src.core.llm.chapter_generator import ChapterGenContext, generate_single_chapter
+        from src.core.llm.chapter_generator import (
+            ChapterGenContext,
+            generate_single_chapter,
+        )
 
         mock_client = AsyncMock()
         mock_client.generate = AsyncMock(return_value="第一章内容")
@@ -258,7 +264,10 @@ class TestGenerateSingleChapter:
     @pytest.mark.asyncio
     async def test_style_instruction_prepended_to_prompt(self):
         """style_instruction is prepended to the prompt."""
-        from src.core.llm.chapter_generator import ChapterGenContext, generate_single_chapter
+        from src.core.llm.chapter_generator import (
+            ChapterGenContext,
+            generate_single_chapter,
+        )
 
         mock_client = AsyncMock()
         mock_client.generate = AsyncMock(return_value="内容")
@@ -280,7 +289,10 @@ class TestGenerateSingleChapter:
     @pytest.mark.asyncio
     async def test_storylines_appended_to_prompt(self):
         """storylines_json is appended to the prompt."""
-        from src.core.llm.chapter_generator import ChapterGenContext, generate_single_chapter
+        from src.core.llm.chapter_generator import (
+            ChapterGenContext,
+            generate_single_chapter,
+        )
 
         mock_client = AsyncMock()
         mock_client.generate = AsyncMock(return_value="内容")
@@ -305,7 +317,10 @@ class TestGenerateSingleChapter:
     @pytest.mark.asyncio
     async def test_kg_service_context_retrieval(self):
         """When kg_service is provided, it retrieves context."""
-        from src.core.llm.chapter_generator import ChapterGenContext, generate_single_chapter
+        from src.core.llm.chapter_generator import (
+            ChapterGenContext,
+            generate_single_chapter,
+        )
 
         mock_client = AsyncMock()
         mock_client.generate = AsyncMock(return_value="内容")
@@ -344,7 +359,10 @@ class TestGenerateSingleChapter:
     @pytest.mark.asyncio
     async def test_kg_service_failure_non_blocking(self):
         """KG service failure does not block chapter generation."""
-        from src.core.llm.chapter_generator import ChapterGenContext, generate_single_chapter
+        from src.core.llm.chapter_generator import (
+            ChapterGenContext,
+            generate_single_chapter,
+        )
 
         mock_client = AsyncMock()
         mock_client.generate = AsyncMock(return_value="正常生成内容")
@@ -380,7 +398,7 @@ class TestNovelIdOwnership:
     @pytest.mark.asyncio
     async def test_update_power_system_wrong_novel_returns_false(self):
         """Updating a power system with wrong novel_id returns False."""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         manager = NovelManager()
 
@@ -388,7 +406,7 @@ class TestNovelIdOwnership:
         mock_world_svc.update_power_system = AsyncMock(return_value=False)
 
         with patch(
-            "src.api.services.novel_manager.get_world_service",
+            "src.api.services.content.novel_manager.get_world_service",
             return_value=mock_world_svc,
         ):
             result = await manager.update_power_system(
@@ -400,7 +418,7 @@ class TestNovelIdOwnership:
     @pytest.mark.asyncio
     async def test_delete_power_system_wrong_novel_returns_false(self):
         """Deleting a power system with wrong novel_id returns False."""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         manager = NovelManager()
 
@@ -408,7 +426,7 @@ class TestNovelIdOwnership:
         mock_world_svc.delete_power_system = AsyncMock(return_value=False)
 
         with patch(
-            "src.api.services.novel_manager.get_world_service",
+            "src.api.services.content.novel_manager.get_world_service",
             return_value=mock_world_svc,
         ):
             result = await manager.delete_power_system("wrong-novel-id", 1)
@@ -418,7 +436,7 @@ class TestNovelIdOwnership:
     @pytest.mark.asyncio
     async def test_update_character_wrong_novel_returns_false(self):
         """Updating a character with wrong novel_id returns False."""
-        from src.api.services.character_service import CharacterService
+        from src.api.services.content.character_service import CharacterService
 
         service = CharacterService()
 
@@ -430,7 +448,7 @@ class TestNovelIdOwnership:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("src.api.services.character_service.get_db_session", return_value=mock_session):
+        with patch("src.api.services.content.character_service.get_db_session", return_value=mock_session):
             result = await service.update_character(
                 "wrong-novel-id", 1, name="新名称"
             )
@@ -440,7 +458,7 @@ class TestNovelIdOwnership:
     @pytest.mark.asyncio
     async def test_delete_character_wrong_novel_returns_false(self):
         """Deleting a character with wrong novel_id returns False."""
-        from src.api.services.character_service import CharacterService
+        from src.api.services.content.character_service import CharacterService
 
         service = CharacterService()
 
@@ -452,7 +470,7 @@ class TestNovelIdOwnership:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("src.api.services.character_service.get_db_session", return_value=mock_session):
+        with patch("src.api.services.content.character_service.get_db_session", return_value=mock_session):
             result = await service.delete_character("wrong-novel-id", 1)
 
         assert result is False
@@ -509,38 +527,38 @@ class TestStructlogImports:
         """task_manager uses structlog.get_logger."""
         import structlog
 
-        from src.api.services import task_manager
+        from src.api.services.tasks import task_manager
         assert hasattr(task_manager, "logger")
         assert isinstance(task_manager.logger, structlog.types.FilteringBoundLogger) or \
                hasattr(task_manager.logger, "info")
 
     def test_novel_manager_uses_structlog(self):
         """novel_manager uses structlog.get_logger."""
-        from src.api.services import novel_manager
+        from src.api.services.content import novel_manager
         assert hasattr(novel_manager, "logger")
         assert hasattr(novel_manager.logger, "info")
 
     def test_novel_generator_uses_structlog(self):
         """novel_generator uses structlog.get_logger."""
-        from src.api.services import novel_generator
+        from src.api.services.generation import novel_generator
         assert hasattr(novel_generator, "logger")
         assert hasattr(novel_generator.logger, "info")
 
     def test_outline_service_uses_structlog(self):
         """outline_service uses structlog.get_logger."""
-        from src.api.services import outline_service
+        from src.api.services.content import outline_service
         assert hasattr(outline_service, "logger")
         assert hasattr(outline_service.logger, "info")
 
     def test_storyline_service_uses_structlog(self):
         """storyline_service uses structlog.get_logger."""
-        from src.api.services import storyline_service
+        from src.api.services.content import storyline_service
         assert hasattr(storyline_service, "logger")
         assert hasattr(storyline_service.logger, "info")
 
     def test_conversation_service_uses_structlog(self):
         """conversation_service uses structlog.get_logger."""
-        from src.api.services import conversation_service
+        from src.api.services.content import conversation_service
         assert hasattr(conversation_service, "logger")
         assert hasattr(conversation_service.logger, "info")
 

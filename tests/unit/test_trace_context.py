@@ -1,8 +1,6 @@
 """trace_context 单元测试 — trace_id 绑定与 structlog 日志注入。"""
 from __future__ import annotations
 
-import structlog
-
 from src.core.trace_context import (
     _bind_trace,
     _clear_trace,

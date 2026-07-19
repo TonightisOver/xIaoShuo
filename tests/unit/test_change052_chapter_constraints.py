@@ -64,7 +64,7 @@ class TestVolumeOutlineRetry:
 
     async def test_no_retry_when_chapters_sufficient(self):
         """章节数满足 80% 时不触发重试。"""
-        from src.api.services.long_form_generation_helpers import (
+        from src.api.services.generation.long_form_generation_helpers import (
             generate_volume_outline,
         )
 
@@ -91,7 +91,7 @@ class TestVolumeOutlineRetry:
 
     async def test_retry_triggered_when_chapters_insufficient(self):
         """章节数 < 80% 时触发重试，重试后满足则停止。"""
-        from src.api.services.long_form_generation_helpers import (
+        from src.api.services.generation.long_form_generation_helpers import (
             generate_volume_outline,
         )
 
@@ -120,7 +120,7 @@ class TestVolumeOutlineRetry:
 
     async def test_fallback_used_after_retries_exhausted(self):
         """重试 2 次后仍不足，使用 fallback（chapters_per_volume 个章节）。"""
-        from src.api.services.long_form_generation_helpers import (
+        from src.api.services.generation.long_form_generation_helpers import (
             generate_volume_outline,
         )
 
@@ -150,7 +150,7 @@ class TestVolumeOutlineRetry:
 
     async def test_retry_prompt_contains_warning_text(self):
         """重试时 prompt 包含章节数不足的警告文本。"""
-        from src.api.services.long_form_generation_helpers import (
+        from src.api.services.generation.long_form_generation_helpers import (
             generate_volume_outline,
         )
 
@@ -200,7 +200,10 @@ class TestContinuationLoop:
 
     async def test_no_continuation_when_word_count_sufficient(self):
         """字数 >= 75% 时不触发续写。"""
-        from src.core.llm.chapter_generator import ChapterGenContext, _generate_single_chapter_inner
+        from src.core.llm.chapter_generator import (
+            ChapterGenContext,
+            _generate_single_chapter_inner,
+        )
 
         target_words = 3000
         # 75% of 3000 = 2250; 2300 chars is above threshold
@@ -260,7 +263,10 @@ class TestContinuationLoop:
 
     async def test_continuation_stops_when_word_count_sufficient(self):
         """续写后字数达标时停止，不再继续。"""
-        from src.core.llm.chapter_generator import ChapterGenContext, _generate_single_chapter_inner
+        from src.core.llm.chapter_generator import (
+            ChapterGenContext,
+            _generate_single_chapter_inner,
+        )
 
         target_words = 3000
         short_content = "字" * 1800  # 60%, triggers continuation
@@ -289,7 +295,10 @@ class TestContinuationLoop:
 
     async def test_word_count_updated_after_each_continuation(self):
         """每次续写后重新计算字数，以新字数判断是否继续。"""
-        from src.core.llm.chapter_generator import ChapterGenContext, _generate_single_chapter_inner
+        from src.core.llm.chapter_generator import (
+            ChapterGenContext,
+            _generate_single_chapter_inner,
+        )
 
         target_words = 3000
         short_content = "字" * 1800  # 60%, triggers continuation
@@ -320,7 +329,10 @@ class TestContinuationLoop:
 
     async def test_continuation_exception_breaks_loop(self):
         """续写抛出异常时中断循环，不再重试。"""
-        from src.core.llm.chapter_generator import ChapterGenContext, _generate_single_chapter_inner
+        from src.core.llm.chapter_generator import (
+            ChapterGenContext,
+            _generate_single_chapter_inner,
+        )
 
         target_words = 3000
         short_content = "字" * 1800

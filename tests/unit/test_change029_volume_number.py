@@ -49,7 +49,7 @@ class TestListChaptersVolumeNumber:
     @pytest.mark.asyncio
     async def test_list_chapters_includes_volume_number_when_set(self):
         """Chapters with a volume_number return it correctly."""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
 
         service = get_chapter_service()
 
@@ -67,7 +67,7 @@ class TestListChaptersVolumeNumber:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("src.api.services.chapter_service.get_db_session", return_value=mock_session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=mock_session):
             result = await service.list_chapters("novel-1")
 
         assert len(result) == 3
@@ -78,7 +78,7 @@ class TestListChaptersVolumeNumber:
     @pytest.mark.asyncio
     async def test_list_chapters_volume_number_none_when_not_set(self):
         """Chapters without a volume_number return None for that field."""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
 
         service = get_chapter_service()
 
@@ -95,7 +95,7 @@ class TestListChaptersVolumeNumber:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("src.api.services.chapter_service.get_db_session", return_value=mock_session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=mock_session):
             result = await service.list_chapters("novel-2")
 
         assert len(result) == 2
@@ -106,7 +106,7 @@ class TestListChaptersVolumeNumber:
     @pytest.mark.asyncio
     async def test_list_chapters_returns_empty_list_when_no_chapters(self):
         """Returns empty list when novel has no chapters."""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
 
         service = get_chapter_service()
 
@@ -118,7 +118,7 @@ class TestListChaptersVolumeNumber:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("src.api.services.chapter_service.get_db_session", return_value=mock_session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=mock_session):
             result = await service.list_chapters("novel-empty")
 
         assert result == []
@@ -126,7 +126,7 @@ class TestListChaptersVolumeNumber:
     @pytest.mark.asyncio
     async def test_list_chapters_dict_contains_all_expected_keys(self):
         """Each chapter dict has the full set of expected keys."""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
 
         service = get_chapter_service()
 
@@ -140,7 +140,7 @@ class TestListChaptersVolumeNumber:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("src.api.services.chapter_service.get_db_session", return_value=mock_session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=mock_session):
             result = await service.list_chapters("novel-3")
 
         expected_keys = {
@@ -152,7 +152,7 @@ class TestListChaptersVolumeNumber:
     @pytest.mark.asyncio
     async def test_list_chapters_mixed_volume_numbers(self):
         """Chapters from different volumes return correct volume_number each."""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
 
         service = get_chapter_service()
 
@@ -170,7 +170,7 @@ class TestListChaptersVolumeNumber:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("src.api.services.chapter_service.get_db_session", return_value=mock_session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=mock_session):
             result = await service.list_chapters("novel-4")
 
         assert result[0]["volume_number"] == 1
@@ -188,7 +188,7 @@ class TestGetChapterVolumeNumber:
     @pytest.mark.asyncio
     async def test_get_chapter_includes_volume_number(self):
         """Happy path: chapter with volume_number returns it."""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
 
         service = get_chapter_service()
 
@@ -202,7 +202,7 @@ class TestGetChapterVolumeNumber:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("src.api.services.chapter_service.get_db_session", return_value=mock_session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=mock_session):
             result = await service.get_chapter("novel-5", 5)
 
         assert result is not None
@@ -212,7 +212,7 @@ class TestGetChapterVolumeNumber:
     @pytest.mark.asyncio
     async def test_get_chapter_volume_number_none(self):
         """Chapter without volume_number returns None for that field."""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
 
         service = get_chapter_service()
 
@@ -226,7 +226,7 @@ class TestGetChapterVolumeNumber:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("src.api.services.chapter_service.get_db_session", return_value=mock_session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=mock_session):
             result = await service.get_chapter("novel-6", 1)
 
         assert result is not None
@@ -236,7 +236,7 @@ class TestGetChapterVolumeNumber:
     @pytest.mark.asyncio
     async def test_get_chapter_returns_none_when_not_found(self):
         """Returns None when chapter does not exist."""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
 
         service = get_chapter_service()
 
@@ -248,7 +248,7 @@ class TestGetChapterVolumeNumber:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("src.api.services.chapter_service.get_db_session", return_value=mock_session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=mock_session):
             result = await service.get_chapter("novel-7", 999)
 
         assert result is None
@@ -256,7 +256,7 @@ class TestGetChapterVolumeNumber:
     @pytest.mark.asyncio
     async def test_get_chapter_dict_contains_all_expected_keys(self):
         """Returned dict has the full set of expected keys including volume_number."""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
 
         service = get_chapter_service()
 
@@ -270,7 +270,7 @@ class TestGetChapterVolumeNumber:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("src.api.services.chapter_service.get_db_session", return_value=mock_session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=mock_session):
             result = await service.get_chapter("novel-8", 3)
 
         expected_keys = {
@@ -294,7 +294,7 @@ class TestPersistToNovelVolumeNumber:
         _persist_to_novel imports Chapter and get_db_session locally inside the
         function body, so we patch them at their source modules.
         """
-        from src.api.services.novel_generator import _persist_to_novel
+        from src.api.services.generation.novel_generator import _persist_to_novel
 
         result = {
             "chapters": [
@@ -334,7 +334,7 @@ class TestPersistToNovelVolumeNumber:
         mock_manager.update_novel = AsyncMock()
 
         # Patch at source modules because _persist_to_novel uses local imports
-        with patch("src.api.services.novel_generator.get_novel_manager", return_value=mock_manager), \
+        with patch("src.api.services.generation.novel_generator.get_novel_manager", return_value=mock_manager), \
              patch("src.api.models.db_models.Chapter", FakeChapter), \
              patch("src.core.database.get_db_session", return_value=mock_session):
             await _persist_to_novel("novel-persist-1", result)
@@ -347,7 +347,7 @@ class TestPersistToNovelVolumeNumber:
     @pytest.mark.asyncio
     async def test_persist_volume_number_none_when_missing_from_dict(self):
         """Chapter dicts without volume_number key produce Chapter with volume_number=None."""
-        from src.api.services.novel_generator import _persist_to_novel
+        from src.api.services.generation.novel_generator import _persist_to_novel
 
         result = {
             "chapters": [
@@ -379,7 +379,7 @@ class TestPersistToNovelVolumeNumber:
         mock_manager.create_volume = AsyncMock()
         mock_manager.update_novel = AsyncMock()
 
-        with patch("src.api.services.novel_generator.get_novel_manager", return_value=mock_manager), \
+        with patch("src.api.services.generation.novel_generator.get_novel_manager", return_value=mock_manager), \
              patch("src.api.models.db_models.Chapter", FakeChapter), \
              patch("src.core.database.get_db_session", return_value=mock_session):
             await _persist_to_novel("novel-persist-2", result)

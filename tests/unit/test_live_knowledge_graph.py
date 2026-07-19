@@ -21,7 +21,7 @@ from src.api.models.db_models import (
     KnowledgeEntityState,
     KnowledgeTriple,
 )
-from src.api.services.knowledge_graph_service import KnowledgeGraphService
+from src.api.services.knowledge.knowledge_graph_service import KnowledgeGraphService
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -120,9 +120,9 @@ class TestLiveKnowledgeGraph:
     """Tests for Live Knowledge Graph features."""
 
     @pytest.mark.asyncio
-    @patch("src.api.services.knowledge_graph_service.get_settings")
-    @patch("src.api.services.knowledge_graph_service.get_llm_client")
-    @patch("src.api.services.knowledge_graph_service.get_db_session")
+    @patch("src.api.services.knowledge.knowledge_graph_service.get_settings")
+    @patch("src.api.services.knowledge.knowledge_graph_service.get_llm_client")
+    @patch("src.api.services.knowledge.knowledge_graph_service.get_db_session")
     async def test_state_inheritance_and_saving(
         self, mock_db, mock_llm, mock_settings
     ):
@@ -227,8 +227,8 @@ class TestLiveKnowledgeGraph:
         assert saved_states[0].attributes == expected_attrs
 
     @pytest.mark.asyncio
-    @patch("src.api.services.knowledge_graph_service.get_settings")
-    @patch("src.api.services.knowledge_graph_service.get_db_session")
+    @patch("src.api.services.knowledge.knowledge_graph_service.get_settings")
+    @patch("src.api.services.knowledge.knowledge_graph_service.get_db_session")
     async def test_retrieve_context_active_relationship_deduplication(
         self, mock_db, mock_settings
     ):
@@ -300,8 +300,8 @@ class TestLiveKnowledgeGraph:
         assert "好感度: 10" not in context  # Old one should be deduplicated out
 
     @pytest.mark.asyncio
-    @patch("src.api.services.knowledge_graph_service.get_settings")
-    @patch("src.api.services.knowledge_graph_service.get_db_session")
+    @patch("src.api.services.knowledge.knowledge_graph_service.get_settings")
+    @patch("src.api.services.knowledge.knowledge_graph_service.get_db_session")
     async def test_retrieve_context_outline_matching(self, mock_db, mock_settings):
         """Test high-precision entity matching in chapter outlines
         using both names and aliases.

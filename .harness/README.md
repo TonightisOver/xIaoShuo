@@ -87,3 +87,9 @@ mypy src/
 # 测试
 pytest tests/ --cov=src --cov-report=term-missing
 ```
+
+---
+
+## 历史归档
+
+`.harness/changes/` 只保留当前变更和模板。已完成变更集中保存在项目根目录 [`archive/changes/`](../archive/changes/)，统一索引见 [`archive/index.md`](../archive/index.md)。

@@ -97,7 +97,7 @@ class TestAutoImproveChapter:
     @pytest.mark.asyncio
     async def test_first_round_already_passes(self):
         """If quality is already above target on first eval, iterations_done=0."""
-        from src.api.services.rewrite_loop_service import RewriteLoopService
+        from src.api.services.quality.rewrite_loop_service import RewriteLoopService
 
         mock_manager = AsyncMock()
         mock_manager.get_chapter = AsyncMock(
@@ -108,11 +108,11 @@ class TestAutoImproveChapter:
 
         with (
             patch(
-                "src.api.services.rewrite_loop_service.get_novel_manager",
+                "src.api.services.quality.rewrite_loop_service.get_novel_manager",
                 return_value=mock_manager,
             ),
             patch(
-                "src.api.services.rewrite_loop_service._evaluate_chapter_quality_for_novel",
+                "src.api.services.quality.rewrite_loop_service._evaluate_chapter_quality_for_novel",
                 new_callable=AsyncMock,
                 return_value=_high_scores(),
             ),
@@ -128,7 +128,7 @@ class TestAutoImproveChapter:
     @pytest.mark.asyncio
     async def test_max_iterations_reached(self):
         """If quality never reaches target, stops at max_iterations."""
-        from src.api.services.rewrite_loop_service import RewriteLoopService
+        from src.api.services.quality.rewrite_loop_service import RewriteLoopService
 
         mock_manager = AsyncMock()
         mock_manager.get_chapter = AsyncMock(
@@ -157,11 +157,11 @@ class TestAutoImproveChapter:
 
         with (
             patch(
-                "src.api.services.rewrite_loop_service.get_novel_manager",
+                "src.api.services.quality.rewrite_loop_service.get_novel_manager",
                 return_value=mock_manager,
             ),
             patch(
-                "src.api.services.rewrite_loop_service._evaluate_chapter_quality_for_novel",
+                "src.api.services.quality.rewrite_loop_service._evaluate_chapter_quality_for_novel",
                 new_callable=AsyncMock,
                 return_value=_low_scores(),
             ),
@@ -170,11 +170,11 @@ class TestAutoImproveChapter:
                 mock_rewrite,
             ),
             patch(
-                "src.api.services.rewrite_loop_service.get_db_session",
+                "src.api.services.quality.rewrite_loop_service.get_db_session",
                 ctx_factory,
             ),
             patch(
-                "src.api.services.rewrite_loop_service.NovelContextBuilder",
+                "src.api.services.quality.rewrite_loop_service.NovelContextBuilder",
                 return_value=mock_builder,
             ),
         ):
@@ -197,7 +197,7 @@ class TestEvaluateChapterQuality:
     @pytest.mark.asyncio
     async def test_normal_parse(self):
         """Valid LLM JSON response is parsed into scores dict."""
-        from src.api.services.rewrite_loop_service import (
+        from src.api.services.quality.rewrite_loop_service import (
             _evaluate_chapter_quality_for_novel,
         )
 
@@ -218,7 +218,7 @@ class TestEvaluateChapterQuality:
 
         with (
             patch(
-                "src.api.services.rewrite_loop_service.get_db_session",
+                "src.api.services.quality.rewrite_loop_service.get_db_session",
                 ctx_factory,
             ),
             patch(
@@ -235,7 +235,7 @@ class TestEvaluateChapterQuality:
     @pytest.mark.asyncio
     async def test_parse_failure_returns_default_scores(self):
         """Invalid LLM response returns default 0.5 scores for all dimensions."""
-        from src.api.services.rewrite_loop_service import (
+        from src.api.services.quality.rewrite_loop_service import (
             _evaluate_chapter_quality_for_novel,
         )
         from src.core.quality import QUALITY_DIMENSIONS
@@ -246,7 +246,7 @@ class TestEvaluateChapterQuality:
 
         with (
             patch(
-                "src.api.services.rewrite_loop_service.get_db_session",
+                "src.api.services.quality.rewrite_loop_service.get_db_session",
                 ctx_factory,
             ),
             patch(

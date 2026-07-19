@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.api.services.story_bible_service import (
+from src.api.services.content.story_bible_service import (
     _character_matches,
     _extract_chapter_characters,
     _extract_chapter_locations,
@@ -199,7 +199,9 @@ class TestDetectBibleConflicts:
                 mock_client.generate = AsyncMock(return_value='{"conflicts": []}')
                 mock_llm.return_value = mock_client
 
-                from src.api.services.story_bible_service import detect_bible_conflicts
+                from src.api.services.content.story_bible_service import (
+                    detect_bible_conflicts,
+                )
                 conflicts = await detect_bible_conflicts("novel-1", 15, "章节内容")
 
         forgotten = [c for c in conflicts if c["type"] == "forgotten_hook"]

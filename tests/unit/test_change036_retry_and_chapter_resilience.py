@@ -359,7 +359,7 @@ class TestChapterGenerationNodeIsolation:
              patch("src.core.langgraph.nodes.chapter_generation.get_llm_client"), \
              patch("src.core.langgraph.nodes.chapter_generation.generate_single_chapter",
                    side_effect=fake_generate), \
-             patch("src.api.services.progress_event_bus.get_progress_callback",
+             patch("src.api.services.generation.progress_event_bus.get_progress_callback",
                    return_value=None):
             mock_cfg.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=False)
             result = await chapter_generation.node(state)
@@ -398,7 +398,7 @@ class TestChapterGenerationNodeIsolation:
              patch("src.core.langgraph.nodes.chapter_generation.get_llm_client"), \
              patch("src.core.langgraph.nodes.chapter_generation.generate_single_chapter",
                    side_effect=fake_generate), \
-             patch("src.api.services.progress_event_bus.get_progress_callback",
+             patch("src.api.services.generation.progress_event_bus.get_progress_callback",
                    return_value=None):
             mock_cfg.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=False)
             result = await chapter_generation.node(state)
@@ -420,7 +420,7 @@ class TestChapterGenerationNodeIsolation:
              patch("src.core.langgraph.nodes.chapter_generation.get_llm_client"), \
              patch("src.core.langgraph.nodes.chapter_generation.generate_single_chapter",
                    side_effect=always_fail), \
-             patch("src.api.services.progress_event_bus.get_progress_callback",
+             patch("src.api.services.generation.progress_event_bus.get_progress_callback",
                    return_value=None):
             mock_cfg.return_value = MagicMock(KNOWLEDGE_GRAPH_ENABLED=False)
             result = await chapter_generation.node(state)
@@ -505,11 +505,11 @@ class TestChapterProgressCallbackFields:
         mock_graph = MagicMock()
         mock_graph.astream = fake_graph_stream
 
-        with patch("src.api.services.novel_generator.get_task_manager",
+        with patch("src.api.services.generation.novel_generator.get_task_manager",
                    return_value=mock_task_manager), \
-             patch("src.api.services.novel_generator.get_event_bus",
+             patch("src.api.services.generation.novel_generator.get_event_bus",
                    return_value=mock_event_bus), \
-             patch("src.api.services.novel_generator.create_novel_graph",
+             patch("src.api.services.generation.novel_generator.create_novel_graph",
                    return_value=mock_graph):
 
             # Manually invoke the callback to test its field propagation

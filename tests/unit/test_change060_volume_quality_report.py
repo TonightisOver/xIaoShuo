@@ -1,7 +1,9 @@
 # tests/unit/test_change060_volume_quality_report.py
 import pytest
 
-from src.api.services.long_form_generation_helpers import generate_volume_quality_report
+from src.api.services.generation.long_form_generation_helpers import (
+    generate_volume_quality_report,
+)
 
 
 @pytest.mark.asyncio

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.api.services.outline_sync_service import OutlineSyncService
+from src.api.services.content.outline_sync_service import OutlineSyncService
 
 
 @pytest.fixture
@@ -16,7 +16,7 @@ class TestAnalyzeImpact:
     @pytest.mark.asyncio
     async def test_no_chapters_returns_empty(self, service):
         with patch(
-            "src.api.services.outline_sync_service.get_db_session"
+            "src.api.services.content.outline_sync_service.get_db_session"
         ) as mock_db:
             mock_session = AsyncMock()
             mock_result = MagicMock()
@@ -35,10 +35,10 @@ class TestAnalyzeImpact:
     async def test_llm_timeout_returns_empty(self, service):
         with (
             patch(
-                "src.api.services.outline_sync_service.get_db_session"
+                "src.api.services.content.outline_sync_service.get_db_session"
             ) as mock_db,
             patch(
-                "src.api.services.outline_sync_service.get_llm_client"
+                "src.api.services.content.outline_sync_service.get_llm_client"
             ) as mock_llm_fn,
         ):
             mock_ch = MagicMock()
@@ -69,7 +69,7 @@ class TestSuggestionManagement:
     @pytest.mark.asyncio
     async def test_accept_updates_status(self, service):
         with patch(
-            "src.api.services.outline_sync_service.get_db_session"
+            "src.api.services.content.outline_sync_service.get_db_session"
         ) as mock_db:
             mock_sug = MagicMock()
             mock_sug.status = "pending"
@@ -91,7 +91,7 @@ class TestSuggestionManagement:
     @pytest.mark.asyncio
     async def test_reject_updates_status(self, service):
         with patch(
-            "src.api.services.outline_sync_service.get_db_session"
+            "src.api.services.content.outline_sync_service.get_db_session"
         ) as mock_db:
             mock_sug = MagicMock()
             mock_sug.status = "pending"
@@ -111,7 +111,7 @@ class TestSuggestionManagement:
     @pytest.mark.asyncio
     async def test_accept_nonexistent_returns_false(self, service):
         with patch(
-            "src.api.services.outline_sync_service.get_db_session"
+            "src.api.services.content.outline_sync_service.get_db_session"
         ) as mock_db:
             mock_session = AsyncMock()
             mock_result = MagicMock()
@@ -139,10 +139,10 @@ class TestDeviationDetection:
     async def test_low_deviation_marks_completed(self, service):
         with (
             patch(
-                "src.api.services.outline_sync_service.get_db_session"
+                "src.api.services.content.outline_sync_service.get_db_session"
             ) as mock_db,
             patch(
-                "src.api.services.outline_sync_service.get_llm_client"
+                "src.api.services.content.outline_sync_service.get_llm_client"
             ) as mock_llm_fn,
         ):
             mock_chapter = MagicMock()
@@ -176,10 +176,10 @@ class TestDeviationDetection:
     async def test_high_deviation_marks_deviated(self, service):
         with (
             patch(
-                "src.api.services.outline_sync_service.get_db_session"
+                "src.api.services.content.outline_sync_service.get_db_session"
             ) as mock_db,
             patch(
-                "src.api.services.outline_sync_service.get_llm_client"
+                "src.api.services.content.outline_sync_service.get_llm_client"
             ) as mock_llm_fn,
         ):
             mock_chapter = MagicMock()
@@ -213,7 +213,7 @@ class TestDeviationDetection:
     @pytest.mark.asyncio
     async def test_missing_chapter_returns_error(self, service):
         with patch(
-            "src.api.services.outline_sync_service.get_db_session"
+            "src.api.services.content.outline_sync_service.get_db_session"
         ) as mock_db:
             mock_session = AsyncMock()
             mock_result = MagicMock()

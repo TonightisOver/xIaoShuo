@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 
-from src.api.services.kg_similarity import cosine_similarity
+from src.api.services.knowledge.kg_similarity import cosine_similarity
 
 
 class TestCosineSimilarity:

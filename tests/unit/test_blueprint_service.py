@@ -82,7 +82,7 @@ class TestGenerateBlueprint:
     @pytest.mark.asyncio
     async def test_generate_blueprint_normal(self):
         """LLM returns valid JSON -> blueprint dict with all fields."""
-        from src.api.services.blueprint_service import BlueprintService
+        from src.api.services.content.blueprint_service import BlueprintService
 
         ctx_factory, session = _fake_session()
         mock_client = AsyncMock()
@@ -92,8 +92,8 @@ class TestGenerateBlueprint:
         chapter_outline = {"plot": "Hero fights", "key_characters": ["hero"]}
 
         with (
-            patch("src.api.services.blueprint_service.get_db_session", ctx_factory),
-            patch("src.api.services.blueprint_service.get_llm_client", return_value=mock_client),
+            patch("src.api.services.content.blueprint_service.get_db_session", ctx_factory),
+            patch("src.api.services.content.blueprint_service.get_llm_client", return_value=mock_client),
             patch.object(svc, "_build_context", new_callable=AsyncMock, return_value={
                 "previous_chapter": "",
                 "story_bible": "",
@@ -111,7 +111,7 @@ class TestGenerateBlueprint:
     @pytest.mark.asyncio
     async def test_generate_blueprint_json_parse_failure_uses_default(self):
         """LLM returns invalid JSON -> falls back to default blueprint."""
-        from src.api.services.blueprint_service import BlueprintService
+        from src.api.services.content.blueprint_service import BlueprintService
 
         ctx_factory, session = _fake_session()
         mock_client = AsyncMock()
@@ -121,8 +121,8 @@ class TestGenerateBlueprint:
         chapter_outline = {"plot": "Hero fights", "key_characters": ["hero"]}
 
         with (
-            patch("src.api.services.blueprint_service.get_db_session", ctx_factory),
-            patch("src.api.services.blueprint_service.get_llm_client", return_value=mock_client),
+            patch("src.api.services.content.blueprint_service.get_db_session", ctx_factory),
+            patch("src.api.services.content.blueprint_service.get_llm_client", return_value=mock_client),
             patch.object(svc, "_build_context", new_callable=AsyncMock, return_value={
                 "previous_chapter": "",
                 "story_bible": "",
@@ -148,13 +148,13 @@ class TestGetBlueprint:
     @pytest.mark.asyncio
     async def test_get_blueprint_found(self):
         """Returns dict when active blueprint exists."""
-        from src.api.services.blueprint_service import BlueprintService
+        from src.api.services.content.blueprint_service import BlueprintService
 
         mock_bp = _make_blueprint_model(chapter_type="climax", plot_goal="test goal")
         ctx_factory, _ = _fake_session(bp=mock_bp)
 
         svc = BlueprintService()
-        with patch("src.api.services.blueprint_service.get_db_session", ctx_factory):
+        with patch("src.api.services.content.blueprint_service.get_db_session", ctx_factory):
             result = await svc.get_blueprint(_novel_id(), 1)
 
         assert result is not None
@@ -164,12 +164,12 @@ class TestGetBlueprint:
     @pytest.mark.asyncio
     async def test_get_blueprint_not_found(self):
         """Returns None when no active blueprint exists."""
-        from src.api.services.blueprint_service import BlueprintService
+        from src.api.services.content.blueprint_service import BlueprintService
 
         ctx_factory, _ = _fake_session(bp=None)
 
         svc = BlueprintService()
-        with patch("src.api.services.blueprint_service.get_db_session", ctx_factory):
+        with patch("src.api.services.content.blueprint_service.get_db_session", ctx_factory):
             result = await svc.get_blueprint(_novel_id(), 1)
 
         assert result is None
@@ -185,7 +185,7 @@ class TestUpdateBlueprint:
     @pytest.mark.asyncio
     async def test_update_blueprint_applies_fields(self):
         """update_blueprint sets valid fields on the model."""
-        from src.api.services.blueprint_service import BlueprintService
+        from src.api.services.content.blueprint_service import BlueprintService
 
         mock_bp = _make_blueprint_model()
         ctx_factory, _ = _fake_session(bp=mock_bp)
@@ -193,7 +193,7 @@ class TestUpdateBlueprint:
         svc = BlueprintService()
         updates = {"plot_goal": "new goal", "pacing_target": "fast"}
 
-        with patch("src.api.services.blueprint_service.get_db_session", ctx_factory):
+        with patch("src.api.services.content.blueprint_service.get_db_session", ctx_factory):
             result = await svc.update_blueprint(_novel_id(), 1, updates)
 
         assert mock_bp.plot_goal == "new goal"
@@ -202,11 +202,11 @@ class TestUpdateBlueprint:
     @pytest.mark.asyncio
     async def test_update_blueprint_no_blueprint_raises(self):
         """update_blueprint raises ValueError when no active blueprint."""
-        from src.api.services.blueprint_service import BlueprintService
+        from src.api.services.content.blueprint_service import BlueprintService
 
         ctx_factory, _ = _fake_session(bp=None)
 
         svc = BlueprintService()
-        with patch("src.api.services.blueprint_service.get_db_session", ctx_factory):
+        with patch("src.api.services.content.blueprint_service.get_db_session", ctx_factory):
             with pytest.raises(ValueError, match="No active blueprint"):
                 await svc.update_blueprint(_novel_id(), 1, {"plot_goal": "x"})

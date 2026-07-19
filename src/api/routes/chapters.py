@@ -7,11 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.api.models.responses import ChapterResponse, StatusResponse
-from src.api.services.chapter_service import get_chapter_service
-from src.api.services.novel_manager import get_novel_manager
+from src.api.owner_guard import verify_novel_owner
+from src.api.services.content.chapter_service import get_chapter_service
+from src.api.services.content.novel_manager import get_novel_manager
 from src.core.auth_models import User
 from src.core.security.auth import get_current_user
-from src.api.owner_guard import verify_novel_owner
 
 logger = structlog.get_logger(__name__)
 
@@ -131,7 +131,7 @@ async def rewrite_chapter_segment(novel_id: str, chapter_number: int, request: R
     if not chapter:
         raise HTTPException(status_code=404, detail="Chapter not found")
 
-    from src.api.services.novel_context_service import NovelContextBuilder
+    from src.api.services.quality.novel_context_service import NovelContextBuilder
     from src.core.database import get_db_session
     from src.core.llm.chapter_rewriter import rewrite_chapter_segment as do_rewrite
 
@@ -265,7 +265,7 @@ async def fix_volume_numbers(novel_id: str, current_user: User = Depends(get_cur
 async def get_blueprint(novel_id: str, chapter_number: int, current_user: User = Depends(get_current_user)):
     """获取章节蓝图"""
     await verify_novel_owner(novel_id, current_user)
-    from src.api.services.blueprint_service import BlueprintService
+    from src.api.services.content.blueprint_service import BlueprintService
 
     service = BlueprintService()
     blueprint = await service.get_blueprint(novel_id, chapter_number)
@@ -280,7 +280,7 @@ async def update_blueprint(
 ):
     """用户手动编辑蓝图"""
     await verify_novel_owner(novel_id, current_user)
-    from src.api.services.blueprint_service import BlueprintService
+    from src.api.services.content.blueprint_service import BlueprintService
 
     service = BlueprintService()
     updates = request.model_dump(exclude_none=True)
@@ -300,7 +300,7 @@ async def generate_blueprint(novel_id: str, chapter_number: int, current_user: U
     from sqlalchemy import select
 
     from src.api.models.db_models import Outline
-    from src.api.services.blueprint_service import BlueprintService
+    from src.api.services.content.blueprint_service import BlueprintService
     from src.core.database import get_db_session
 
     async with get_db_session() as session:
@@ -333,7 +333,7 @@ async def targeted_rewrite_chapter(
 ):
     """定向改写章节"""
     await verify_novel_owner(novel_id, current_user)
-    from src.api.services.novel_context_service import NovelContextBuilder
+    from src.api.services.quality.novel_context_service import NovelContextBuilder
     from src.core.database import get_db_session
     from src.core.llm.chapter_rewriter import (
         batch_targeted_rewrite,
@@ -366,7 +366,7 @@ async def targeted_rewrite_chapter(
 
     try:
         if request.auto_actions:
-            from src.api.services.blueprint_service import BlueprintService
+            from src.api.services.content.blueprint_service import BlueprintService
 
             bp_service = BlueprintService()
             bp = await bp_service.get_blueprint(novel_id, chapter_number)
@@ -421,7 +421,7 @@ async def auto_improve_chapter(
 ):
     """自动改善闭环"""
     await verify_novel_owner(novel_id, current_user)
-    from src.api.services.rewrite_loop_service import RewriteLoopService
+    from src.api.services.quality.rewrite_loop_service import RewriteLoopService
 
     service = get_chapter_service()
     chapter = await service.get_chapter(novel_id, chapter_number)

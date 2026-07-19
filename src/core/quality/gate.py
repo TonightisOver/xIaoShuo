@@ -135,8 +135,8 @@ async def run_quality_gate(
     # 6a. 一致性硬门禁
     char_cons = scores.get("character_consistency")
     world_cons = scores.get("world_consistency")
-    if (isinstance(char_cons, (int, float)) and char_cons < CONSISTENCY_BLOCK_THRESHOLD) or \
-       (isinstance(world_cons, (int, float)) and world_cons < CONSISTENCY_BLOCK_THRESHOLD):
+    if (isinstance(char_cons, int | float) and char_cons < CONSISTENCY_BLOCK_THRESHOLD) or \
+       (isinstance(world_cons, int | float) and world_cons < CONSISTENCY_BLOCK_THRESHOLD):
         await _safe(persist_callbacks.persist_quality_scores, novel_id, chapter_number, scores, _l0_warnings(l0))
         await _safe(persist_callbacks.update_quality_status, novel_id, chapter_number, "consistency_blocked")
         return GateResult(
@@ -150,7 +150,7 @@ async def run_quality_gate(
     settings = get_settings()
     threshold = getattr(settings, "QUALITY_THRESHOLD", 0.7)
     overall = scores.get("overall")
-    if isinstance(overall, (int, float)) and overall >= threshold:
+    if isinstance(overall, int | float) and overall >= threshold:
         await _safe(persist_callbacks.persist_quality_scores, novel_id, chapter_number, scores, _l0_warnings(l0))
         await _safe(persist_callbacks.update_quality_status, novel_id, chapter_number, "verified")
         return GateResult(

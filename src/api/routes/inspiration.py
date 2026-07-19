@@ -4,9 +4,9 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from src.api.services.inspiration_service import get_inspiration_wizard
-from src.core.security.auth import get_current_user
+from src.api.services.content.inspiration_service import get_inspiration_wizard
 from src.core.auth_models import User
+from src.core.security.auth import get_current_user
 
 logger = structlog.get_logger(__name__)
 

@@ -22,7 +22,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -90,12 +89,12 @@ class TestCreateNovel:
     @pytest.mark.asyncio
     async def test_create_novel_returns_id_and_defaults_status_draft(self):
         """创建后返回 novel- 前缀 id，且 session.add 被调用一次。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         ctx_factory, session = _fake_session()
         mgr = NovelManager()
 
-        with patch("src.api.services.novel_manager.get_db_session", ctx_factory):
+        with patch("src.api.services.content.novel_manager.get_db_session", ctx_factory):
             novel_id = await mgr.create_novel(
                 idea="主角复仇的故事", novel_type="玄幻", target_words=50000
             )
@@ -112,13 +111,13 @@ class TestCreateNovel:
     @pytest.mark.asyncio
     async def test_create_novel_title_defaults_to_idea_prefix(self):
         """未传 title 时，title 默认取 idea 前 50 字符。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         ctx_factory, session = _fake_session()
         mgr = NovelManager()
         long_idea = "这是一段很长的创意" * 20  # > 50 字符
 
-        with patch("src.api.services.novel_manager.get_db_session", ctx_factory):
+        with patch("src.api.services.content.novel_manager.get_db_session", ctx_factory):
             await mgr.create_novel(idea=long_idea, novel_type="都市", target_words=10000)
 
         added_obj = session.add.call_args.args[0]
@@ -127,12 +126,12 @@ class TestCreateNovel:
     @pytest.mark.asyncio
     async def test_create_novel_passes_custom_params(self):
         """自定义风格 / owner_id / writing_style_prompt 透传到 Novel 对象。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         ctx_factory, session = _fake_session()
         mgr = NovelManager()
 
-        with patch("src.api.services.novel_manager.get_db_session", ctx_factory):
+        with patch("src.api.services.content.novel_manager.get_db_session", ctx_factory):
             await mgr.create_novel(
                 idea="idea",
                 novel_type="科幻",
@@ -162,12 +161,12 @@ class TestGetNovel:
     @pytest.mark.asyncio
     async def test_get_novel_not_found_returns_none(self):
         """小说不存在时返回 None。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         ctx_factory, _ = _fake_session(novel=None)
         mgr = NovelManager()
 
-        with patch("src.api.services.novel_manager.get_db_session", ctx_factory):
+        with patch("src.api.services.content.novel_manager.get_db_session", ctx_factory):
             result = await mgr.get_novel("novel-missing")
 
         assert result is None
@@ -175,7 +174,7 @@ class TestGetNovel:
     @pytest.mark.asyncio
     async def test_get_novel_found_draft_no_task_query(self):
         """找到小说且 status != generating 时，active_task_id 为 None，不查 Task。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         novel = _make_novel_row(novel_id="novel-1", status="completed",
                                 characters=[1, 2], power_systems=[1])
@@ -184,7 +183,7 @@ class TestGetNovel:
         ctx_factory, session = _fake_session(novel=novel)
         mgr = NovelManager()
 
-        with patch("src.api.services.novel_manager.get_db_session", ctx_factory):
+        with patch("src.api.services.content.novel_manager.get_db_session", ctx_factory):
             result = await mgr.get_novel("novel-1")
 
         assert result is not None
@@ -200,7 +199,7 @@ class TestGetNovel:
     @pytest.mark.asyncio
     async def test_get_novel_generating_status_attaches_task_id(self):
         """status=generating 时额外查 Task，active_task_id 为查到的 task_id。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         novel = _make_novel_row(novel_id="novel-g", status="generating")
         ctx_factory, session = _fake_session(novel=novel)
@@ -214,7 +213,7 @@ class TestGetNovel:
 
         mgr = NovelManager()
 
-        with patch("src.api.services.novel_manager.get_db_session", ctx_factory):
+        with patch("src.api.services.content.novel_manager.get_db_session", ctx_factory):
             result = await mgr.get_novel("novel-g")
 
         assert result["status"] == "generating"
@@ -232,7 +231,7 @@ class TestListNovels:
     @pytest.mark.asyncio
     async def test_list_novels_empty(self):
         """空列表返回空 summaries 且 total=0。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         ctx_factory, session = _fake_session(rows=[])
         # count 查询 scalar_one 返回 0
@@ -242,7 +241,7 @@ class TestListNovels:
         session.execute = AsyncMock(return_value=mock_result)
 
         mgr = NovelManager()
-        with patch("src.api.services.novel_manager.get_db_session", ctx_factory):
+        with patch("src.api.services.content.novel_manager.get_db_session", ctx_factory):
             summaries, total = await mgr.list_novels()
 
         assert summaries == []
@@ -251,7 +250,7 @@ class TestListNovels:
     @pytest.mark.asyncio
     async def test_list_novels_with_rows_and_generating_task(self):
         """有数据时返回 summary 列表；generating 状态附带 task_id，其它状态 task_id=None。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         n1 = _make_novel_row(novel_id="novel-a", status="generating", title="A")
         n2 = _make_novel_row(novel_id="novel-b", status="draft", title="B")
@@ -266,7 +265,7 @@ class TestListNovels:
         session.execute = AsyncMock(side_effect=[count_result, rows_result])
 
         mgr = NovelManager()
-        with patch("src.api.services.novel_manager.get_db_session", ctx_factory):
+        with patch("src.api.services.content.novel_manager.get_db_session", ctx_factory):
             summaries, total = await mgr.list_novels()
 
         assert total == 2
@@ -289,12 +288,12 @@ class TestUpdateNovel:
     @pytest.mark.asyncio
     async def test_update_novel_not_found_returns_false(self):
         """小说不存在时返回 False。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         ctx_factory, _ = _fake_session(novel=None)
         mgr = NovelManager()
 
-        with patch("src.api.services.novel_manager.get_db_session", ctx_factory):
+        with patch("src.api.services.content.novel_manager.get_db_session", ctx_factory):
             result = await mgr.update_novel("novel-missing", title="新标题")
 
         assert result is False
@@ -302,13 +301,13 @@ class TestUpdateNovel:
     @pytest.mark.asyncio
     async def test_update_novel_sets_valid_fields(self):
         """传入合法字段时 setattr 更新到 novel 对象，返回 True。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         novel = _make_novel_row(novel_id="novel-1", status="draft", title="旧标题")
         ctx_factory, _ = _fake_session(novel=novel)
         mgr = NovelManager()
 
-        with patch("src.api.services.novel_manager.get_db_session", ctx_factory):
+        with patch("src.api.services.content.novel_manager.get_db_session", ctx_factory):
             result = await mgr.update_novel("novel-1", title="新标题", status="completed")
 
         assert result is True
@@ -320,13 +319,13 @@ class TestUpdateNovel:
     @pytest.mark.asyncio
     async def test_update_novel_skips_none_values(self):
         """kwargs 中 value=None 的字段被跳过，不覆盖已有值。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         novel = _make_novel_row(novel_id="novel-1", title="原标题", status="draft")
         ctx_factory, _ = _fake_session(novel=novel)
         mgr = NovelManager()
 
-        with patch("src.api.services.novel_manager.get_db_session", ctx_factory):
+        with patch("src.api.services.content.novel_manager.get_db_session", ctx_factory):
             result = await mgr.update_novel(
                 "novel-1", title=None, status="completed"
             )
@@ -339,13 +338,13 @@ class TestUpdateNovel:
     @pytest.mark.asyncio
     async def test_update_novel_skips_unknown_attribute(self):
         """kwargs 中 novel 不存在的属性被 hasattr 过滤，不抛错。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         novel = _make_novel_row(novel_id="novel-1")
         ctx_factory, _ = _fake_session(novel=novel)
         mgr = NovelManager()
 
-        with patch("src.api.services.novel_manager.get_db_session", ctx_factory):
+        with patch("src.api.services.content.novel_manager.get_db_session", ctx_factory):
             # nonexistent_field 不是 Novel 属性
             result = await mgr.update_novel(
                 "novel-1", nonexistent_field="x", status="failed"
@@ -368,12 +367,12 @@ class TestDeleteNovel:
     @pytest.mark.asyncio
     async def test_delete_novel_not_found_returns_false(self):
         """小说不存在时返回 False，不调用 session.delete。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         ctx_factory, session = _fake_session(novel=None)
         mgr = NovelManager()
 
-        with patch("src.api.services.novel_manager.get_db_session", ctx_factory):
+        with patch("src.api.services.content.novel_manager.get_db_session", ctx_factory):
             result = await mgr.delete_novel("novel-missing")
 
         assert result is False
@@ -382,13 +381,13 @@ class TestDeleteNovel:
     @pytest.mark.asyncio
     async def test_delete_novel_success(self):
         """找到小说时调用 session.delete 并返回 True。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         novel = _make_novel_row(novel_id="novel-1")
         ctx_factory, session = _fake_session(novel=novel)
         mgr = NovelManager()
 
-        with patch("src.api.services.novel_manager.get_db_session", ctx_factory):
+        with patch("src.api.services.content.novel_manager.get_db_session", ctx_factory):
             result = await mgr.delete_novel("novel-1")
 
         assert result is True
@@ -405,13 +404,13 @@ class TestDelegations:
     @pytest.mark.asyncio
     async def test_create_chapter_version_delegates(self):
         """create_chapter_version 转发到 ChapterService.create_chapter_version。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         mgr = NovelManager()
         mock_chapter_svc = MagicMock()
         mock_chapter_svc.create_chapter_version = AsyncMock(return_value=3)
 
-        with patch("src.api.services.novel_manager.get_chapter_service",
+        with patch("src.api.services.content.novel_manager.get_chapter_service",
                    return_value=mock_chapter_svc):
             result = await mgr.create_chapter_version(
                 novel_id="novel-1", chapter_number=1, content="正文",
@@ -429,7 +428,7 @@ class TestDelegations:
     @pytest.mark.asyncio
     async def test_list_power_systems_delegates(self):
         """list_power_systems 转发到 WorldService.list_power_systems。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         mgr = NovelManager()
         mock_world_svc = MagicMock()
@@ -437,7 +436,7 @@ class TestDelegations:
             return_value=[{"id": 1, "name": "修真"}]
         )
 
-        with patch("src.api.services.novel_manager.get_world_service",
+        with patch("src.api.services.content.novel_manager.get_world_service",
                    return_value=mock_world_svc):
             result = await mgr.list_power_systems("novel-1")
 
@@ -447,13 +446,13 @@ class TestDelegations:
     @pytest.mark.asyncio
     async def test_create_power_system_delegates(self):
         """create_power_system 转发参数到 WorldService.create_power_system。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         mgr = NovelManager()
         mock_world_svc = MagicMock()
         mock_world_svc.create_power_system = AsyncMock(return_value=7)
 
-        with patch("src.api.services.novel_manager.get_world_service",
+        with patch("src.api.services.content.novel_manager.get_world_service",
                    return_value=mock_world_svc):
             result = await mgr.create_power_system(
                 novel_id="novel-1", name="魔法", description="d", levels=[1, 2]
@@ -475,14 +474,14 @@ class TestRollbackChapterVersion:
     @pytest.mark.asyncio
     async def test_rollback_target_not_found_returns_none(self):
         """目标版本不存在时返回 None，不创建新版本。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         mgr = NovelManager()
         mock_chapter_svc = MagicMock()
         mock_chapter_svc.get_chapter_version = AsyncMock(return_value=None)
         mock_chapter_svc.create_chapter_version = AsyncMock(return_value=1)
 
-        with patch("src.api.services.novel_manager.get_chapter_service",
+        with patch("src.api.services.content.novel_manager.get_chapter_service",
                    return_value=mock_chapter_svc):
             result = await mgr.rollback_chapter_version("novel-1", 1, 2)
 
@@ -492,7 +491,7 @@ class TestRollbackChapterVersion:
     @pytest.mark.asyncio
     async def test_rollback_success_creates_rollback_version(self):
         """目标存在时调用 create_chapter_version 创建 source=rollback 的新版本。"""
-        from src.api.services.novel_manager import NovelManager
+        from src.api.services.content.novel_manager import NovelManager
 
         mgr = NovelManager()
         target = {"content": "回滚正文", "version_number": 2}
@@ -500,7 +499,7 @@ class TestRollbackChapterVersion:
         mock_chapter_svc.get_chapter_version = AsyncMock(return_value=target)
         mock_chapter_svc.create_chapter_version = AsyncMock(return_value=3)
 
-        with patch("src.api.services.novel_manager.get_chapter_service",
+        with patch("src.api.services.content.novel_manager.get_chapter_service",
                    return_value=mock_chapter_svc):
             result = await mgr.rollback_chapter_version("novel-1", 1, 2)
 

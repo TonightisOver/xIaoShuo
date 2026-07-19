@@ -8,7 +8,7 @@ main API Base to avoid "Table 'users' is already defined" errors when both
 core/auth_models and api/models/db_models are imported.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column

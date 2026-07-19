@@ -4,7 +4,7 @@
 - src/core/context/novel_context.py (NovelContextBuilder)
 - src/core/quality/evaluator.py (evaluate_chapter_quality)
 - src/core/llm/helpers.py (generate_and_parse_json)
-- src/api/services/ai_generation_service.py (AIGenerationService)
+- src/api/services/generation/ai_generation_service.py (AIGenerationService)
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -21,7 +21,7 @@ class TestNovelContextBuilder:
 
     @pytest.fixture
     def builder(self):
-        from src.api.services.novel_context_service import NovelContextBuilder
+        from src.api.services.quality.novel_context_service import NovelContextBuilder
 
         return NovelContextBuilder()
 
@@ -157,9 +157,11 @@ class TestNovelContextBuilder:
 
         mock_prev_ch = MagicMock()
         mock_prev_ch.content = "前一章内容" * 50
+        mock_prev_ch.state_delta = None
 
         mock_next_ch = MagicMock()
         mock_next_ch.content = "后一章内容" * 50
+        mock_next_ch.state_delta = None
 
         mock_char = MagicMock()
         mock_char.name = "李四"
@@ -598,17 +600,17 @@ class TestAIGenerationService:
         ]
 
         with patch(
-            "src.api.services.novel_manager.get_novel_manager"
+            "src.api.services.content.novel_manager.get_novel_manager"
         ) as mock_mgr_fn, patch(
-            "src.api.services.storyline_service.get_storyline_service"
+            "src.api.services.content.storyline_service.get_storyline_service"
         ) as mock_sl_fn, patch(
             "src.core.llm.helpers.safe_json_parse", return_value=llm_response
         ), patch(
             "src.core.llm.client.get_llm_client"
         ) as mock_llm_fn, patch(
-            "src.api.services.world_service.get_world_service"
+            "src.api.services.content.world_service.get_world_service"
         ) as mock_world_svc_fn, patch(
-            "src.api.services.character_service.get_character_service"
+            "src.api.services.content.character_service.get_character_service"
         ) as mock_char_svc_fn:
             mock_mgr = AsyncMock()
             mock_mgr.get_novel = AsyncMock(return_value=mock_novel)
@@ -630,7 +632,9 @@ class TestAIGenerationService:
             mock_client.generate = AsyncMock(return_value="[]")
             mock_llm_fn.return_value = mock_client
 
-            from src.api.services.ai_generation_service import AIGenerationService
+            from src.api.services.generation.ai_generation_service import (
+                AIGenerationService,
+            )
 
             service = AIGenerationService()
             result = await service.generate_storylines_ai("novel-001")
@@ -644,13 +648,15 @@ class TestAIGenerationService:
     async def test_generate_storylines_ai_novel_not_found(self):
         """小说不存在时抛出 ValueError。"""
         with patch(
-            "src.api.services.novel_manager.get_novel_manager"
+            "src.api.services.content.novel_manager.get_novel_manager"
         ) as mock_mgr_fn:
             mock_mgr = AsyncMock()
             mock_mgr.get_novel = AsyncMock(return_value=None)
             mock_mgr_fn.return_value = mock_mgr
 
-            from src.api.services.ai_generation_service import AIGenerationService
+            from src.api.services.generation.ai_generation_service import (
+                AIGenerationService,
+            )
 
             service = AIGenerationService()
             with pytest.raises(ValueError, match="小说不存在"):
@@ -680,9 +686,9 @@ class TestAIGenerationService:
         ]
 
         with patch(
-            "src.api.services.novel_manager.get_novel_manager"
+            "src.api.services.content.novel_manager.get_novel_manager"
         ) as mock_mgr_fn, patch(
-            "src.api.services.world_service.get_world_service"
+            "src.api.services.content.world_service.get_world_service"
         ) as mock_ws_fn, patch(
             "src.core.llm.helpers.safe_json_parse", return_value=llm_response
         ), patch(
@@ -701,7 +707,9 @@ class TestAIGenerationService:
             mock_client.generate = AsyncMock(return_value="[]")
             mock_llm_fn.return_value = mock_client
 
-            from src.api.services.ai_generation_service import AIGenerationService
+            from src.api.services.generation.ai_generation_service import (
+                AIGenerationService,
+            )
 
             service = AIGenerationService()
             result = await service.generate_power_systems_ai("novel-001")
@@ -715,13 +723,15 @@ class TestAIGenerationService:
     async def test_generate_power_systems_ai_novel_not_found(self):
         """小说不存在时抛出 ValueError。"""
         with patch(
-            "src.api.services.novel_manager.get_novel_manager"
+            "src.api.services.content.novel_manager.get_novel_manager"
         ) as mock_mgr_fn:
             mock_mgr = AsyncMock()
             mock_mgr.get_novel = AsyncMock(return_value=None)
             mock_mgr_fn.return_value = mock_mgr
 
-            from src.api.services.ai_generation_service import AIGenerationService
+            from src.api.services.generation.ai_generation_service import (
+                AIGenerationService,
+            )
 
             service = AIGenerationService()
             with pytest.raises(ValueError, match="小说不存在"):

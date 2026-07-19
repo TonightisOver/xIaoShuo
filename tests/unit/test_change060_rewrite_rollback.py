@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.api.services.rewrite_loop_service import RewriteLoopService
+from src.api.services.quality.rewrite_loop_service import RewriteLoopService
 
 
 def _novel_id() -> str:
@@ -117,11 +117,11 @@ async def test_rewrite_reverts_when_score_drops():
 
     with (
         patch(
-            "src.api.services.rewrite_loop_service.get_novel_manager",
+            "src.api.services.quality.rewrite_loop_service.get_novel_manager",
             return_value=mock_manager,
         ),
         patch(
-            "src.api.services.rewrite_loop_service._evaluate_chapter_quality_for_novel",
+            "src.api.services.quality.rewrite_loop_service._evaluate_chapter_quality_for_novel",
             new_callable=AsyncMock,
             side_effect=[_low_scores(), _worse_scores()],
         ),
@@ -131,14 +131,14 @@ async def test_rewrite_reverts_when_score_drops():
             return_value="候选正文",
         ),
         patch(
-            "src.api.services.rewrite_loop_service.QualityActionService",
+            "src.api.services.quality.rewrite_loop_service.QualityActionService",
         ) as mock_qas,
         patch(
-            "src.api.services.rewrite_loop_service.get_db_session",
+            "src.api.services.quality.rewrite_loop_service.get_db_session",
             ctx_factory,
         ),
         patch(
-            "src.api.services.rewrite_loop_service.NovelContextBuilder",
+            "src.api.services.quality.rewrite_loop_service.NovelContextBuilder",
             return_value=mock_builder,
         ),
     ):
@@ -186,11 +186,11 @@ async def test_rewrite_activates_when_score_improves():
 
     with (
         patch(
-            "src.api.services.rewrite_loop_service.get_novel_manager",
+            "src.api.services.quality.rewrite_loop_service.get_novel_manager",
             return_value=mock_manager,
         ),
         patch(
-            "src.api.services.rewrite_loop_service._evaluate_chapter_quality_for_novel",
+            "src.api.services.quality.rewrite_loop_service._evaluate_chapter_quality_for_novel",
             new_callable=AsyncMock,
             side_effect=[_low_scores(), _better_scores()],
         ),
@@ -200,14 +200,14 @@ async def test_rewrite_activates_when_score_improves():
             return_value="更优候选正文",
         ),
         patch(
-            "src.api.services.rewrite_loop_service.QualityActionService",
+            "src.api.services.quality.rewrite_loop_service.QualityActionService",
         ) as mock_qas,
         patch(
-            "src.api.services.rewrite_loop_service.get_db_session",
+            "src.api.services.quality.rewrite_loop_service.get_db_session",
             ctx_factory,
         ),
         patch(
-            "src.api.services.rewrite_loop_service.NovelContextBuilder",
+            "src.api.services.quality.rewrite_loop_service.NovelContextBuilder",
             return_value=mock_builder,
         ),
     ):

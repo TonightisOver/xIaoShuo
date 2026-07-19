@@ -27,7 +27,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -98,7 +97,7 @@ class TestUpsertVolumeOutline:
     @pytest.mark.asyncio
     async def test_update_existing_volume_overwrites_content(self):
         """已存在卷 -> 更新 content 与 updated_at，不调用 session.add。"""
-        from src.api.services.outline_service import OutlineService
+        from src.api.services.content.outline_service import OutlineService
 
         existing = _make_volume_row(
             volume_number=2, content={"title": "旧标题"}, status="approved"
@@ -106,7 +105,7 @@ class TestUpsertVolumeOutline:
         ctx, session = _fake_session(scalar_one_or_none_result=existing)
         new_content = {"title": "新标题", "climax": "高潮"}
 
-        with patch("src.api.services.outline_service.get_db_session", ctx):
+        with patch("src.api.services.content.outline_service.get_db_session", ctx):
             await OutlineService().upsert_volume_outline("novel-1", 2, new_content)
 
         # content 被原地覆盖
@@ -120,12 +119,12 @@ class TestUpsertVolumeOutline:
     async def test_insert_new_volume_adds_outline(self):
         """不存在卷 -> 创建 Outline 并 session.add，status 默认 draft。"""
         from src.api.models.db_models import Outline
-        from src.api.services.outline_service import OutlineService
+        from src.api.services.content.outline_service import OutlineService
 
         ctx, session = _fake_session(scalar_one_or_none_result=None)
         new_content = {"title": "全新卷"}
 
-        with patch("src.api.services.outline_service.get_db_session", ctx):
+        with patch("src.api.services.content.outline_service.get_db_session", ctx):
             await OutlineService().upsert_volume_outline("novel-9", 3, new_content)
 
         session.add.assert_called_once()
@@ -146,7 +145,7 @@ class TestUpsertChapterOutline:
     @pytest.mark.asyncio
     async def test_update_existing_chapter_overwrites_content(self):
         """已存在章 -> 更新 content，不 add。"""
-        from src.api.services.outline_service import OutlineService
+        from src.api.services.content.outline_service import OutlineService
 
         existing = _make_chapter_row(
             volume_number=1, chapter_number=5,
@@ -155,7 +154,7 @@ class TestUpsertChapterOutline:
         ctx, session = _fake_session(scalar_one_or_none_result=existing)
         new_content = {"scenes": ["场景A"]}
 
-        with patch("src.api.services.outline_service.get_db_session", ctx):
+        with patch("src.api.services.content.outline_service.get_db_session", ctx):
             await OutlineService().upsert_chapter_outline("novel-1", 1, 5, new_content)
 
         assert existing.content == new_content
@@ -165,12 +164,12 @@ class TestUpsertChapterOutline:
     async def test_insert_new_chapter_adds_outline(self):
         """不存在章 -> 新建 Outline(chapter) 并 add。"""
         from src.api.models.db_models import Outline
-        from src.api.services.outline_service import OutlineService
+        from src.api.services.content.outline_service import OutlineService
 
         ctx, session = _fake_session(scalar_one_or_none_result=None)
         new_content = {"chapter": 7, "title": "第七章"}
 
-        with patch("src.api.services.outline_service.get_db_session", ctx):
+        with patch("src.api.services.content.outline_service.get_db_session", ctx):
             await OutlineService().upsert_chapter_outline("novel-1", 2, 7, new_content)
 
         session.add.assert_called_once()
@@ -191,7 +190,7 @@ class TestGetOutlines:
     @pytest.mark.asyncio
     async def test_get_volume_outlines_maps_rows_to_dicts(self):
         """返回卷列表，按字段映射为 dict。"""
-        from src.api.services.outline_service import OutlineService
+        from src.api.services.content.outline_service import OutlineService
 
         rows = [
             _make_volume_row(id_=1, volume_number=1, content={"t": "v1"}),
@@ -199,7 +198,7 @@ class TestGetOutlines:
         ]
         ctx, _ = _fake_session(all_result=rows)
 
-        with patch("src.api.services.outline_service.get_db_session", ctx):
+        with patch("src.api.services.content.outline_service.get_db_session", ctx):
             out = await OutlineService().get_volume_outlines("novel-1")
 
         assert isinstance(out, list)
@@ -211,11 +210,11 @@ class TestGetOutlines:
     @pytest.mark.asyncio
     async def test_get_volume_outlines_empty(self):
         """无卷 -> 返回空列表。"""
-        from src.api.services.outline_service import OutlineService
+        from src.api.services.content.outline_service import OutlineService
 
         ctx, _ = _fake_session(all_result=[])
 
-        with patch("src.api.services.outline_service.get_db_session", ctx):
+        with patch("src.api.services.content.outline_service.get_db_session", ctx):
             out = await OutlineService().get_volume_outlines("novel-x")
 
         assert out == []
@@ -223,7 +222,7 @@ class TestGetOutlines:
     @pytest.mark.asyncio
     async def test_get_chapter_outlines_without_volume_filter(self):
         """不传 volume_number -> 查询不带卷过滤，返回全部章。"""
-        from src.api.services.outline_service import OutlineService
+        from src.api.services.content.outline_service import OutlineService
 
         rows = [
             _make_chapter_row(id_=1, volume_number=1, chapter_number=1),
@@ -231,7 +230,7 @@ class TestGetOutlines:
         ]
         ctx, _ = _fake_session(all_result=rows)
 
-        with patch("src.api.services.outline_service.get_db_session", ctx):
+        with patch("src.api.services.content.outline_service.get_db_session", ctx):
             out = await OutlineService().get_chapter_outlines("novel-1")
 
         assert len(out) == 2
@@ -243,7 +242,7 @@ class TestGetOutlines:
     @pytest.mark.asyncio
     async def test_get_chapter_outlines_with_volume_filter(self):
         """传 volume_number -> 返回该卷章列表（mock 已按 all_result 给定）。"""
-        from src.api.services.outline_service import OutlineService
+        from src.api.services.content.outline_service import OutlineService
 
         rows = [
             _make_chapter_row(id_=3, volume_number=2, chapter_number=1,
@@ -251,7 +250,7 @@ class TestGetOutlines:
         ]
         ctx, _ = _fake_session(all_result=rows)
 
-        with patch("src.api.services.outline_service.get_db_session", ctx):
+        with patch("src.api.services.content.outline_service.get_db_session", ctx):
             out = await OutlineService().get_chapter_outlines("novel-1", volume_number=2)
 
         assert len(out) == 1
@@ -268,15 +267,15 @@ class TestGenerateMasterFromNovel:
     @pytest.mark.asyncio
     async def test_novel_not_found_raises(self):
         """manager.get_novel 返回 None -> 抛 ValueError。"""
-        from src.api.services.outline_service import OutlineService
+        from src.api.services.content.outline_service import OutlineService
 
         ctx, _ = _fake_session()
         manager = AsyncMock()
         manager.get_novel = AsyncMock(return_value=None)
 
         with (
-            patch("src.api.services.outline_service.get_db_session", ctx),
-            patch("src.api.services.novel_manager.get_novel_manager", return_value=manager),
+            patch("src.api.services.content.outline_service.get_db_session", ctx),
+            patch("src.api.services.content.novel_manager.get_novel_manager", return_value=manager),
         ):
             with pytest.raises(ValueError, match="小说不存在"):
                 await OutlineService().generate_master_from_novel("missing-novel")
@@ -284,7 +283,7 @@ class TestGenerateMasterFromNovel:
     @pytest.mark.asyncio
     async def test_generates_and_persists_master(self):
         """正常路径: 组装 context -> 调 LLM 解析 -> upsert_master_outline 持久化。"""
-        from src.api.services.outline_service import OutlineService
+        from src.api.services.content.outline_service import OutlineService
 
         ctx, _ = _fake_session()
         manager = AsyncMock()
@@ -306,13 +305,13 @@ class TestGenerateMasterFromNovel:
 
         svc = OutlineService()
         with (
-            patch("src.api.services.outline_service.get_db_session", ctx),
-            patch("src.api.services.novel_manager.get_novel_manager", return_value=manager),
-            patch("src.api.services.character_service.get_character_service",
+            patch("src.api.services.content.outline_service.get_db_session", ctx),
+            patch("src.api.services.content.novel_manager.get_novel_manager", return_value=manager),
+            patch("src.api.services.content.character_service.get_character_service",
                   return_value=char_service),
-            patch("src.api.services.outline_service.get_llm_client",
+            patch("src.api.services.content.outline_service.get_llm_client",
                   return_value=AsyncMock()),
-            patch("src.api.services.outline_service.generate_and_parse_json",
+            patch("src.api.services.content.outline_service.generate_and_parse_json",
                   new_callable=AsyncMock, return_value=master_content),
             patch.object(svc, "upsert_master_outline", new_callable=AsyncMock) as upsert_mock,
         ):
@@ -327,7 +326,7 @@ class TestGenerateMasterFromNovel:
     @pytest.mark.asyncio
     async def test_generates_without_world_and_characters(self):
         """world=None / characters=[] 时仍能正常生成（context 退化为暂无人物/世界观）。"""
-        from src.api.services.outline_service import OutlineService
+        from src.api.services.content.outline_service import OutlineService
 
         ctx, _ = _fake_session()
         manager = AsyncMock()
@@ -340,13 +339,13 @@ class TestGenerateMasterFromNovel:
 
         svc = OutlineService()
         with (
-            patch("src.api.services.outline_service.get_db_session", ctx),
-            patch("src.api.services.novel_manager.get_novel_manager", return_value=manager),
-            patch("src.api.services.character_service.get_character_service",
+            patch("src.api.services.content.outline_service.get_db_session", ctx),
+            patch("src.api.services.content.novel_manager.get_novel_manager", return_value=manager),
+            patch("src.api.services.content.character_service.get_character_service",
                   return_value=char_service),
-            patch("src.api.services.outline_service.get_llm_client",
+            patch("src.api.services.content.outline_service.get_llm_client",
                   return_value=AsyncMock()),
-            patch("src.api.services.outline_service.generate_and_parse_json",
+            patch("src.api.services.content.outline_service.generate_and_parse_json",
                   new_callable=AsyncMock, return_value=master_content),
             patch.object(svc, "upsert_master_outline", new_callable=AsyncMock) as upsert_mock,
         ):

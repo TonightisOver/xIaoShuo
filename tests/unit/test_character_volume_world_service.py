@@ -130,7 +130,7 @@ class TestCharacterService:
     @pytest.mark.asyncio
     async def test_list_characters(self):
         """list_characters 返回角色列表"""
-        from src.api.services.character_service import get_character_service
+        from src.api.services.content.character_service import get_character_service
         svc = get_character_service()
 
         rows = [
@@ -138,7 +138,7 @@ class TestCharacterService:
             _make_character_row(2, "novel-1", "角色B", "配角"),
         ]
         session = _make_mock_session(all_result=rows)
-        with patch("src.api.services.character_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.character_service.get_db_session", return_value=session):
             result = await svc.list_characters("novel-1")
 
         assert len(result) == 2
@@ -148,21 +148,21 @@ class TestCharacterService:
     @pytest.mark.asyncio
     async def test_list_characters_empty(self):
         """list_characters 空列表"""
-        from src.api.services.character_service import get_character_service
+        from src.api.services.content.character_service import get_character_service
         svc = get_character_service()
         session = _make_mock_session(all_result=[])
-        with patch("src.api.services.character_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.character_service.get_db_session", return_value=session):
             result = await svc.list_characters("novel-empty")
         assert result == []
 
     @pytest.mark.asyncio
     async def test_create_character_adds_to_session(self):
         """create_character 将角色添加到 session"""
-        from src.api.services.character_service import get_character_service
+        from src.api.services.content.character_service import get_character_service
         svc = get_character_service()
 
         session = _make_mock_session()
-        with patch("src.api.services.character_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.character_service.get_db_session", return_value=session):
             result = await svc.create_character("novel-1", name="新角色", role="主角")
 
         session.add.assert_called_once()
@@ -174,12 +174,12 @@ class TestCharacterService:
     @pytest.mark.asyncio
     async def test_get_character_by_name(self):
         """get_character_by_name 通过名称查找"""
-        from src.api.services.character_service import get_character_service
+        from src.api.services.content.character_service import get_character_service
         svc = get_character_service()
 
         row = _make_character_row(1, "novel-1", name="张三")
         session = _make_mock_session(scalar_one_or_none_result=row)
-        with patch("src.api.services.character_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.character_service.get_db_session", return_value=session):
             result = await svc.get_character_by_name("novel-1", "张三")
 
         assert result is not None
@@ -188,23 +188,23 @@ class TestCharacterService:
     @pytest.mark.asyncio
     async def test_get_character_by_name_not_found(self):
         """按名称查找不存在返回 None"""
-        from src.api.services.character_service import get_character_service
+        from src.api.services.content.character_service import get_character_service
         svc = get_character_service()
 
         session = _make_mock_session(scalar_one_or_none_result=None)
-        with patch("src.api.services.character_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.character_service.get_db_session", return_value=session):
             result = await svc.get_character_by_name("novel-1", "不存在")
         assert result is None
 
     @pytest.mark.asyncio
     async def test_update_character(self):
         """update_character 成功返回 True"""
-        from src.api.services.character_service import get_character_service
+        from src.api.services.content.character_service import get_character_service
         svc = get_character_service()
 
         row = _make_character_row(1, "novel-1")
         session = _make_mock_session(scalar_one_or_none_result=row)
-        with patch("src.api.services.character_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.character_service.get_db_session", return_value=session):
             result = await svc.update_character("novel-1", 1, name="新名字")
 
         assert result is True
@@ -213,23 +213,23 @@ class TestCharacterService:
     @pytest.mark.asyncio
     async def test_update_character_not_found(self):
         """update_character 不存在返回 False"""
-        from src.api.services.character_service import get_character_service
+        from src.api.services.content.character_service import get_character_service
         svc = get_character_service()
 
         session = _make_mock_session(scalar_one_or_none_result=None)
-        with patch("src.api.services.character_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.character_service.get_db_session", return_value=session):
             result = await svc.update_character("novel-1", 999, name="新名字")
         assert result is False
 
     @pytest.mark.asyncio
     async def test_delete_character(self):
         """delete_character 成功返回 True"""
-        from src.api.services.character_service import get_character_service
+        from src.api.services.content.character_service import get_character_service
         svc = get_character_service()
 
         row = _make_character_row(1, "novel-1")
         session = _make_mock_session(scalar_one_or_none_result=row)
-        with patch("src.api.services.character_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.character_service.get_db_session", return_value=session):
             result = await svc.delete_character("novel-1", 1)
         assert result is True
         session.delete.assert_called_once_with(row)
@@ -237,11 +237,11 @@ class TestCharacterService:
     @pytest.mark.asyncio
     async def test_delete_character_not_found(self):
         """delete_character 不存在返回 False"""
-        from src.api.services.character_service import get_character_service
+        from src.api.services.content.character_service import get_character_service
         svc = get_character_service()
 
         session = _make_mock_session(scalar_one_or_none_result=None)
-        with patch("src.api.services.character_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.character_service.get_db_session", return_value=session):
             result = await svc.delete_character("novel-1", 999)
         assert result is False
 
@@ -256,7 +256,7 @@ class TestVolumeService:
     @pytest.mark.asyncio
     async def test_list_volumes(self):
         """list_volumes 按 volume_number 排序返回"""
-        from src.api.services.volume_service import get_volume_service
+        from src.api.services.content.volume_service import get_volume_service
         svc = get_volume_service()
 
         rows = [
@@ -264,7 +264,7 @@ class TestVolumeService:
             _make_volume_row(2, "novel-1", 2, "第二卷"),
         ]
         session = _make_mock_session(all_result=rows)
-        with patch("src.api.services.volume_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.volume_service.get_db_session", return_value=session):
             result = await svc.list_volumes("novel-1")
 
         assert len(result) == 2
@@ -273,12 +273,12 @@ class TestVolumeService:
     @pytest.mark.asyncio
     async def test_get_volume(self):
         """get_volume 返回单个卷详情"""
-        from src.api.services.volume_service import get_volume_service
+        from src.api.services.content.volume_service import get_volume_service
         svc = get_volume_service()
 
         row = _make_volume_row(1, "novel-1", 3, title="第三卷")
         session = _make_mock_session(scalar_one_or_none_result=row)
-        with patch("src.api.services.volume_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.volume_service.get_db_session", return_value=session):
             result = await svc.get_volume("novel-1", 3)
 
         assert result is not None
@@ -288,21 +288,21 @@ class TestVolumeService:
     @pytest.mark.asyncio
     async def test_get_volume_not_found(self):
         """get_volume 不存在返回 None"""
-        from src.api.services.volume_service import get_volume_service
+        from src.api.services.content.volume_service import get_volume_service
         svc = get_volume_service()
         session = _make_mock_session(scalar_one_or_none_result=None)
-        with patch("src.api.services.volume_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.volume_service.get_db_session", return_value=session):
             result = await svc.get_volume("novel-1", 999)
         assert result is None
 
     @pytest.mark.asyncio
     async def test_create_volume_returns_id(self):
         """create_volume 返回 id"""
-        from src.api.services.volume_service import get_volume_service
+        from src.api.services.content.volume_service import get_volume_service
         svc = get_volume_service()
 
         session = _make_mock_session()
-        with patch("src.api.services.volume_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.volume_service.get_db_session", return_value=session):
             result = await svc.create_volume("novel-1", 1, title="新卷")
         # id is db-generated; verify add instead
         session.add.assert_called_once()
@@ -310,12 +310,12 @@ class TestVolumeService:
     @pytest.mark.asyncio
     async def test_update_volume(self):
         """update_volume 成功返回 True"""
-        from src.api.services.volume_service import get_volume_service
+        from src.api.services.content.volume_service import get_volume_service
         svc = get_volume_service()
 
         row = _make_volume_row(1, "novel-1", 1)
         session = _make_mock_session(scalar_one_or_none_result=row)
-        with patch("src.api.services.volume_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.volume_service.get_db_session", return_value=session):
             result = await svc.update_volume("novel-1", 1, status="completed")
         assert result is True
         assert row.status == "completed"
@@ -323,10 +323,10 @@ class TestVolumeService:
     @pytest.mark.asyncio
     async def test_update_volume_not_found(self):
         """update_volume 不存在返回 False"""
-        from src.api.services.volume_service import get_volume_service
+        from src.api.services.content.volume_service import get_volume_service
         svc = get_volume_service()
         session = _make_mock_session(scalar_one_or_none_result=None)
-        with patch("src.api.services.volume_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.volume_service.get_db_session", return_value=session):
             result = await svc.update_volume("novel-1", 999, status="completed")
         assert result is False
 
@@ -341,12 +341,12 @@ class TestWorldService:
     @pytest.mark.asyncio
     async def test_get_world_setting(self):
         """get_world_setting 返回完整结构"""
-        from src.api.services.world_service import get_world_service
+        from src.api.services.content.world_service import get_world_service
         svc = get_world_service()
 
         row = _make_world_setting_row("novel-1", background="大陆背景")
         session = _make_mock_session(scalar_one_or_none_result=row)
-        with patch("src.api.services.world_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.world_service.get_db_session", return_value=session):
             result = await svc.get_world_setting("novel-1")
 
         assert result is not None
@@ -356,21 +356,21 @@ class TestWorldService:
     @pytest.mark.asyncio
     async def test_get_world_setting_not_found(self):
         """get_world_setting 不存在返回 None"""
-        from src.api.services.world_service import get_world_service
+        from src.api.services.content.world_service import get_world_service
         svc = get_world_service()
         session = _make_mock_session(scalar_one_or_none_result=None)
-        with patch("src.api.services.world_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.world_service.get_db_session", return_value=session):
             result = await svc.get_world_setting("novel-none")
         assert result is None
 
     @pytest.mark.asyncio
     async def test_upsert_world_setting_creates_new(self):
         """upsert_world_setting 不存在时创建"""
-        from src.api.services.world_service import get_world_service
+        from src.api.services.content.world_service import get_world_service
         svc = get_world_service()
 
         session = _make_mock_session(scalar_one_or_none_result=None)
-        with patch("src.api.services.world_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.world_service.get_db_session", return_value=session):
             await svc.upsert_world_setting("novel-1", background="新背景")
 
         session.add.assert_called_once()
@@ -378,12 +378,12 @@ class TestWorldService:
     @pytest.mark.asyncio
     async def test_upsert_world_setting_updates_existing(self):
         """upsert_world_setting 存在时更新"""
-        from src.api.services.world_service import get_world_service
+        from src.api.services.content.world_service import get_world_service
         svc = get_world_service()
 
         row = _make_world_setting_row("novel-1", background="原背景")
         session = _make_mock_session(scalar_one_or_none_result=row)
-        with patch("src.api.services.world_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.world_service.get_db_session", return_value=session):
             await svc.upsert_world_setting("novel-1", background="新背景")
 
         assert row.background == "新背景"
@@ -392,7 +392,7 @@ class TestWorldService:
     @pytest.mark.asyncio
     async def test_list_power_systems(self):
         """list_power_systems 返回力量体系列表"""
-        from src.api.services.world_service import get_world_service
+        from src.api.services.content.world_service import get_world_service
         svc = get_world_service()
 
         rows = [
@@ -400,7 +400,7 @@ class TestWorldService:
             _make_power_system_row(2, "novel-1", "魔法"),
         ]
         session = _make_mock_session(all_result=rows)
-        with patch("src.api.services.world_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.world_service.get_db_session", return_value=session):
             result = await svc.list_power_systems("novel-1")
 
         assert len(result) == 2
@@ -409,11 +409,11 @@ class TestWorldService:
     @pytest.mark.asyncio
     async def test_create_power_system_returns_id(self):
         """create_power_system 返回 id"""
-        from src.api.services.world_service import get_world_service
+        from src.api.services.content.world_service import get_world_service
         svc = get_world_service()
 
         session = _make_mock_session()
-        with patch("src.api.services.world_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.world_service.get_db_session", return_value=session):
             result = await svc.create_power_system("novel-1", "炼体", "描述", [{"name": "一重"}])
 
         # id is db-generated; verify add instead
@@ -423,12 +423,12 @@ class TestWorldService:
     @pytest.mark.asyncio
     async def test_update_power_system(self):
         """update_power_system 成功返回 True"""
-        from src.api.services.world_service import get_world_service
+        from src.api.services.content.world_service import get_world_service
         svc = get_world_service()
 
         row = _make_power_system_row(1, "novel-1", "原名称")
         session = _make_mock_session(scalar_one_or_none_result=row)
-        with patch("src.api.services.world_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.world_service.get_db_session", return_value=session):
             result = await svc.update_power_system("novel-1", 1, name="新名称")
 
         assert result is True
@@ -437,22 +437,22 @@ class TestWorldService:
     @pytest.mark.asyncio
     async def test_update_power_system_not_found(self):
         """update_power_system 不存在返回 False"""
-        from src.api.services.world_service import get_world_service
+        from src.api.services.content.world_service import get_world_service
         svc = get_world_service()
         session = _make_mock_session(scalar_one_or_none_result=None)
-        with patch("src.api.services.world_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.world_service.get_db_session", return_value=session):
             result = await svc.update_power_system("novel-1", 999, name="新名称")
         assert result is False
 
     @pytest.mark.asyncio
     async def test_delete_power_system(self):
         """delete_power_system 成功返回 True"""
-        from src.api.services.world_service import get_world_service
+        from src.api.services.content.world_service import get_world_service
         svc = get_world_service()
 
         row = _make_power_system_row(1, "novel-1")
         session = _make_mock_session(scalar_one_or_none_result=row)
-        with patch("src.api.services.world_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.world_service.get_db_session", return_value=session):
             result = await svc.delete_power_system("novel-1", 1)
         assert result is True
         session.delete.assert_called_once_with(row)
@@ -460,9 +460,9 @@ class TestWorldService:
     @pytest.mark.asyncio
     async def test_delete_power_system_not_found(self):
         """delete_power_system 不存在返回 False"""
-        from src.api.services.world_service import get_world_service
+        from src.api.services.content.world_service import get_world_service
         svc = get_world_service()
         session = _make_mock_session(scalar_one_or_none_result=None)
-        with patch("src.api.services.world_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.world_service.get_db_session", return_value=session):
             result = await svc.delete_power_system("novel-1", 999)
         assert result is False

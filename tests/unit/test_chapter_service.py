@@ -99,7 +99,7 @@ class TestListChapters:
     @pytest.mark.asyncio
     async def test_list_chapters_returns_all_chapters(self):
         """正常返回所有章节列表"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
         svc._chapter_service = None  # ensure singleton reset
 
@@ -109,7 +109,7 @@ class TestListChapters:
         ]
 
         session = _make_mock_session(all_result=rows)
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.list_chapters("novel-1")
 
         assert len(result) == 2
@@ -120,11 +120,11 @@ class TestListChapters:
     @pytest.mark.asyncio
     async def test_list_chapters_empty(self):
         """无章节时返回空列表"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         session = _make_mock_session(all_result=[])
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.list_chapters("novel-empty")
         assert result == []
 
@@ -139,12 +139,12 @@ class TestGetChapter:
     @pytest.mark.asyncio
     async def test_get_chapter_returns_correct_keys(self):
         """返回的 dict 包含所有预期字段"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         row = _make_chapter_row(1, "novel-1", 5, volume_number=2, content="正文内容")
         session = _make_mock_session(scalar_one_or_none_result=row)
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.get_chapter("novel-1", 5)
 
         assert result is not None
@@ -159,11 +159,11 @@ class TestGetChapter:
     @pytest.mark.asyncio
     async def test_get_chapter_not_found_returns_none(self):
         """不存在的章节返回 None"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         session = _make_mock_session(scalar_one_or_none_result=None)
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.get_chapter("novel-none", 999)
         assert result is None
 
@@ -178,12 +178,12 @@ class TestUpdateChapter:
     @pytest.mark.asyncio
     async def test_update_chapter_content_updates_word_count(self):
         """更新字数后自动重新计算 word_count"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         row = _make_chapter_row(1, "novel-1", 1, content="旧内容")
         session = _make_mock_session(scalar_one_or_none_result=row)
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.update_chapter("novel-1", 1, content="新内容新内容")
 
         assert result is True
@@ -193,11 +193,11 @@ class TestUpdateChapter:
     @pytest.mark.asyncio
     async def test_update_chapter_not_found_returns_false(self):
         """不存在的章节返回 False"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         session = _make_mock_session(scalar_one_or_none_result=None)
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.update_chapter("novel-none", 999, title="新标题")
         assert result is False
 
@@ -212,23 +212,23 @@ class TestDeleteChapter:
     @pytest.mark.asyncio
     async def test_delete_existing_chapter_returns_true(self):
         """删除存在的章节返回 True"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         row = _make_chapter_row(1, "novel-1", 1)
         session = _make_mock_session(scalar_one_or_none_result=row)
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.delete_chapter("novel-1", 1)
         assert result is True
 
     @pytest.mark.asyncio
     async def test_delete_nonexistent_chapter_returns_false(self):
         """删除不存在的章节返回 False"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         session = _make_mock_session(scalar_one_or_none_result=None)
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.delete_chapter("novel-none", 999)
         assert result is False
 
@@ -243,24 +243,24 @@ class TestDeleteFailedChapters:
     @pytest.mark.asyncio
     async def test_delete_failed_removes_short_chapters(self):
         """删除 word_count < 100 的失败章节并返回删除数量"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         short_ch = _make_chapter_row(1, "novel-1", 1, word_count=50)
         # Only short chapters returned by the query
         session = _make_mock_session(all_result=[short_ch])
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.delete_failed_chapters("novel-1", min_words=100)
         assert result == 1
 
     @pytest.mark.asyncio
     async def test_delete_failed_no_short_chapters(self):
         """没有小于 min_words 的章节时返回 0"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         session = _make_mock_session(all_result=[])
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.delete_failed_chapters("novel-1")
         assert result == 0
 
@@ -275,7 +275,7 @@ class TestListChaptersPreview:
     @pytest.mark.asyncio
     async def test_preview_excludes_content_and_sorts_by_number(self):
         """预览列表不包含 content，按 chapter_number 排序"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         from sqlalchemy import Row
@@ -286,7 +286,7 @@ class TestListChaptersPreview:
 
         rows = [row1]
         session = _make_mock_session(all_result=rows)
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.list_chapters_preview("novel-1")
 
         assert len(result) == 1
@@ -296,10 +296,10 @@ class TestListChaptersPreview:
     @pytest.mark.asyncio
     async def test_preview_empty(self):
         """无章节时返回空"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
         session = _make_mock_session(all_result=[])
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.list_chapters_preview("novel-empty")
         assert result == []
 
@@ -314,22 +314,22 @@ class TestGetChapterTail:
     @pytest.mark.asyncio
     async def test_get_tail_returns_non_empty_content(self):
         """返回章节尾部内容"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         session = _make_mock_session(scalar_one_or_none_result="尾部正文")
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.get_chapter_tail("novel-1", 1, tail_chars=500)
         assert result == "尾部正文"
 
     @pytest.mark.asyncio
     async def test_get_tail_nonexistent_returns_empty(self):
         """不存在的章节返回空字符串"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         session = _make_mock_session(scalar_result="")
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.get_chapter_tail("novel-1", 999)
         assert result == ""
 
@@ -344,7 +344,7 @@ class TestCreateChapterVersion:
     @pytest.mark.asyncio
     async def test_create_version_returns_new_version_number(self):
         """创建版本返回递增的 version_number"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         ch_row = _make_chapter_row(1, "novel-1", 1, content="内容")
@@ -367,7 +367,7 @@ class TestCreateChapterVersion:
         session.__aenter__ = AsyncMock(return_value=session)
         session.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.create_chapter_version(
                 "novel-1", 1, content="新版本", source="generation"
             )
@@ -377,7 +377,7 @@ class TestCreateChapterVersion:
     @pytest.mark.asyncio
     async def test_create_version_chapter_not_found_raises(self):
         """不存在的章节抛出 ValueError"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         session = AsyncMock()
@@ -387,7 +387,7 @@ class TestCreateChapterVersion:
         session.__aenter__ = AsyncMock(return_value=session)
         session.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             with pytest.raises(ValueError, match="Chapter not found"):
                 await svc.create_chapter_version("novel-none", 999, content="x")
 
@@ -398,14 +398,14 @@ class TestListChapterVersions:
     @pytest.mark.asyncio
     async def test_list_versions_sorted_descending(self):
         """版本列表按 version_number 降序"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         v2 = _make_version_row(2, "novel-1", 1, version_number=2, is_active=True)
         v1 = _make_version_row(1, "novel-1", 1, version_number=1, is_active=False)
 
         session = _make_mock_session(all_result=[v2, v1])
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.list_chapter_versions("novel-1", 1)
 
         assert len(result) == 2
@@ -415,10 +415,10 @@ class TestListChapterVersions:
     @pytest.mark.asyncio
     async def test_list_versions_empty(self):
         """无版本时返回空"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
         session = _make_mock_session(all_result=[])
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.list_chapter_versions("novel-1", 1)
         assert result == []
 
@@ -429,12 +429,12 @@ class TestGetChapterVersion:
     @pytest.mark.asyncio
     async def test_get_version_returns_full_content(self):
         """返回单个版本的完整内容"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         row = _make_version_row(1, "novel-1", 1, 2, content="版本正文", source="ai_rewrite")
         session = _make_mock_session(scalar_one_or_none_result=row)
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.get_chapter_version("novel-1", 1, 2)
 
         assert result is not None
@@ -445,11 +445,11 @@ class TestGetChapterVersion:
     @pytest.mark.asyncio
     async def test_get_version_not_found(self):
         """不存在的版本返回 None"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         session = _make_mock_session(scalar_one_or_none_result=None)
-        with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
             result = await svc.get_chapter_version("novel-1", 1, 999)
         assert result is None
 
@@ -460,7 +460,7 @@ class TestRollbackChapterVersion:
     @pytest.mark.asyncio
     async def test_rollback_creates_new_version_with_old_content(self):
         """回滚生成新的 version_number"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         # Mock get_chapter_version to return a target
@@ -481,7 +481,7 @@ class TestRollbackChapterVersion:
     @pytest.mark.asyncio
     async def test_rollback_target_not_found(self):
         """不存在的版本回滚返回 None"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         with patch.object(svc, "get_chapter_version", return_value=None):
@@ -495,7 +495,7 @@ class TestCompareChapterVersions:
     @pytest.mark.asyncio
     async def test_compare_returns_diff_and_word_count_change(self):
         """对比返回 diff 字符串和字数变化"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         with patch.object(svc, "get_chapter_version") as mock_get:
@@ -518,7 +518,7 @@ class TestCompareChapterVersions:
     @pytest.mark.asyncio
     async def test_compare_one_version_missing(self):
         """某个版本不存在返回 None"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         with patch.object(svc, "get_chapter_version", return_value=None):
@@ -532,11 +532,11 @@ class TestFixVolumeNumbers:
     @pytest.mark.asyncio
     async def test_fix_assigns_volume_number_by_volume_range(self):
         """根据卷的范围为 NULL volume_number 的章节赋值"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
         # Mock get_volume_service to return volumes with ranges
-        with patch("src.api.services.volume_service.get_volume_service") as mock_get_vs:
+        with patch("src.api.services.content.volume_service.get_volume_service") as mock_get_vs:
             mock_vs = MagicMock()
             mock_vs.list_volumes = AsyncMock(return_value=[
                 {"volume_number": 1, "chapter_start": 1, "chapter_end": 5},
@@ -551,7 +551,7 @@ class TestFixVolumeNumbers:
             session.__aenter__ = AsyncMock(return_value=session)
             session.__aexit__ = AsyncMock(return_value=None)
 
-            with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+            with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
                 result = await svc.fix_volume_numbers("novel-1")
 
         assert result == 6
@@ -559,16 +559,16 @@ class TestFixVolumeNumbers:
     @pytest.mark.asyncio
     async def test_fix_no_volumes_returns_zero(self):
         """没有卷定义时返回 0"""
-        from src.api.services.chapter_service import get_chapter_service
+        from src.api.services.content.chapter_service import get_chapter_service
         svc = get_chapter_service()
 
-        with patch("src.api.services.volume_service.get_volume_service") as mock_get_vs:
+        with patch("src.api.services.content.volume_service.get_volume_service") as mock_get_vs:
             mock_vs = MagicMock()
             mock_vs.list_volumes = AsyncMock(return_value=[])
             mock_get_vs.return_value = mock_vs
 
 
             session = _make_mock_session(all_result=[])
-            with patch("src.api.services.chapter_service.get_db_session", return_value=session):
+            with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
                 result = await svc.fix_volume_numbers("novel-1")
         assert result == 0

@@ -4,11 +4,12 @@
 用 asyncpg 反射（容器内已装）。
 """
 import asyncio
+
 from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from src.core.config import get_settings
 from src.api.models.db_models import Base
+from src.core.config import get_settings
 
 
 async def main():

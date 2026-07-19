@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.api.models.db_models import User
 from src.api.models.requests import (
@@ -23,7 +23,11 @@ from src.api.models.responses import (
     TaskResponse,
     TaskSummary,
 )
-from src.api.services import generate_novel_background, get_task_manager
+from src.api.services.generation.novel_generator_planning import (
+    calculate_long_form_chapter_plan,
+)
+from src.api.services.tasks.task_dispatcher import TaskType
+from src.api.services.tasks.task_manager import get_task_manager
 from src.core.security.auth import get_current_user
 from src.core.validation import ValidationError, validate_idea, validate_novel_type
 
@@ -34,15 +38,11 @@ tasks_router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
 
 
 @router.post("", response_model=TaskResponse, status_code=202)
-async def create_novel(
-    request: CreateNovelRequest, background_tasks: BackgroundTasks
-) -> TaskResponse:
+async def create_novel(request: CreateNovelRequest) -> TaskResponse:
     """创建小说生成任务
 
     Args:
         request: 创建请求
-        background_tasks: 后台任务
-
     Returns:
         任务响应
 
@@ -60,10 +60,10 @@ async def create_novel(
             idea=request.idea,
             novel_type=request.novel_type,
             target_words=request.target_words,
+            task_type=TaskType.NOVEL_GENERATE.value,
+            task_payload={"request": request.model_dump(mode="json")},
+            max_attempts=1,
         )
-
-        # 添加后台任务
-        background_tasks.add_task(generate_novel_background, task_id, request)
 
         logger.info(f"Created novel generation task {task_id}")
 
@@ -197,7 +197,7 @@ async def pause_generation_task(task_id: str):
             detail=f"Task can only be paused when running (current status: {task['status']})",
         )
     try:
-        from src.api.services.novel_generator import pause_task
+        from src.api.services.generation.novel_generator import pause_task
         await pause_task(task_id)
         return {"task_id": task_id, "status": "paused"}
     except Exception:
@@ -217,7 +217,7 @@ async def resume_generation_task(task_id: str):
             detail=f"Task can only be resumed when paused (current status: {task['status']})",
         )
     try:
-        from src.api.services.novel_generator import resume_task
+        from src.api.services.generation.novel_generator import resume_task
         await resume_task(task_id)
         return {"task_id": task_id, "status": "running"}
     except Exception:
@@ -231,15 +231,12 @@ async def resume_generation_task(task_id: str):
 @router.post("/long-form", response_model=LongFormTaskResponse, status_code=202)
 async def create_long_form_novel(
     request: LongFormNovelRequest,
-    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
 ) -> LongFormTaskResponse:
     """创建百万字长篇生成任务
 
     Args:
         request: 长篇生成请求
-        background_tasks: 后台任务
-
     Returns:
         长篇任务响应
 
@@ -251,16 +248,8 @@ async def create_long_form_novel(
         validate_idea(request.idea)
         validate_novel_type(request.novel_type)
 
-        # Create task
-        task_manager = get_task_manager()
-        task_id = await task_manager.create_task(
-            idea=request.idea,
-            novel_type=request.novel_type,
-            target_words=request.target_words,
-        )
-
         # Create novel record
-        from src.api.services.novel_manager import get_novel_manager
+        from src.api.services.content.novel_manager import get_novel_manager
         novel_manager = get_novel_manager()
         novel_id = await novel_manager.create_novel(
             idea=request.idea,
@@ -271,21 +260,18 @@ async def create_long_form_novel(
             owner_id=current_user.id,
         )
 
-        # Update task with novel_id
-        await task_manager.update_status(
-            task_id, "pending", progress={"novel_id": novel_id}
-        )
-
-        # Add background task
-        from src.api.services.novel_generator import (
-            calculate_long_form_chapter_plan,
-            generate_long_form_background,
-        )
-        background_tasks.add_task(
-            generate_long_form_background,
-            task_id,
-            novel_id,
-            request,
+        task_manager = get_task_manager()
+        task_id = await task_manager.create_task(
+            idea=request.idea,
+            novel_type=request.novel_type,
+            target_words=request.target_words,
+            novel_id=novel_id,
+            task_type=TaskType.NOVEL_LONG_FORM.value,
+            task_payload={
+                "novel_id": novel_id,
+                "request": request.model_dump(mode="json"),
+            },
+            max_attempts=1,
         )
 
         logger.info(f"Created long-form novel task {task_id} for novel {novel_id}")
@@ -327,7 +313,9 @@ async def get_quality_report(novel_id: str) -> QualityReport:
         HTTPException: 小说不存在
     """
     try:
-        from src.api.services.quality_report_service import get_quality_report_service
+        from src.api.services.quality.quality_report_service import (
+            get_quality_report_service,
+        )
         service = get_quality_report_service()
         report = await service.generate_novel_quality_report(novel_id)
         return QualityReport(**report)
@@ -350,7 +338,7 @@ async def get_filler_detection(novel_id: str) -> FillerDetectionResult:
         HTTPException: 小说不存在
     """
     try:
-        from src.api.services.filler_detection_service import (
+        from src.api.services.quality.filler_detection_service import (
             get_filler_detection_service,
         )
         service = get_filler_detection_service()
@@ -375,7 +363,7 @@ async def get_foreshadow_tracker(novel_id: str) -> ForeshadowTrackerResult:
         HTTPException: 小说不存在
     """
     try:
-        from src.api.services.foreshadow_tracker_service import (
+        from src.api.services.quality.foreshadow_tracker_service import (
             get_foreshadow_tracker_service,
         )
         service = get_foreshadow_tracker_service()
@@ -400,7 +388,7 @@ async def get_long_form_progress(novel_id: str) -> LongFormProgressResponse:
         HTTPException: 小说不存在
     """
     try:
-        from src.api.services.long_form_progress_service import (
+        from src.api.services.generation.long_form_progress_service import (
             get_long_form_progress_service,
         )
         service = get_long_form_progress_service()
@@ -420,7 +408,6 @@ async def trigger_volume_generate(
     novel_id: str,
     volume_number: int,
     request: VolumeGenerateRequest,
-    background_tasks: BackgroundTasks,
 ):
     """按卷触发生成
 
@@ -428,8 +415,6 @@ async def trigger_volume_generate(
         novel_id: 小说 ID
         volume_number: 卷号
         request: 生成请求
-        background_tasks: 后台任务
-
     Returns:
         任务状态
 
@@ -437,7 +422,7 @@ async def trigger_volume_generate(
         HTTPException: 小说或卷不存在
     """
     try:
-        from src.api.services.long_form_progress_service import (
+        from src.api.services.generation.long_form_progress_service import (
             get_long_form_progress_service,
         )
         progress_service = get_long_form_progress_service()
@@ -462,15 +447,13 @@ async def trigger_volume_generate(
             idea=f"Volume {volume_number} generation",
             novel_type="long_form",
             target_words=0,
-        )
-
-        # Add background task
-        from src.api.services.novel_generator import generate_volume_background
-        background_tasks.add_task(
-            generate_volume_background,
-            task_id,
-            novel_id,
-            volume_number,
+            novel_id=novel_id,
+            task_type=TaskType.NOVEL_VOLUME.value,
+            task_payload={
+                "novel_id": novel_id,
+                "volume_number": volume_number,
+            },
+            max_attempts=1,
         )
 
         return {
@@ -502,7 +485,7 @@ async def pause_volume_generate(novel_id: str, volume_number: int):
         HTTPException: 操作失败
     """
     try:
-        from src.api.services.long_form_progress_service import (
+        from src.api.services.generation.long_form_progress_service import (
             get_long_form_progress_service,
         )
         service = get_long_form_progress_service()
@@ -521,15 +504,12 @@ async def pause_volume_generate(novel_id: str, volume_number: int):
 async def resume_volume_generate(
     novel_id: str,
     volume_number: int,
-    background_tasks: BackgroundTasks,
 ):
     """恢复指定卷生成
 
     Args:
         novel_id: 小说 ID
         volume_number: 卷号
-        background_tasks: 后台任务
-
     Returns:
         任务状态
 
@@ -537,7 +517,7 @@ async def resume_volume_generate(
         HTTPException: 操作失败
     """
     try:
-        from src.api.services.long_form_progress_service import (
+        from src.api.services.generation.long_form_progress_service import (
             get_long_form_progress_service,
         )
         progress_service = get_long_form_progress_service()
@@ -561,15 +541,13 @@ async def resume_volume_generate(
             idea=f"Volume {volume_number} resume",
             novel_type="long_form",
             target_words=0,
-        )
-
-        # Add background task
-        from src.api.services.novel_generator import generate_volume_background
-        background_tasks.add_task(
-            generate_volume_background,
-            task_id,
-            novel_id,
-            volume_number,
+            novel_id=novel_id,
+            task_type=TaskType.NOVEL_VOLUME.value,
+            task_payload={
+                "novel_id": novel_id,
+                "volume_number": volume_number,
+            },
+            max_attempts=1,
         )
 
         return {

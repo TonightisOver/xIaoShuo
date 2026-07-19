@@ -3,7 +3,7 @@
 import uuid
 from datetime import UTC
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import and_, delete, select
 
@@ -13,11 +13,13 @@ from src.api.models.db_models import (
     KnowledgeExtractionLog,
     KnowledgeTriple,
 )
-from src.api.services.knowledge_graph_service import get_knowledge_graph_service
+from src.api.owner_guard import verify_novel_owner
+from src.api.services.knowledge.knowledge_graph_service import (
+    get_knowledge_graph_service,
+)
 from src.core.auth_models import User
 from src.core.database import get_db_session
 from src.core.security.auth import get_current_user
-from src.api.owner_guard import verify_novel_owner
 
 router = APIRouter(
     prefix="/api/v1/projects/{novel_id}/knowledge-graph",

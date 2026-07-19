@@ -4,8 +4,9 @@ import json
 import time
 
 import structlog
-from src.core.llm.client import get_llm_client
+
 from src.core.agents.journal_recorder import get_journal_recorder
+from src.core.llm.client import get_llm_client
 
 logger = structlog.get_logger(__name__)
 

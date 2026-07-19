@@ -50,11 +50,14 @@ class TestQualityCheckNode:
             l2_evaluated=True,
         )
 
+        rewrite_service = object()
+        mock_gate = AsyncMock(return_value=fake_gate)
+        config = {"configurable": {"rewrite_service": rewrite_service}}
+
         with patch("src.core.langgraph.nodes.quality_check.get_settings") as mock_s, \
-             patch("src.core.quality.gate.run_quality_gate",
-                   new=AsyncMock(return_value=fake_gate)):
+             patch("src.core.quality.gate.run_quality_gate", new=mock_gate):
             mock_s.return_value.KNOWLEDGE_GRAPH_ENABLED = False
-            updated_state = await node(state)
+            updated_state = await node(state, config)
 
         assert updated_state["current_stage"] == "quality_check_completed"
         scores = updated_state["quality_scores"]
@@ -64,6 +67,7 @@ class TestQualityCheckNode:
         assert scores.get("consistency_blocked") is not True
         # state_delta 入 state（短篇首次有 state_delta，Ticket 04 目标）
         assert updated_state["state_delta"] == {"characters": ["张三"]}
+        assert mock_gate.await_args.kwargs["rewrite_service"] is rewrite_service
 
     @pytest.mark.asyncio
     async def test_quality_check_graceful_fallback_on_llm_error(self):

@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     DATABASE_MAX_OVERFLOW: int = 20
     DATABASE_ECHO: bool = False
 
+    # 持久化生成任务队列
+    TASK_QUEUE_ENABLED: bool = True
+    TASK_QUEUE_POLL_SECONDS: float = 1.0
+    TASK_QUEUE_LEASE_SECONDS: int = 120
+    TASK_QUEUE_RETRY_DELAY_SECONDS: int = 5
+
     # Knowledge Graph
     KNOWLEDGE_GRAPH_ENABLED: bool = True
     KG_SUBAGENT_ENABLED: bool = True

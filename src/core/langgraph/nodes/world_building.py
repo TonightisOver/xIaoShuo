@@ -2,7 +2,7 @@
 
 import logging
 
-from src.core.json_utils import safe_json_parse, validate_json_structure
+from src.core.json_utils import validate_json_structure
 from src.core.langgraph.node_utils import generate_and_validate
 from src.core.langgraph.schemas import WorldSetting
 from src.core.langgraph.state import NovelState

@@ -4,6 +4,7 @@ Dependencies injected via LangGraph config["configurable"]:
   - kg_service: Knowledge graph service instance (optional)
   - detect_bible_conflicts: async callable for conflict check
   - persist_quality: async callable for quality persistence
+  - rewrite_service: optional service for L3 automatic rewrite
 """
 
 import json
@@ -32,6 +33,7 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
             - kg_service: knowledge graph service instance
             - detect_bible_conflicts: async callable for story bible conflict detection
             - persist_quality: async callable to persist quality scores to DB
+            - rewrite_service: optional service for L3 automatic rewrite
 
     Returns:
         更新后的状态
@@ -70,7 +72,6 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
         }
 
     chapter_content = last_chapter.get("content", "")
-    chapter_title = last_chapter.get("title", f"第{len(chapters)}章")
     chapter_number = last_chapter.get("chapter", len(chapters))
 
     # NOTE: L0 预筛结果暂仅收集入 state（l0_results），供卷级报告与后续运行时拦截编排使用。
@@ -187,11 +188,7 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
     #             + KG 知识抽取副作用（§2.6）。
     #    一致性硬门禁口径变化：gate 看 L2 评分 character_consistency/world_consistency < 0.4，
     #    旧版基于 KG verdict / StoryBible error 的 block 已移除。
-    from src.api.services.chapter_persistence_service import persist_quality_to_version
-    from src.api.services.rewrite_loop_service import RewriteLoopService
     from src.core.quality.gate import GatePersistCallbacks, run_quality_gate
-
-    persist_quality_fn = configurable.get("persist_quality") or persist_quality_to_version
 
     novel_type = state.get("novel_type", "网络小说")
     idea = state.get("idea", "暂无核心创意描述")
@@ -208,6 +205,9 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
     # quality_status 也仅写入 quality_scores，由 persist_quality_fn 持久化。
     async def _noop(*args, **kwargs):
         return None
+
+    persist_quality_fn = configurable.get("persist_quality") or _noop
+    rewrite_service = configurable.get("rewrite_service")
 
     gate_callbacks = GatePersistCallbacks(
         update_state_delta=_noop,
@@ -231,7 +231,7 @@ async def node(state: NovelState, config: RunnableConfig | None = None) -> Novel
             world_setting=world_setting_str,
             characters=characters_str,
             persist_callbacks=gate_callbacks,
-            rewrite_service=RewriteLoopService(),
+            rewrite_service=rewrite_service,
             chapter_index_in_volume=max(len(chapters) - 1, 0),
         )
 

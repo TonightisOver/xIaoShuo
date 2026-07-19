@@ -1,6 +1,8 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from src.api.services.task_manager import TaskManager
+
+import pytest
+
+from src.api.services.tasks.task_manager import TaskManager
 
 
 def _mock_task():
@@ -18,7 +20,7 @@ def _mock_session(task):
 @pytest.mark.asyncio
 async def test_complete_task_accepts_status():
     tm = TaskManager()
-    with patch("src.api.services.task_manager.get_db_session") as mock_db:
+    with patch("src.api.services.tasks.task_manager.get_db_session") as mock_db:
         session = _mock_session(_mock_task())
         mock_db.return_value.__aenter__ = AsyncMock(return_value=session)
         mock_db.return_value.__aexit__ = AsyncMock(return_value=None)
@@ -30,7 +32,7 @@ async def test_complete_task_accepts_status():
 @pytest.mark.asyncio
 async def test_complete_task_defaults_to_completed():
     tm = TaskManager()
-    with patch("src.api.services.task_manager.get_db_session") as mock_db:
+    with patch("src.api.services.tasks.task_manager.get_db_session") as mock_db:
         session = _mock_session(_mock_task())
         mock_db.return_value.__aenter__ = AsyncMock(return_value=session)
         mock_db.return_value.__aexit__ = AsyncMock(return_value=None)
@@ -41,7 +43,7 @@ async def test_complete_task_defaults_to_completed():
 @pytest.mark.asyncio
 async def test_complete_task_sets_status_on_task():
     tm = TaskManager()
-    with patch("src.api.services.task_manager.get_db_session") as mock_db:
+    with patch("src.api.services.tasks.task_manager.get_db_session") as mock_db:
         task = _mock_task()
         session = _mock_session(task)
         mock_db.return_value.__aenter__ = AsyncMock(return_value=session)
@@ -53,7 +55,7 @@ async def test_complete_task_sets_status_on_task():
 @pytest.mark.asyncio
 async def test_complete_task_progress_by_status():
     tm = TaskManager()
-    with patch("src.api.services.task_manager.get_db_session") as mock_db:
+    with patch("src.api.services.tasks.task_manager.get_db_session") as mock_db:
         task = _mock_task()
         session = _mock_session(task)
         mock_db.return_value.__aenter__ = AsyncMock(return_value=session)
@@ -67,7 +69,7 @@ async def test_complete_task_progress_by_status():
 @pytest.mark.asyncio
 async def test_complete_task_completed_has_100_percent():
     tm = TaskManager()
-    with patch("src.api.services.task_manager.get_db_session") as mock_db:
+    with patch("src.api.services.tasks.task_manager.get_db_session") as mock_db:
         task = _mock_task()
         session = _mock_session(task)
         mock_db.return_value.__aenter__ = AsyncMock(return_value=session)

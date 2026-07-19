@@ -192,7 +192,12 @@ xIaoShuo/
 ├── src/
 │   ├── api/
 │   │   ├── routes/               # API 路由层（25 个路由模块）
-│   │   ├── services/             # 业务逻辑层（章节/改写/长篇/质量报告/灌水检测等）
+│   │   ├── services/             # API 业务服务层
+│   │   │   ├── generation/       # 小说/章节生成编排与进度
+│   │   │   ├── content/          # 小说内容域管理
+│   │   │   ├── quality/          # 质量检测、报告与改写
+│   │   │   ├── knowledge/        # 知识图谱服务
+│   │   │   └── tasks/            # 持久化任务队列
 │   │   └── models/db_models.py   # SQLAlchemy ORM
 │   └── core/
 │       ├── langgraph/

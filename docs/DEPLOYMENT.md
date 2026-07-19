@@ -48,6 +48,15 @@ nano /opt/xiaoshuo/.env
 
 `DB_PASSWORD`、`DEEPSEEK_MODEL` 等有默认值，按需修改。
 
+生成任务队列默认启用，通常无需修改：
+
+| 配置 | 默认值 | 说明 |
+|------|--------|------|
+| `TASK_QUEUE_ENABLED` | `true` | 是否在 API 进程内启动 PostgreSQL 队列 worker |
+| `TASK_QUEUE_POLL_SECONDS` | `1.0` | 无任务时的轮询间隔 |
+| `TASK_QUEUE_LEASE_SECONDS` | `120` | 单次执行租约时长；worker 会在执行中续租 |
+| `TASK_QUEUE_RETRY_DELAY_SECONDS` | `5` | 仅对明确允许重试的任务生效的延迟 |
+
 ### 4. 构建并启动服务
 
 ```bash
@@ -123,10 +132,41 @@ docker compose down -v
 
 1. **移除 psycopg2-binary**：alembic 迁移改用 asyncpg（与业务一致），Dockerfile 不再需要 libpq-dev/gcc，镜像更小
 2. **LLM 模型降级**：pro 模型限流时自动降级到 flash（需确保 `DEEPSEEK_MODEL_FLASH` 配置正确，默认 `deepseek-v4-flash`）
-3. **任务恢复**：服务重启时自动把中断的 running 任务标记为 failed（避免永远卡住）
+3. **持久化任务恢复**：尚未执行的 queued 任务在重启后继续领取；已经开始且不安全重放的生成任务会明确标记为 failed
 4. **nginx 自带前端**：dist 打进 nginx 镜像，不再依赖宿主机 `./frontend/dist`
 
-## 六、故障排查
+## 六、持久化生成任务队列
+
+小说生成、全功能生成、长篇生成、按卷/章节生成和 HITL 审核恢复均写入 PostgreSQL
+`tasks` 表，不再依赖请求进程内的 FastAPI `BackgroundTasks`。
+
+- `queue_state=queued`：任务参数已持久化，服务重启后仍可领取。
+- `queue_state=leased`：某个 worker 正在执行并定期续租。
+- `queue_state=idle`：任务已完成、失败、暂停或正在等待人工审核，不应被领取。
+- 历史 `queue_state IS NULL` 的 pending/running 任务缺少可重建参数，启动时会标记失败。
+- 当前生成流程可能产生部分数据库写入，因此统一使用 `max_attempts=1`。已经开始后进程中断的任务不会盲目重放，避免重复章节、故事线或人物数据。
+- 多个 API worker/实例可同时运行；领取使用 PostgreSQL `FOR UPDATE SKIP LOCKED`，不会同时领取同一行。
+
+部署新版本前必须先执行 Alembic 迁移：
+
+```bash
+docker compose exec api alembic upgrade head
+```
+
+查看正在排队或执行的任务：
+
+```sql
+SELECT task_id, status, queue_state, task_type, attempt_count,
+       lease_owner, lease_expires_at
+FROM tasks
+WHERE queue_state IN ('queued', 'leased')
+ORDER BY created_at;
+```
+
+关闭服务时，应用会先停止 worker，再关闭 LangGraph checkpointer 和数据库连接。不要直接删除
+leased 行；异常中断后的租约会在下次启动时按 `attempt_count/max_attempts` 分类恢复或失败。
+
+## 七、故障排查
 
 ### API 启动失败：`validate_encryption_key` / `validate_admin_token`
 `.env` 里 `LLM_ENCRYPTION_KEY` 或 `ADMIN_TOKEN` 为空，按第 3 步填入。

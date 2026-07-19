@@ -15,12 +15,12 @@ TaskManager 仅依赖 get_db_session（async context manager），无 LLM、无�
 service 单例依赖，因此全部用 mock 纯单元测试，无需跳过任何方法。
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.api.services.task_manager import TaskManager
+from src.api.services.tasks.task_manager import TaskManager
 
 
 def _make_session():
@@ -41,7 +41,7 @@ def _patch_db(session):
     """返回 patch 上下文，将源模块的 get_db_session 替换为返回 session 的 mock。"""
     mock_db = MagicMock()
     mock_db.return_value = session
-    return patch("src.api.services.task_manager.get_db_session", mock_db)
+    return patch("src.api.services.tasks.task_manager.get_db_session", mock_db)
 
 
 def _make_task_mock(**overrides):
@@ -60,6 +60,15 @@ def _make_task_mock(**overrides):
     task.progress = overrides.get("progress", None)
     task.result = overrides.get("result", None)
     task.errors = overrides.get("errors", [])
+    task.task_type = overrides.get("task_type", None)
+    task.task_payload = overrides.get("task_payload", None)
+    task.queue_state = overrides.get("queue_state", None)
+    task.attempt_count = overrides.get("attempt_count", 0)
+    task.max_attempts = overrides.get("max_attempts", 1)
+    task.available_at = overrides.get("available_at", None)
+    task.lease_owner = overrides.get("lease_owner", None)
+    task.lease_expires_at = overrides.get("lease_expires_at", None)
+    task.heartbeat_at = overrides.get("heartbeat_at", None)
 
     def to_dict():
         return {
@@ -414,113 +423,442 @@ class TestListTasks:
         assert total == 0
 
 
-class TestRecoverInterruptedTasks:
-    """recover_interrupted_tasks — 服务启动时清理孤儿 running + 丢失的 pending。"""
-
+class TestExpireStaleTasks:
     @pytest.mark.asyncio
-    async def test_marks_orphan_running_tasks_as_failed(self, manager):
-        """status=running 的任务被标记为 failed，errors 追加中断说明。"""
-        t1 = _make_task_mock(task_id="orphan-1", status="running")
-        t2 = _make_task_mock(task_id="orphan-2", status="running")
+    async def test_only_expires_legacy_tasks_without_queue_state(self, manager):
         session = _make_session()
-        result_mock = MagicMock()
-        result_mock.scalars.return_value.all.return_value = [t1, t2]
-        session.execute = AsyncMock(return_value=result_mock)
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(return_value=result)
 
         with _patch_db(session):
-            count = await manager.recover_interrupted_tasks()
+            await manager.expire_stale_tasks(hours=1)
 
-        assert count == 2
-        assert t1.status == "failed"
-        assert t2.status == "failed"
-        assert t1.completed_at is not None
-        assert any("重启中断" in e for e in t1.errors)
-        assert any("重启中断" in e for e in t2.errors)
+        query = session.execute.await_args.args[0]
+        assert "tasks.queue_state IS NULL" in str(query)
+
+
+class TestPersistentQueueState:
+    @pytest.mark.asyncio
+    async def test_create_task_can_persist_executable_payload(self, manager):
+        session = _make_session()
+        with _patch_db(session):
+            await manager.create_task(
+                "idea",
+                "玄幻",
+                10000,
+                task_type="novel.generate",
+                task_payload={"request": {"idea": "idea"}},
+            )
+
+        added = session.add.call_args.args[0]
+        assert added.task_type == "novel.generate"
+        assert added.task_payload == {"request": {"idea": "idea"}}
+        assert added.queue_state == "queued"
+        assert added.attempt_count == 0
+        assert added.max_attempts == 1
+        assert added.available_at is not None
+
+    @pytest.mark.asyncio
+    async def test_enqueue_existing_task_resets_execution_segment(self, manager):
+        task = _make_task_mock(
+            task_id="task-1",
+            status="running",
+            queue_state="idle",
+            attempt_count=1,
+            lease_owner="old-worker",
+            progress={
+                "current_stage": "human_review",
+                "waiting_for_review": True,
+                "review_decision": "pending",
+            },
+        )
+        session = _make_session()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = task
+        session.execute = AsyncMock(return_value=result)
+
+        with _patch_db(session):
+            queued = await manager.enqueue_existing_task(
+                "task-1",
+                task_type="pipeline.resume",
+                task_payload={"decision": {"approval_status": "approved"}},
+            )
+
+        assert queued is True
+        assert task.task_type == "pipeline.resume"
+        assert task.queue_state == "queued"
+        assert task.attempt_count == 0
+        assert task.lease_owner is None
+        assert task.status == "pending"
+        assert task.progress["review_decision"] == "approved"
+        assert task.progress["waiting_for_review"] is False
+
+    @pytest.mark.asyncio
+    async def test_pipeline_resume_enqueue_requires_idle_waiting_review(self, manager):
+        task = _make_task_mock(
+            task_id="task-1",
+            status="running",
+            queue_state="leased",
+            lease_owner="active-worker",
+            progress={
+                "current_stage": "chapter_generation",
+                "waiting_for_review": False,
+            },
+        )
+        session = _make_session()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = task
+        session.execute = AsyncMock(return_value=result)
+
+        with _patch_db(session):
+            queued = await manager.enqueue_existing_task(
+                "task-1",
+                task_type="pipeline.resume",
+                task_payload={"decision": {"approval_status": "approved"}},
+            )
+
+        assert queued is False
+        assert task.queue_state == "leased"
+        assert task.lease_owner == "active-worker"
+        session.commit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_reject_review_task_atomically_fails_waiting_task(self, manager):
+        task = _make_task_mock(
+            task_id="task-review",
+            status="running",
+            queue_state="idle",
+            progress={
+                "current_stage": "human_review",
+                "waiting_for_review": True,
+                "review_decision": "pending",
+            },
+        )
+        session = _make_session()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = task
+        session.execute = AsyncMock(return_value=result)
+
+        with _patch_db(session):
+            rejected = await manager.reject_review_task(
+                "task-review",
+                instructions="主线方向错误",
+            )
+
+        assert rejected is True
+        assert task.status == "failed"
+        assert task.queue_state == "idle"
+        assert task.progress["review_decision"] == "rejected"
+        assert task.progress["review_instructions"] == "主线方向错误"
+        assert task.progress["waiting_for_review"] is False
+        assert "用户驳回审核" in task.errors
         session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_marks_pending_tasks_as_failed(self, manager):
-        """status=pending 的任务（BackgroundTasks 丢失）也被标记为 failed。
-
-        pending 任务由 FastAPI BackgroundTasks 进程内调度，容器在 add_task 后、
-        后台函数跑前重启会永久卡 pending。启动恢复一并清理。
-        """
-        pending_task = _make_task_mock(task_id="p1", status="pending")
+    async def test_reject_review_task_refuses_non_waiting_state(self, manager):
+        task = _make_task_mock(
+            task_id="task-review",
+            status="pending",
+            queue_state="queued",
+            progress={
+                "current_stage": "human_review",
+                "waiting_for_review": False,
+                "review_decision": "approved",
+            },
+        )
         session = _make_session()
-        result_mock = MagicMock()
-        result_mock.scalars.return_value.all.return_value = [pending_task]
-        session.execute = AsyncMock(return_value=result_mock)
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = task
+        session.execute = AsyncMock(return_value=result)
 
         with _patch_db(session):
-            count = await manager.recover_interrupted_tasks()
+            rejected = await manager.reject_review_task("task-review")
 
-        assert count == 1
-        assert pending_task.status == "failed"
-        assert pending_task.completed_at is not None
-        assert any("未及执行" in e for e in pending_task.errors)
+        assert rejected is False
+        assert task.status == "pending"
+        assert task.queue_state == "queued"
+        session.commit.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_running_and_pending_distinguish_reason(self, manager):
-        """running 与 pending 走不同中断文案。"""
-        running_task = _make_task_mock(task_id="r1", status="running")
-        pending_task = _make_task_mock(task_id="p1", status="pending")
+    async def test_claim_next_task_uses_skip_locked_and_sets_lease(self, manager):
+        task = _make_task_mock(
+            task_id="task-1",
+            task_type="novel.generate",
+            task_payload={"request": {}},
+            queue_state="queued",
+        )
         session = _make_session()
-        result_mock = MagicMock()
-        result_mock.scalars.return_value.all.return_value = [running_task, pending_task]
-        session.execute = AsyncMock(return_value=result_mock)
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = task
+        session.execute = AsyncMock(return_value=result)
 
         with _patch_db(session):
-            count = await manager.recover_interrupted_tasks()
+            claimed = await manager.claim_next_task("worker-1", 120)
 
-        assert count == 2
-        assert any("仍在运行" in e for e in running_task.errors)
-        assert any("未及执行" in e for e in pending_task.errors)
+        query = session.execute.call_args.args[0]
+        assert query._for_update_arg is not None
+        assert query._for_update_arg.skip_locked is True
+        assert query._limit_clause.value == 1
+        assert claimed["task_id"] == "task-1"
+        assert claimed["task_type"] == "novel.generate"
+        assert task.queue_state == "leased"
+        assert task.status == "running"
+        assert task.attempt_count == 1
+        assert task.lease_owner == "worker-1"
+        assert task.lease_expires_at > task.heartbeat_at
 
     @pytest.mark.asyncio
-    async def test_no_orphan_returns_zero(self, manager):
-        """无 running/pending 任务时返回 0，仍 commit（无操作）。"""
+    async def test_claim_next_task_returns_none_when_queue_empty(self, manager):
         session = _make_session()
-        result_mock = MagicMock()
-        result_mock.scalars.return_value.all.return_value = []
-        session.execute = AsyncMock(return_value=result_mock)
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=result)
 
         with _patch_db(session):
-            count = await manager.recover_interrupted_tasks()
+            claimed = await manager.claim_next_task("worker-1", 120)
 
-        assert count == 0
-        session.commit.assert_awaited_once()  # 仍 commit（无操作）
+        assert claimed is None
 
     @pytest.mark.asyncio
-    async def test_does_not_touch_non_stuck_tasks(self, manager):
-        """completed/failed 任务不在查询结果里（查询选 running+pending），状态不变。"""
-        running_task = _make_task_mock(task_id="r1", status="running")
-        completed_task = _make_task_mock(task_id="c1", status="completed")
+    async def test_claim_finalizes_expired_lease_when_attempts_exhausted(
+        self, manager
+    ):
+        task = _make_task_mock(
+            task_id="task-stale",
+            task_type="novel.generate",
+            status="running",
+            queue_state="leased",
+            attempt_count=1,
+            max_attempts=1,
+            lease_owner="dead-worker",
+            lease_expires_at=datetime.now(UTC) - timedelta(seconds=1),
+        )
         session = _make_session()
-        # 查询只返回 running+pending（模拟 SQL where status in (running,pending)）
-        result_mock = MagicMock()
-        result_mock.scalars.return_value.all.return_value = [running_task]
-        session.execute = AsyncMock(return_value=result_mock)
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = task
+        session.execute = AsyncMock(return_value=result)
 
         with _patch_db(session):
-            count = await manager.recover_interrupted_tasks()
+            claimed = await manager.claim_next_task("worker-2", 120)
 
-        assert count == 1
-        assert running_task.status == "failed"
-        # completed_task 不在查询结果里，状态不变
-        assert completed_task.status == "completed"
+        assert claimed is None
+        assert task.status == "failed"
+        assert task.queue_state == "idle"
+        assert task.lease_owner is None
+        assert any("不安全自动重放" in error for error in task.errors)
+        session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_preserves_existing_errors(self, manager):
-        """已有的 errors 被保留，中断说明追加到末尾。"""
-        task = _make_task_mock(task_id="r1", status="running", errors=["已有错误"])
+    async def test_renew_lease_requires_owner(self, manager):
+        task = _make_task_mock(
+            task_id="task-1", queue_state="leased", lease_owner="worker-1"
+        )
         session = _make_session()
-        result_mock = MagicMock()
-        result_mock.scalars.return_value.all.return_value = [task]
-        session.execute = AsyncMock(return_value=result_mock)
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = task
+        session.execute = AsyncMock(return_value=result)
+
+        with _patch_db(session):
+            renewed = await manager.renew_lease("task-1", "other", 120)
+
+        assert renewed is False
+        assert task.heartbeat_at is None
+
+        with _patch_db(session):
+            renewed = await manager.renew_lease("task-1", "worker-1", 120)
+
+        assert renewed is True
+        assert task.heartbeat_at is not None
+
+    @pytest.mark.asyncio
+    async def test_release_waiting_review_claim_to_idle(self, manager):
+        task = _make_task_mock(
+            task_id="task-1",
+            status="running",
+            queue_state="leased",
+            lease_owner="worker-1",
+            progress={"current_stage": "human_review", "waiting_for_review": True},
+        )
+        session = _make_session()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = task
+        session.execute = AsyncMock(return_value=result)
+
+        with _patch_db(session):
+            released = await manager.release_claim("task-1", "worker-1")
+
+        assert released is True
+        assert task.status == "running"
+        assert task.queue_state == "idle"
+        assert task.lease_owner is None
+
+    @pytest.mark.asyncio
+    async def test_release_plain_running_claim_marks_failed(self, manager):
+        task = _make_task_mock(
+            task_id="task-1",
+            status="running",
+            queue_state="leased",
+            lease_owner="worker-1",
+        )
+        session = _make_session()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = task
+        session.execute = AsyncMock(return_value=result)
+
+        with _patch_db(session):
+            released = await manager.release_claim("task-1", "worker-1")
+
+        assert released is True
+        assert task.status == "failed"
+        assert task.queue_state == "idle"
+        assert any("未进入终态" in error for error in task.errors)
+
+    @pytest.mark.asyncio
+    async def test_retry_or_fail_requeues_when_attempts_remain(self, manager):
+        task = _make_task_mock(
+            task_id="task-1",
+            status="running",
+            queue_state="leased",
+            lease_owner="worker-1",
+            attempt_count=1,
+            max_attempts=2,
+        )
+        session = _make_session()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = task
+        session.execute = AsyncMock(return_value=result)
+
+        with _patch_db(session):
+            requeued = await manager.retry_or_fail_claim(
+                "task-1", "worker-1", "boom", 5
+            )
+
+        assert requeued is True
+        assert task.status == "pending"
+        assert task.queue_state == "queued"
+        assert task.available_at is not None
+        assert task.errors[-1] == "boom"
+
+    @pytest.mark.asyncio
+    async def test_retry_or_fail_marks_failed_when_attempts_exhausted(self, manager):
+        task = _make_task_mock(
+            task_id="task-1",
+            status="running",
+            queue_state="leased",
+            lease_owner="worker-1",
+            attempt_count=1,
+            max_attempts=1,
+        )
+        session = _make_session()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = task
+        session.execute = AsyncMock(return_value=result)
+
+        with _patch_db(session):
+            requeued = await manager.retry_or_fail_claim(
+                "task-1", "worker-1", "boom", 5
+            )
+
+        assert requeued is False
+        assert task.status == "failed"
+        assert task.queue_state == "idle"
+        assert task.completed_at is not None
+
+
+class TestRecoverInterruptedTasks:
+    @pytest.mark.asyncio
+    async def test_classifies_queue_and_legacy_tasks(self, manager):
+        now = datetime.now(UTC)
+        queued = _make_task_mock(
+            task_id="queued", status="pending", queue_state="queued"
+        )
+        stale_retry = _make_task_mock(
+            task_id="retry",
+            status="running",
+            queue_state="leased",
+            attempt_count=1,
+            max_attempts=2,
+            lease_expires_at=now - timedelta(seconds=1),
+        )
+        stale_fail = _make_task_mock(
+            task_id="fail",
+            status="running",
+            queue_state="leased",
+            attempt_count=1,
+            max_attempts=1,
+            lease_expires_at=now - timedelta(seconds=1),
+        )
+        legacy = _make_task_mock(
+            task_id="legacy", status="pending", queue_state=None
+        )
+        future_lease = _make_task_mock(
+            task_id="future",
+            status="running",
+            queue_state="leased",
+            lease_expires_at=now + timedelta(minutes=5),
+        )
+        idle = _make_task_mock(
+            task_id="idle", status="running", queue_state="idle"
+        )
+
+        session = _make_session()
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [
+            queued,
+            stale_retry,
+            stale_fail,
+            legacy,
+            future_lease,
+            idle,
+        ]
+        session.execute = AsyncMock(return_value=result)
+
+        with _patch_db(session):
+            summary = await manager.recover_interrupted_tasks()
+
+        assert summary.queued_preserved == 1
+        assert summary.stale_requeued == 1
+        assert summary.stale_failed == 1
+        assert summary.legacy_failed == 1
+        assert summary.total_changed == 3
+        assert stale_retry.queue_state == "queued"
+        assert stale_retry.status == "pending"
+        assert stale_fail.status == "failed"
+        assert legacy.status == "failed"
+        assert future_lease.queue_state == "leased"
+        assert idle.queue_state == "idle"
+
+    @pytest.mark.asyncio
+    async def test_empty_recovery_returns_zero_summary(self, manager):
+        session = _make_session()
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(return_value=result)
+
+        with _patch_db(session):
+            summary = await manager.recover_interrupted_tasks()
+
+        assert summary.total_changed == 0
+        assert summary.queued_preserved == 0
+
+    @pytest.mark.asyncio
+    async def test_recovery_locks_only_actionable_queue_rows(self, manager):
+        session = _make_session()
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(return_value=result)
 
         with _patch_db(session):
             await manager.recover_interrupted_tasks()
 
-        assert task.errors[0] == "已有错误"
-        assert len(task.errors) == 2
-        assert "重启中断" in task.errors[1]
+        query = session.execute.await_args.args[0]
+        assert query._for_update_arg is not None
+        assert query._for_update_arg.skip_locked is True
+        list_params = [
+            value
+            for value in query.compile().params.values()
+            if isinstance(value, list)
+        ]
+        assert ["queued", "leased"] in list_params
+        assert ["queued", "leased", "idle"] not in list_params

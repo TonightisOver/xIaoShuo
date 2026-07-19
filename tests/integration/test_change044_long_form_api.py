@@ -10,12 +10,11 @@ Tests the following endpoints:
 - POST /api/v1/novels/{novel_id}/volumes/{volume_number}/pause
 - POST /api/v1/novels/{novel_id}/volumes/{volume_number}/resume
 
-Uses a real test database. Background tasks (LLM) are mocked.
+Uses a real test database. The ASGI transport does not start the persistent
+queue worker, so queued generation handlers and LLM calls do not run.
 """
 
 from __future__ import annotations
-
-from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -37,19 +36,6 @@ async def _db_setup():
     yield
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
-
-
-@pytest.fixture(autouse=True)
-def _mock_background_tasks():
-    """Mock all background generation tasks to prevent real LLM calls."""
-    with patch(
-        "src.api.services.novel_generator.generate_long_form_background",
-        new_callable=AsyncMock,
-    ), patch(
-        "src.api.services.novel_generator.generate_volume_background",
-        new_callable=AsyncMock,
-    ):
-        yield
 
 
 @pytest.fixture

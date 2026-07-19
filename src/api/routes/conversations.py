@@ -5,10 +5,10 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from src.api.services.conversation_service import get_conversation_service
+from src.api.owner_guard import verify_novel_owner
+from src.api.services.content.conversation_service import get_conversation_service
 from src.core.auth_models import User
 from src.core.security.auth import get_current_user
-from src.api.owner_guard import verify_novel_owner
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ class ApplySuggestionRequest(BaseModel):
 @router.post("/{novel_id}/conversations/{conv_id}/apply-suggestion")
 async def apply_suggestion(novel_id: str, conv_id: int, request: ApplySuggestionRequest, current_user: User = Depends(get_current_user)):
     await verify_novel_owner(novel_id, current_user)
-    from src.api.services.novel_manager import get_novel_manager
+    from src.api.services.content.novel_manager import get_novel_manager
 
     manager = get_novel_manager()
     novel = await manager.get_novel(novel_id)
@@ -109,7 +109,7 @@ async def apply_suggestion(novel_id: str, conv_id: int, request: ApplySuggestion
         if len(name) > 10:
             name = name[:10]
         description = content[len(name):].lstrip("：:-— ") if len(content) > len(name) else content
-        from src.api.services.character_service import get_character_service
+        from src.api.services.content.character_service import get_character_service
         char_id = await get_character_service().create_character(
             novel_id, name=name or "新角色",
             description=description or content
