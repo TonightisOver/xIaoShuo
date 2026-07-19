@@ -104,8 +104,9 @@ async def test_quality_gate_marks_unverified_when_low_score(fake_llm):
 @pytest.mark.asyncio
 async def test_persist_quality_for_gate_writes_chapterversion():
     """_persist_quality_for_gate 应把评分写进最新 ChapterVersion.quality_scores。"""
-    from src.api.models.db_models import ChapterVersion
     from sqlalchemy import desc, select
+
+    from src.api.models.db_models import ChapterVersion
     from src.core.database import Base, get_db_session, get_engine
 
     # 模块级建表（自含，不依赖 conftest 的 session fixture）
@@ -131,7 +132,9 @@ async def test_persist_quality_for_gate_writes_chapterversion():
                 content="v2", word_count=2, quality_scores={},
             ))
 
-        from src.api.services.generation.long_form_generation_helpers import _persist_quality_for_gate
+        from src.api.services.generation.long_form_generation_helpers import (
+            _persist_quality_for_gate,
+        )
         await _persist_quality_for_gate("persist-test", 1, {"overall": 0.85, "character_consistency": 0.9}, [])
 
         async with get_db_session() as session:
@@ -152,7 +155,6 @@ async def test_persist_quality_for_gate_writes_chapterversion():
 def _make_novel(novel_id: str):
     """构造测试用 Novel 行（满足非空约束）。"""
     from src.api.models.db_models import Novel
-    from src.core.auth_models import User
 
     # 返回一个可被 session.add 的 Novel；User(1) 需先存在
     return Novel(
