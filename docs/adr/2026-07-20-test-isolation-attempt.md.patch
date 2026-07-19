@@ -1,0 +1,236 @@
+diff --git a/tests/api/routes/test_llm_config.py b/tests/api/routes/test_llm_config.py
+index 1aba420..f4b303e 100644
+--- a/tests/api/routes/test_llm_config.py
++++ b/tests/api/routes/test_llm_config.py
+@@ -20,15 +20,9 @@ ADMIN_HEADERS = {"X-Admin-Token": "secret"}
+ 
+ 
+ @pytest.fixture(scope="module")
+-async def _db_setup():
++async def _db_setup(_session_tables):
+     crypto._get_fernet.cache_clear()
+-    engine = get_engine()
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.drop_all)
+-        await conn.run_sync(Base.metadata.create_all)
+     yield
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.drop_all)
+     crypto._get_fernet.cache_clear()
+ 
+ 
+diff --git a/tests/api/test_cross_novel_isolation.py b/tests/api/test_cross_novel_isolation.py
+index 9d753c9..a3bcc63 100644
+--- a/tests/api/test_cross_novel_isolation.py
++++ b/tests/api/test_cross_novel_isolation.py
+@@ -14,11 +14,7 @@ NOVEL_B = "isolation-novel-b"
+ 
+ 
+ @pytest.fixture(scope="module")
+-async def _db_setup():
+-    engine = get_engine()
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.create_all)
+-
++async def _db_setup(_session_tables):
+     # Seed two novels so FK constraints pass
+     async with get_db_session() as session:
+         if not await session.get(User, 1):
+@@ -40,9 +36,6 @@ async def _db_setup():
+ 
+     yield
+ 
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.drop_all)
+-
+ 
+ @pytest.fixture(scope="module")
+ async def char_id_novel_a(_db_setup):
+diff --git a/tests/api/test_routes.py b/tests/api/test_routes.py
+index 4f0439f..fe09023 100644
+--- a/tests/api/test_routes.py
++++ b/tests/api/test_routes.py
+@@ -8,13 +8,8 @@ from src.core.database import Base, get_engine
+ 
+ 
+ @pytest.fixture(scope="session")
+-async def _db_setup():
+-    engine = get_engine()
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.create_all)
++async def _db_setup(_session_tables):
+     yield
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.drop_all)
+ 
+ 
+ @pytest.fixture
+diff --git a/tests/integration/test_change029_volume_number_api.py b/tests/integration/test_change029_volume_number_api.py
+index a2a6a79..7df6d8e 100644
+--- a/tests/integration/test_change029_volume_number_api.py
++++ b/tests/integration/test_change029_volume_number_api.py
+@@ -18,14 +18,9 @@ from src.core.database import Base, get_engine
+ 
+ 
+ @pytest.fixture(scope="module")
+-async def _db_setup():
+-    """Create all tables before module tests, drop after."""
+-    engine = get_engine()
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.create_all)
++async def _db_setup(_session_tables):
++    """建表由 session 级 _session_tables 负责；本 fixture 仅作依赖锚点。"""
+     yield
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.drop_all)
+ 
+ 
+ @pytest.fixture
+diff --git a/tests/integration/test_change031_architecture_api.py b/tests/integration/test_change031_architecture_api.py
+index 0dec4de..4b24da6 100644
+--- a/tests/integration/test_change031_architecture_api.py
++++ b/tests/integration/test_change031_architecture_api.py
+@@ -20,12 +20,8 @@ NOVEL_B = "integ-031-novel-b"
+ 
+ 
+ @pytest.fixture(scope="module")
+-async def _db_setup():
+-    """Create tables and seed two novels for isolation tests."""
+-    engine = get_engine()
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.create_all)
+-
++async def _db_setup(_session_tables):
++    """Seed two novels for isolation tests (建表由 session 级 _session_tables 负责)。"""
+     async with get_db_session() as session:
+         # owner_id=1 需真实用户行；conftest 的 mock user id=1
+         if not await session.get(User, 1):
+@@ -47,9 +43,6 @@ async def _db_setup():
+ 
+     yield
+ 
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.drop_all)
+-
+ 
+ @pytest.fixture
+ async def client(_db_setup):
+diff --git a/tests/integration/test_change044_long_form_api.py b/tests/integration/test_change044_long_form_api.py
+index 825a972..4f54e9a 100644
+--- a/tests/integration/test_change044_long_form_api.py
++++ b/tests/integration/test_change044_long_form_api.py
+@@ -28,14 +28,9 @@ from src.core.database import Base, get_db_session, get_engine
+ # ---------------------------------------------------------------------------
+ 
+ @pytest.fixture(scope="module")
+-async def _db_setup():
+-    """Create all tables before module tests, drop after."""
+-    engine = get_engine()
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.create_all)
++async def _db_setup(_session_tables):
++    """建表由 session 级 _session_tables 负责；本 fixture 仅作依赖锚点。"""
+     yield
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.drop_all)
+ 
+ 
+ @pytest.fixture
+diff --git a/tests/integration/test_full_generate_api.py b/tests/integration/test_full_generate_api.py
+index 040b123..47827c0 100644
+--- a/tests/integration/test_full_generate_api.py
++++ b/tests/integration/test_full_generate_api.py
+@@ -18,14 +18,9 @@ from src.core.database import Base, get_engine
+ 
+ 
+ @pytest.fixture(scope="module")
+-async def _db_setup():
+-    """Create all tables before module tests, drop after."""
+-    engine = get_engine()
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.create_all)
++async def _db_setup(_session_tables):
++    """建表由 session 级 _session_tables 负责；本 fixture 仅作依赖锚点。"""
+     yield
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.drop_all)
+ 
+ 
+ @pytest.fixture
+diff --git a/tests/integration/test_knowledge_graph_api.py b/tests/integration/test_knowledge_graph_api.py
+index 70722cd..da8d971 100644
+--- a/tests/integration/test_knowledge_graph_api.py
++++ b/tests/integration/test_knowledge_graph_api.py
+@@ -25,14 +25,9 @@ from src.core.database import Base, get_engine
+ 
+ 
+ @pytest.fixture(scope="module")
+-async def _db_setup():
+-    """Create all tables before module tests, drop after."""
+-    engine = get_engine()
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.create_all)
++async def _db_setup(_session_tables):
++    """建表由 session 级 _session_tables 负责；本 fixture 仅作依赖锚点。"""
+     yield
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.drop_all)
+ 
+ 
+ @pytest.fixture
+diff --git a/tests/test_careers.py b/tests/test_careers.py
+index 763748b..0888871 100644
+--- a/tests/test_careers.py
++++ b/tests/test_careers.py
+@@ -27,11 +27,7 @@ NOVEL_ID = "career-test-novel"
+ 
+ 
+ @pytest.fixture(scope="module")
+-async def _db_setup():
+-    engine = get_engine()
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.create_all)
+-
++async def _db_setup(_session_tables):
+     async with get_db_session() as session:
+         if not await session.get(User, 1):
+             session.add(User(id=1, username="test_user", hashed_password="mocked", is_admin=True))
+@@ -51,9 +47,6 @@ async def _db_setup():
+ 
+     yield
+ 
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.drop_all)
+-
+ 
+ @pytest.fixture
+ async def client(_db_setup):
+diff --git a/tests/test_llm_config_auth.py b/tests/test_llm_config_auth.py
+index 2292ab8..2550c01 100644
+--- a/tests/test_llm_config_auth.py
++++ b/tests/test_llm_config_auth.py
+@@ -17,20 +17,17 @@ TEST_ENCRYPTION_KEY = "8bj5PGK84njNhOHlIV64dHHMh7QGgdrNKm5eozsXDKY="
+ 
+ 
+ @pytest.fixture(autouse=True)
+-async def secure_env(monkeypatch):
++async def secure_env(monkeypatch, _session_tables):
+     monkeypatch.setenv("LLM_ENCRYPTION_KEY", TEST_ENCRYPTION_KEY)
+     monkeypatch.setenv("ADMIN_TOKEN", "secret")
+     crypto._get_fernet.cache_clear()
+ 
+-    engine = get_engine()
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.drop_all)
+-        await conn.run_sync(Base.metadata.create_all)
++    # 清空 LLMConfig 数据（不 drop 表，避免与其它模块的表结构冲突）
++    async with get_db_session() as session:
++        await session.execute(text("DELETE FROM llm_configs"))
+ 
+     yield
+ 
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.drop_all)
+     crypto._get_fernet.cache_clear()
+ 
+ 
