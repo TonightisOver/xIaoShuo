@@ -233,13 +233,36 @@ xIaoShuo/
 ## 开发
 
 ```bash
-# 测试
-poetry run pytest tests/ -v
+# 一键跑全部门禁（后端测试 + 前端测试 + ruff + 结构/残留检查 + 前端构建）
+make verify
 
-# 代码检查
-poetry run ruff check src/ tests/
-poetry run mypy src/
+# 单项
+make test-backend        # 后端全部测试（排除真 LLM 的 test_langgraph）
+make test-unit           # 后端单元测试
+make test-api            # 后端 API 测试（需可达 PostgreSQL 测试库）
+make test-integration    # 后端集成测试（排除真 LLM）
+make test-frontend       # 前端 Vitest
+make ruff                # 静态检查
+make build-frontend      # 前端生产构建
+make check-structure      # 目录结构约束
+make check-legacy-paths  # 旧路径残留检查
 ```
+
+### 准备测试数据库
+
+集成/API 测试需可达的 PostgreSQL 测试库。本机已存在时 conftest 会自动探测；也可显式指定：
+
+```bash
+export TEST_DATABASE_URL='postgresql+asyncpg://a1@localhost:5432/xiaoshuo_test'
+```
+
+若无库，先建：
+
+```bash
+createdb xiaoshuo_test
+```
+
+> 注：`tests/integration/test_langgraph/test_graph.py` 真打 DeepSeek API（慢、依赖外网），默认不进门禁，需手动验证时单独跑 `poetry run pytest tests/integration/test_langgraph`。
 
 变更历史见 [CHANGELOG.md](CHANGELOG.md)。
 
