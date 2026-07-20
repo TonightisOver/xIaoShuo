@@ -63,6 +63,20 @@ CREATIVE_STAGES: tuple[CreativeStage, ...] = (
 # 全部产物类型。
 ARTIFACT_TYPES: tuple[str, ...] = tuple(s.artifact_type for s in CREATIVE_STAGES)
 
+# 合法操作类型（OperationLog.action 取值集合，共 10 类）。
+OPERATION_ACTIONS: tuple[str, ...] = (
+    "edit",
+    "generate",
+    "regenerate",
+    "lock",
+    "unlock",
+    "approve",
+    "rollback",
+    "adopt_candidate",
+    "keep_baseline",
+    "update_params",
+)
+
 # 走通用 ArtifactVersionStore 版本化的产物类型（正文除外，正文复用 ChapterVersion）。
 ARTIFACT_TYPES_VERSIONED_GENERICALLY: frozenset[str] = frozenset(
     {"world", "character", "master_outline", "volume_outline", "blueprint"}
