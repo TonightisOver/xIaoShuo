@@ -16,6 +16,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+import structlog
 from sqlalchemy import select
 
 from src.api.models.db_models import ArtifactControl, OperationLog
@@ -30,6 +31,8 @@ from src.core.exceptions import (
     ArtifactConflictError,
     ArtifactLockedError,
 )
+
+logger = structlog.get_logger(__name__)
 
 # 已确认/锁定：上游变更时仅标记过期，不自动重生成。
 _PROTECTED_STATUSES = frozenset({"approved", "locked"})
@@ -80,6 +83,74 @@ class CreativeControlService:
             return _row_to_dict(row)
 
     # -------------------------------------------------------- assert_writable
+
+    async def record_generated(
+        self,
+        novel_id: str,
+        artifact_type: str,
+        artifact_id: str,
+        *,
+        generation_meta: dict | None = None,
+        operator_id: int | None = None,
+        task_id: str | None = None,
+        operation_id: str | None = None,
+        respect_locked: bool = True,
+        force: bool = False,
+        awaiting_review: bool = False,
+    ) -> dict[str, Any] | None:
+        """生成路径专用：幂等记录产物已生成。
+
+        与人工编辑的 assert_writable 不同，本方法用于生成路径自身落库后回写控制元数据：
+        - 无 control 行 → 惰性建 generated/version=1。
+        - 已存在 → 转 generating→generated，version+1，写 generation_meta。
+        - respect_locked 且行已 locked 且非 force → 跳过（不覆盖锁定内容），返回 skipped_locked=True。
+        - 任何异常被吞，返回 None（插桩不破坏生成，遵循 gate.py "never throw" 不变量）。
+        """
+        try:
+            async with get_db_session() as session:
+                row = await self._select_for_update(
+                    session, novel_id, artifact_type, artifact_id
+                )
+                if row is None:
+                    row = ArtifactControl(
+                        novel_id=novel_id,
+                        artifact_type=artifact_type,
+                        artifact_id=artifact_id,
+                        control_status="generating",
+                        version=0,
+                        stage=stage_of(artifact_type) or 1,
+                    )
+                    session.add(row)
+                    await session.flush()
+                if respect_locked and row.locked and not force:
+                    return {
+                        "novel_id": novel_id, "artifact_type": artifact_type,
+                        "artifact_id": artifact_id, "skipped_locked": True,
+                        "version": row.version,
+                    }
+                # generating -> generated（宽松转换，允许从任意非终态进入）
+                row.control_status = "generated"
+                row.version += 1
+                row.generation_meta = generation_meta
+                row.awaiting_review = awaiting_review
+                row.updated_at = datetime.now(UTC)
+                session.add(OperationLog(
+                    novel_id=novel_id, artifact_type=artifact_type,
+                    artifact_id=artifact_id, action="generate",
+                    from_version=row.version - 1, to_version=row.version,
+                    operator_id=operator_id, task_id=task_id, operation_id=operation_id,
+                ))
+                await session.flush()
+                return _row_to_dict(row)
+        except Exception:  # noqa: BLE001 - 插桩不破坏生成
+            logger.warning(
+                "creative_control_record_generated_failed",
+                novel_id=novel_id, artifact_type=artifact_type,
+                artifact_id=artifact_id,
+            )
+            return None
+
+    # -------------------------------------------------------- assert_writable (人工编辑严格校验)
 
     async def assert_writable(
         self,

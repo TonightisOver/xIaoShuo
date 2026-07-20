@@ -9,7 +9,53 @@ from typing import Any
 
 import structlog
 
+from src.core.creative_control.contracts import (
+    ARTIFACT_TYPES,
+    ASSISTED_REVIEW_STAGES,
+    stage_of,
+)
+
 logger = structlog.get_logger(__name__)
+
+
+async def _record_artifact_generated(
+    novel_id: str,
+    artifact_type: str,
+    artifact_id: str,
+    *,
+    generation_meta: dict | None = None,
+) -> None:
+    """生成路径落库后回写 Creative Control 元数据（best-effort，不破坏生成）。
+
+    按 Novel.creation_mode 决定 awaiting_review：
+    - auto：不置标记（连续生成 = 现状）
+    - assisted：关键阶段（1/4/7/9）置 awaiting_review
+    - manual：所有阶段置 awaiting_review
+    任何异常被 CreativeControlService.record_generated 内部吞掉，此处不再 try。
+    """
+    if artifact_type not in ARTIFACT_TYPES:
+        return
+    try:
+        from src.api.services.content.novel_manager import get_novel_manager
+        from src.core.creative_control.control_service import CreativeControlService
+
+        novel = await get_novel_manager().get_novel(novel_id)
+        mode = (novel or {}).get("creation_mode", "auto")
+        awaiting = False
+        if mode == "manual":
+            awaiting = True
+        elif mode == "assisted":
+            awaiting = stage_of(artifact_type) in ASSISTED_REVIEW_STAGES
+        await CreativeControlService().record_generated(
+            novel_id, artifact_type, artifact_id,
+            generation_meta=generation_meta, awaiting_review=awaiting,
+        )
+    except Exception:  # noqa: BLE001 - 插桩绝不破坏生成
+        logger.warning(
+            "creative_control_instrumentation_failed",
+            novel_id=novel_id, artifact_type=artifact_type,
+            artifact_id=artifact_id,
+        )
 
 
 async def persist_langgraph_result(
@@ -53,6 +99,10 @@ async def persist_langgraph_result(
                     )
                 },
             )
+            await _record_artifact_generated(
+                novel_id, "world", novel_id,
+                generation_meta={"source": "generation"},
+            )
 
         # Characters (upsert: update existing by name, insert new)
         characters = result.get("characters", [])
@@ -75,6 +125,10 @@ async def persist_langgraph_result(
                     await char_svc.update_character(novel_id, existing["id"], **char_data)
                 else:
                     await char_svc.create_character(novel_id, **char_data)
+                await _record_artifact_generated(
+                    novel_id, "character", char_data["name"],
+                    generation_meta={"source": "generation"},
+                )
 
         # Volumes
         from src.api.services.content.volume_service import get_volume_service
@@ -134,6 +188,16 @@ async def persist_langgraph_result(
                         source="generation",
                         model_name="deepseek",
                         is_active=True,
+                    )
+                    # Creative Control 插桩：记录章节/版本已生成（best-effort，不破坏生成）
+                    ch_num = str(ch.get("chapter", 0))
+                    await _record_artifact_generated(
+                        novel_id, "chapter", ch_num,
+                        generation_meta={"source": "generation", "model": "deepseek"},
+                    )
+                    await _record_artifact_generated(
+                        novel_id, "chapter_version", ch_num,
+                        generation_meta={"source": "generation", "model": "deepseek"},
                     )
                 except (ValueError, Exception):
                     pass
