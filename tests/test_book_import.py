@@ -28,9 +28,15 @@ def clear_book_import_tasks():
 @pytest.fixture
 async def client():
     from src.api.routes.book_import import router
+    from src.core.auth_models import User
+    from src.core.security.auth import get_current_user
 
     test_app = FastAPI()
     test_app.include_router(router)
+    # 独立 app 不经 conftest 的 dependency_overrides；mock 一个固定用户让鉴权放行
+    test_app.dependency_overrides[get_current_user] = lambda: User(
+        id=1, username="test_user", hashed_password="x", is_admin=True
+    )
     transport = ASGITransport(app=test_app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
@@ -89,7 +95,7 @@ async def test_apply_import_creates_project_from_analysis(client):
     service = get_book_import_service()
     task_id = service.create_task([
         {"index": 1, "title": "第1章", "content": "正文"}
-    ])
+    ], owner_id=1)
     service._tasks[task_id]["status"] = "completed"
     service._tasks[task_id]["analysis"] = {
         "title": "雾城来信",
@@ -112,11 +118,16 @@ async def test_apply_import_creates_project_from_analysis(client):
     manager = Mock()
     manager.create_novel = AsyncMock(return_value="novel-created")
     manager.upsert_world_setting = AsyncMock()
-    manager.create_character = AsyncMock(return_value=101)
+
+    character_service = Mock()
+    character_service.create_character = AsyncMock(return_value=101)
 
     with patch(
         "src.api.services.book_import_service.get_novel_manager",
         return_value=manager,
+    ), patch(
+        "src.api.services.book_import_service.get_character_service",
+        return_value=character_service,
     ):
         response = await client.post(f"/api/v1/projects/import-book/{task_id}/apply")
 
@@ -127,4 +138,4 @@ async def test_apply_import_creates_project_from_analysis(client):
     assert create_kwargs["title"] == "雾城来信"
     assert create_kwargs["novel_type"] == "悬疑"
     manager.upsert_world_setting.assert_awaited_once()
-    manager.create_character.assert_awaited_once()
+    character_service.create_character.assert_awaited_once()

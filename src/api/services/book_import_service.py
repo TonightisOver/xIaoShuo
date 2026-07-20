@@ -113,6 +113,8 @@ class BookImportService:
         self,
         novel_id: str,
         analysis_data: dict[str, Any],
+        *,
+        owner_id: int | None = None,
     ) -> dict[str, Any]:
         manager = get_novel_manager()
         title = analysis_data.get("title") or novel_id
@@ -129,6 +131,7 @@ class BookImportService:
             writing_style="拆书风格",
             custom_style_description=style_prompt,
             writing_style_prompt=style_prompt,
+            owner_id=owner_id,
         )
 
         worldview = analysis_data.get("worldview") or {}
@@ -162,7 +165,7 @@ class BookImportService:
             "characters_created": created_characters,
         }
 
-    def create_task(self, chapters: list[dict[str, Any]]) -> str:
+    def create_task(self, chapters: list[dict[str, Any]], *, owner_id: int | None = None) -> str:
         self._cleanup_tasks()
         self._enforce_task_limit()
         task_id = f"book-import-{uuid.uuid4().hex}"
@@ -170,6 +173,7 @@ class BookImportService:
         self._tasks[task_id] = {
             "task_id": task_id,
             "status": "pending",
+            "owner_id": owner_id,
             "chapters": deepcopy(chapters),
             "chapter_count": len(chapters),
             "analysis": None,
@@ -189,11 +193,14 @@ class BookImportService:
         except Exception as exc:
             self._set_task(task_id, status="failed", error=str(exc))
 
-    def get_status(self, task_id: str) -> dict[str, Any]:
+    def get_status(self, task_id: str, *, owner_id: int | None = None) -> dict[str, Any]:
         task = self._get_task(task_id)
+        if owner_id is not None and task.get("owner_id") != owner_id:
+            raise PermissionError("Book import task not accessible")
         return {
             "task_id": task["task_id"],
             "status": task["status"],
+            "owner_id": task.get("owner_id"),
             "chapter_count": task["chapter_count"],
             "analysis": deepcopy(task["analysis"]),
             "project": deepcopy(task["project"]),
@@ -202,14 +209,16 @@ class BookImportService:
             "updated_at": task["updated_at"],
         }
 
-    async def apply_task(self, task_id: str) -> dict[str, Any]:
+    async def apply_task(self, task_id: str, *, owner_id: int | None = None) -> dict[str, Any]:
         task = self._get_task(task_id)
+        if owner_id is not None and task.get("owner_id") != owner_id:
+            raise PermissionError("Book import task not accessible")
         if task["status"] == "applied" and task["project"]:
             return deepcopy(task["project"])
         if task["status"] != "completed" or not task["analysis"]:
             raise ValueError("Book import analysis is not completed")
 
-        project = await self.create_project_from_analysis(task_id, task["analysis"])
+        project = await self.create_project_from_analysis(task_id, task["analysis"], owner_id=owner_id)
         self._set_task(task_id, status="applied", project=project)
         return deepcopy(project)
 

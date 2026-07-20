@@ -30,7 +30,7 @@ async def import_book(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    task_id = service.create_task(chapters)
+    task_id = service.create_task(chapters, owner_id=current_user.id)
     background_tasks.add_task(service.run_analysis, task_id, get_llm_client())
     return {
         "task_id": task_id,
@@ -43,7 +43,9 @@ async def import_book(
 async def get_import_status(task_id: str, current_user: User = Depends(get_current_user)):
     service = get_book_import_service()
     try:
-        return service.get_status(task_id)
+        return service.get_status(task_id, owner_id=current_user.id)
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Permission denied")
     except KeyError:
         raise HTTPException(status_code=404, detail="Book import task not found")
 
@@ -52,7 +54,9 @@ async def get_import_status(task_id: str, current_user: User = Depends(get_curre
 async def apply_import(task_id: str, current_user: User = Depends(get_current_user)):
     service = get_book_import_service()
     try:
-        return await service.apply_task(task_id)
+        return await service.apply_task(task_id, owner_id=current_user.id)
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Permission denied")
     except KeyError:
         raise HTTPException(status_code=404, detail="Book import task not found")
     except ValueError as exc:
