@@ -5,6 +5,7 @@ import os
 import socket
 
 import asyncpg
+import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -142,6 +143,33 @@ def pytest_configure(config):
         return user
 
     app.dependency_overrides[get_current_user] = mock_get_current_user
+
+
+_ISOLATING_FIXTURES = {"two_users", "admin_and_user", "ws_client_seed"}
+
+
+@pytest.fixture(autouse=True)
+async def _isolate_api_db(request):
+    """请求独立用户 fixture 的 tests/api 测试前清表，避免跨 module lifespan 残留
+    （dev user 等）导致 users_pkey id 冲突。
+
+    只在测试请求了 two_users/admin_and_user/ws_client_seed 等 function 级独立用户
+    fixture 时生效；依赖 module 级共享 seed 的测试（如 test_cross_novel_isolation）不受影响。
+    """
+    if not request.fixturenames or not (
+        _ISOLATING_FIXTURES & set(request.fixturenames)
+    ):
+        yield
+        return
+    from sqlalchemy import text
+    from src.core.database import get_db_session
+    try:
+        async with get_db_session() as session:
+            await session.execute(text("TRUNCATE users RESTART IDENTITY CASCADE"))
+            await session.commit()
+    except Exception:
+        pass
+    yield
 
 
 def pytest_unconfigure(config):

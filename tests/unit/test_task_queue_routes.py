@@ -76,13 +76,17 @@ async def test_create_novel_persists_standard_generation_payload(monkeypatch):
     manager = SimpleNamespace(create_task=AsyncMock(return_value="task-1"))
     monkeypatch.setattr(novels_route, "get_task_manager", lambda: manager)
 
-    response = await novels_route.create_novel(request)
+    response = await novels_route.create_novel(
+        request,
+        current_user=SimpleNamespace(id="user-1"),
+    )
 
     assert response.task_id == "task-1"
     manager.create_task.assert_awaited_once_with(
         idea=request.idea,
         novel_type=request.novel_type,
         target_words=request.target_words,
+        owner_id="user-1",
         task_type=TaskType.NOVEL_GENERATE.value,
         task_payload={"request": request.model_dump(mode="json")},
         max_attempts=1,
@@ -138,6 +142,7 @@ async def test_long_form_creates_novel_before_linked_queue_task(monkeypatch):
         novel_type=request.novel_type,
         target_words=request.target_words,
         novel_id="novel-long",
+        owner_id="user-1",
         task_type=TaskType.NOVEL_LONG_FORM.value,
         task_payload={
             "novel_id": "novel-long",
@@ -184,6 +189,7 @@ async def test_full_generate_persists_rebuilt_request_payload(monkeypatch):
         novel_type=request.novel_type,
         target_words=request.target_words,
         novel_id="novel-full",
+        owner_id="user-1",
         task_type=TaskType.NOVEL_FULL_GENERATE.value,
         task_payload={"request": expected_request.model_dump(mode="json")},
         max_attempts=1,
@@ -237,6 +243,7 @@ async def test_generate_volume_persists_volume_payload(monkeypatch):
         novel_type=_project()["novel_type"],
         target_words=_project()["target_words"],
         novel_id="novel-1",
+        owner_id="user-1",
         task_type=TaskType.NOVEL_VOLUME.value,
         task_payload={"novel_id": "novel-1", "volume_number": 3},
         max_attempts=1,
@@ -267,6 +274,7 @@ async def test_generate_chapters_persists_range_payload(monkeypatch):
         novel_type=_project()["novel_type"],
         target_words=_project()["target_words"],
         novel_id="novel-1",
+        owner_id="user-1",
         task_type=TaskType.NOVEL_CHAPTERS.value,
         task_payload={
             "novel_id": "novel-1",
@@ -286,6 +294,7 @@ async def test_review_requeues_same_task_for_pipeline_resume(monkeypatch):
             return_value={
                 "task_id": "task-review",
                 "status": "running",
+                "owner_id": "user-1",
                 "progress": {
                     "current_stage": "human_review",
                     "waiting_for_review": True,
@@ -298,6 +307,9 @@ async def test_review_requeues_same_task_for_pipeline_resume(monkeypatch):
         fail_task=AsyncMock(),
     )
     monkeypatch.setattr(review_route, "get_task_manager", lambda: manager)
+    monkeypatch.setattr(
+        "src.api.services.tasks.task_manager.get_task_manager", lambda: manager
+    )
     request = review_route.ReviewRequest(
         approval_status="revision",
         revision_instructions="加强主角冲突",
@@ -334,12 +346,16 @@ async def test_review_rejects_running_task_outside_human_review(monkeypatch):
             return_value={
                 "task_id": "task-running",
                 "status": "running",
+                "owner_id": "user-1",
                 "progress": {"current_stage": "chapter_generation"},
             }
         ),
         enqueue_existing_task=AsyncMock(return_value=True),
     )
     monkeypatch.setattr(review_route, "get_task_manager", lambda: manager)
+    monkeypatch.setattr(
+        "src.api.services.tasks.task_manager.get_task_manager", lambda: manager
+    )
 
     with pytest.raises(review_route.HTTPException) as exc_info:
         await review_route.submit_review(
@@ -363,6 +379,7 @@ async def test_review_returns_conflict_when_locked_resume_precondition_fails(
             return_value={
                 "task_id": "task-review",
                 "status": "running",
+                "owner_id": "user-1",
                 "progress": {
                     "current_stage": "human_review",
                     "waiting_for_review": True,
@@ -375,6 +392,9 @@ async def test_review_returns_conflict_when_locked_resume_precondition_fails(
         fail_task=AsyncMock(),
     )
     monkeypatch.setattr(review_route, "get_task_manager", lambda: manager)
+    monkeypatch.setattr(
+        "src.api.services.tasks.task_manager.get_task_manager", lambda: manager
+    )
 
     with pytest.raises(review_route.HTTPException) as exc_info:
         await review_route.submit_review(
@@ -395,6 +415,7 @@ async def test_rejected_review_uses_atomic_cas(monkeypatch):
             return_value={
                 "task_id": "task-review",
                 "status": "running",
+                "owner_id": "user-1",
                 "progress": {
                     "current_stage": "human_review",
                     "waiting_for_review": True,
@@ -405,6 +426,9 @@ async def test_rejected_review_uses_atomic_cas(monkeypatch):
         reject_review_task=AsyncMock(return_value=True),
     )
     monkeypatch.setattr(review_route, "get_task_manager", lambda: manager)
+    monkeypatch.setattr(
+        "src.api.services.tasks.task_manager.get_task_manager", lambda: manager
+    )
 
     response = await review_route.submit_review(
         "task-review",
@@ -431,6 +455,7 @@ async def test_rejected_review_returns_conflict_when_cas_fails(monkeypatch):
             return_value={
                 "task_id": "task-review",
                 "status": "running",
+                "owner_id": "user-1",
                 "progress": {
                     "current_stage": "human_review",
                     "waiting_for_review": True,
@@ -441,6 +466,9 @@ async def test_rejected_review_returns_conflict_when_cas_fails(monkeypatch):
         reject_review_task=AsyncMock(return_value=False),
     )
     monkeypatch.setattr(review_route, "get_task_manager", lambda: manager)
+    monkeypatch.setattr(
+        "src.api.services.tasks.task_manager.get_task_manager", lambda: manager
+    )
 
     with pytest.raises(review_route.HTTPException) as exc_info:
         await review_route.submit_review(

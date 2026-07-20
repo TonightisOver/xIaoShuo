@@ -1,6 +1,7 @@
 """Unit tests for CHANGE-033: task list route and model enhancements."""
 
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -83,14 +84,21 @@ class TestListNovelTasksRoute:
 
         with patch("src.api.routes.novels.get_task_manager") as mock_gtm:
             mock_task_mgr = AsyncMock()
-            mock_task_mgr.list_tasks = AsyncMock(return_value=(mock_tasks, 2))
+            mock_task_mgr.list_tasks_for_owner = AsyncMock(
+                return_value=(mock_tasks, 2)
+            )
             mock_gtm.return_value = mock_task_mgr
 
-            response = await list_novel_tasks(status=None, limit=20, offset=0)
+            response = await list_novel_tasks(
+                status=None,
+                limit=20,
+                offset=0,
+                current_user=SimpleNamespace(id="user-1"),
+            )
 
         # Assert task manager was called correctly
-        mock_task_mgr.list_tasks.assert_awaited_once_with(
-            status=None, limit=20, offset=0
+        mock_task_mgr.list_tasks_for_owner.assert_awaited_once_with(
+            owner_id="user-1", status=None, limit=20, offset=0
         )
 
         # Assert response structure and mapped data
