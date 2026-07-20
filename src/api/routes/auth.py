@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from src.api.models.db_models import User
+from src.core.config import get_settings
 from src.core.database import get_db_session
 from src.core.security.auth import get_current_user
 from src.core.security.users import (
@@ -48,9 +49,8 @@ async def register(req: AuthRequest):
                 detail="Username already exists",
             )
 
-        # Create user（若 username 匹配 ADMIN_USERNAME 环境变量，标记为 admin）
-        import os
-        admin_username = os.getenv("ADMIN_USERNAME", "").strip()
+        # Create user（若 username 匹配 ADMIN_USERNAME 配置，标记为 admin）
+        admin_username = get_settings().ADMIN_USERNAME.strip()
         is_admin = bool(admin_username) and req.username == admin_username
         hashed = hash_password(req.password)
         new_user = User(username=req.username, hashed_password=hashed, is_admin=is_admin)
