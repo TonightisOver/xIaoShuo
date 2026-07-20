@@ -572,3 +572,64 @@ class TestFixVolumeNumbers:
             with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
                 result = await svc.fix_volume_numbers("novel-1")
         assert result == 0
+
+
+# ============================================================
+# Task 9: expected_active_version 乐观锁
+# ============================================================
+
+class TestExpectedActiveVersion:
+    """activate/rollback 的 expected_active_version 乐观锁。"""
+
+    @pytest.mark.asyncio
+    async def test_activate_rejects_stale_expected_active_version(self):
+        """当前 active=2，但调用方传 expected=1 → ArtifactConflictError"""
+        from src.api.services.content.chapter_service import get_chapter_service
+        from src.core.exceptions import ArtifactConflictError
+        svc = get_chapter_service()
+
+        active_row = MagicMock()
+        active_row.version_number = 2  # 实际活跃版本
+        active_result = MagicMock()
+        active_result.scalar_one_or_none.return_value = active_row
+
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=active_result)
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
+            with pytest.raises(ArtifactConflictError):
+                await svc.activate_chapter_version(
+                    "novel-1", 1, 3, expected_active_version=1
+                )
+
+    @pytest.mark.asyncio
+    async def test_activate_without_expected_skips_lock_check(self):
+        """未传 expected_active_version → 向后兼容，走旧路径不校验"""
+        from src.api.services.content.chapter_service import get_chapter_service
+        svc = get_chapter_service()
+
+        # target 版本 + 空 active 查询（向后兼容路径：直接 select target）
+        target_row = MagicMock()
+        target_row.version_number = 3
+        target_row.content = "正文"
+        target_row.word_count = 2
+        target_result = MagicMock()
+        target_result.scalar_one_or_none.return_value = target_row
+        all_result = MagicMock()
+        all_scalars = MagicMock()
+        all_scalars.all.return_value = [target_row]
+        all_result.scalars.return_value = all_scalars
+        ch_row = MagicMock()
+        ch_result = MagicMock()
+        ch_result.scalar_one_or_none.return_value = ch_row
+
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[target_result, all_result, ch_result])
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
+            result = await svc.activate_chapter_version("novel-1", 1, 3)
+        assert result is True

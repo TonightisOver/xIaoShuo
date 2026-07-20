@@ -8,6 +8,7 @@ from sqlalchemy import func, select, update
 
 from src.api.models.db_models import Chapter, ChapterVersion
 from src.core.database import get_db_session
+from src.core.exceptions import ArtifactConflictError
 
 logger = structlog.get_logger(__name__)
 
@@ -340,10 +341,36 @@ class ChapterService:
         return new_version
 
     async def activate_chapter_version(
-        self, novel_id: str, chapter_number: int, version_number: int
+        self,
+        novel_id: str,
+        chapter_number: int,
+        version_number: int,
+        *,
+        expected_active_version: int | None = None,
     ) -> bool | None:
-        """将指定版本设为活跃版本，更新章节正文。"""
+        """将指定版本设为活跃版本，更新章节正文。
+
+        若传入 expected_active_version，则先校验当前活跃版本号一致，否则抛
+        ArtifactConflictError（路由映射 HTTP 409），防止基于过期页面覆盖新修改。
+        未传 expected_active_version 时走向后兼容路径，不做乐观锁校验。
+        """
         async with get_db_session() as session:
+            # 乐观锁校验（可选）
+            if expected_active_version is not None:
+                active_res = await session.execute(
+                    select(ChapterVersion.version_number).where(
+                        ChapterVersion.novel_id == novel_id,
+                        ChapterVersion.chapter_number == chapter_number,
+                        ChapterVersion.is_active.is_(True),
+                    )
+                )
+                current_active = active_res.scalar_one_or_none()
+                if current_active != expected_active_version:
+                    raise ArtifactConflictError(
+                        novel_id, "chapter_version", str(chapter_number),
+                        expected_active_version, current_active or 0,
+                    )
+
             result = await session.execute(
                 select(ChapterVersion).where(
                     ChapterVersion.novel_id == novel_id,

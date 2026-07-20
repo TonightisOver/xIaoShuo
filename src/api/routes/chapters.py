@@ -240,11 +240,36 @@ async def rollback_chapter_version(novel_id: str, chapter_number: int, version_n
 
 
 @router.post("/{novel_id}/chapters/{chapter_number}/versions/{version_number}/activate")
-async def activate_chapter_version(novel_id: str, chapter_number: int, version_number: int, current_user: User = Depends(get_current_user)):
-    """将指定版本设为活跃版本（更新章节正文为该版本内容）。"""
+async def activate_chapter_version(
+    novel_id: str,
+    chapter_number: int,
+    version_number: int,
+    expected_active_version: int | None = Query(None),
+    current_user: User = Depends(get_current_user),
+):
+    """将指定版本设为活跃版本（更新章节正文为该版本内容）。
+
+    传 expected_active_version 时做乐观锁校验，当前活跃版本已变化则返回 409。
+    """
+    from src.core.exceptions import ArtifactConflictError
+
     await verify_novel_owner(novel_id, current_user)
     service = get_chapter_service()
-    result = await service.activate_chapter_version(novel_id, chapter_number, version_number)
+    try:
+        result = await service.activate_chapter_version(
+            novel_id, chapter_number, version_number,
+            expected_active_version=expected_active_version,
+        )
+    except ArtifactConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "stale_active_version",
+                "message": "章节版本已变化，请刷新后重试",
+                "current_version": exc.current_version,
+                "expected_version": exc.expected_version,
+            },
+        ) from exc
     if result is None:
         raise HTTPException(status_code=404, detail="Version not found")
     return {"status": "activated", "version_number": version_number}
