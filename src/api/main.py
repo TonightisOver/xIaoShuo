@@ -17,6 +17,7 @@ from src.api.routes import (
     chapters_router,
     characters_router,
     conversations_router,
+    creative_control_router,
     export_router,
     health_router,
     inspiration_router,
@@ -214,6 +215,7 @@ app.include_router(careers_router)
 app.include_router(characters_router)
 app.include_router(chapters_router)
 app.include_router(chapter_analysis_router)
+app.include_router(creative_control_router)
 app.include_router(conversations_router)
 app.include_router(style_router)
 app.include_router(outlines_router)

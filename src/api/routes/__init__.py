@@ -7,6 +7,7 @@ from .chapter_analysis import router as chapter_analysis_router
 from .chapters import router as chapters_router
 from .characters import router as characters_router
 from .conversations import router as conversations_router
+from .creative_control import router as creative_control_router
 from .export import router as export_router
 from .health import router as health_router
 from .inspiration import router as inspiration_router
@@ -34,7 +35,7 @@ __all__ = [
     "storylines_router", "knowledge_graph_router", "story_bible_router",
     "export_router", "outline_sync_router", "reader_simulation_router",
     "llm_config_router", "inspiration_router",
-    "review_router",
+    "review_router", "creative_control_router",
 ]
 
 
