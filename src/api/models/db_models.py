@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     Column,
@@ -17,6 +18,7 @@ from sqlalchemy import (
     Text,
     TypeDecorator,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -82,6 +84,14 @@ class Novel(Base):
     chapters_per_volume: Mapped[int | None] = mapped_column(Integer, nullable=True)
     words_per_chapter: Mapped[int] = mapped_column(Integer, default=3000)
     master_outline: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # Creative Control：创作模式（auto 连续生成=现状 / assisted 关键阶段等确认 / manual 逐阶段）
+    creation_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="auto", server_default="auto"
+    )
+    # Creative Control：当前推进到的阶段号(1-10)，仅 manual/assisted 模式有意义
+    creative_stage: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
 
     # Relationships
     owner: Mapped["User | None"] = relationship(back_populates="novels")
@@ -309,6 +319,10 @@ class Chapter(Base):
     state_delta: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     # 本章是否通过质量门禁及评估状态：verified / unverified / failed
     quality_status: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    # 已消费本章的 StoryBible / 知识图谱副作用所对应的最终活跃版本号。
+    # NULL 表示未应用；哨兵 -1 表示历史章节已应用但版本未知（跳过重跑）。
+    bible_applied_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    kg_applied_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     novel: Mapped["Novel"] = relationship(back_populates="chapters")
 
@@ -319,12 +333,21 @@ class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = (
         Index("ix_tasks_queue_ready", "queue_state", "available_at"),
+        Index(
+            "uq_tasks_operation_active",
+            "operation_id",
+            unique=True,
+            postgresql_where=text("status NOT IN ('completed', 'failed', 'cancelled')"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     task_id: Mapped[str] = mapped_column(
         String(100), unique=True, nullable=False, index=True
     )
+    # 稳定操作标识 {novel_id}:{task_type}[:范围]，用于重复投递去重。
+    # 模型层 nullable（迁移回填历史行后由部分唯一索引在非终态上强制唯一）。
+    operation_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     novel_id: Mapped[str | None] = mapped_column(
         String(100), ForeignKey("novels.novel_id", ondelete="SET NULL"), index=True
     )
@@ -368,6 +391,7 @@ class Task(Base):
     def to_dict(self) -> dict[str, Any]:
         return {
             "task_id": self.task_id,
+            "operation_id": self.operation_id,
             "novel_id": self.novel_id,
             "owner_id": self.owner_id,
             "status": self.status,
@@ -382,6 +406,58 @@ class Task(Base):
             "result": self.result,
             "errors": self.errors or [],
         }
+
+
+class TaskCheckpoint(Base):
+    """长篇生成任务的持久化检查点（与 Task 1:1，只服务长篇非 HITL 路径）。
+
+    崩溃/重启后从最后已提交阶段继续，而非从头重生成。checkpoint_version 为
+    乐观锁，每次推进单调递增，保证同一任务的两个 worker 不会并发推进。
+    """
+
+    __tablename__ = "task_checkpoints"
+
+    task_id: Mapped[str] = mapped_column(
+        String(100),
+        ForeignKey("tasks.task_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    novel_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    operation_id: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    current_stage: Mapped[str] = mapped_column(String(40), nullable=False)
+    volume_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    chapter_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_completed_volume: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    last_completed_chapter: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    active_version_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    checkpoint_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    attempt_number: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    last_event_sequence: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", server_default="pending"
+    )
+    pause_requested: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=func.false()
+    )
+    failure_category: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    recoverable: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=func.true()
+    )
+    failure_detail: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now(),
+    )
 
 
 class Conversation(Base):
@@ -711,6 +787,23 @@ class ChapterVersion(Base):
             "source IN ('manual', 'ai_rewrite', 'rollback', 'generation')",
             name="ck_chapter_version_source",
         ),
+        # 每章至多一个活跃版本（DB 层保证单活跃不变量，照搬 ChapterBlueprint 模式）
+        Index(
+            "uq_chapter_version_active",
+            "novel_id",
+            "chapter_number",
+            unique=True,
+            postgresql_where=Column("is_active").is_(True),
+        ),
+        # 可重放写操作按确定性幂等键去重（仅生成路径写入的键参与，历史 NULL 不参与）
+        Index(
+            "uq_chapter_version_idem",
+            "novel_id",
+            "chapter_number",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -732,6 +825,8 @@ class ChapterVersion(Base):
     quality_scores: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     user_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # 可重放写操作的确定性幂等键（{operation_id}:{stage}:{chapter}），生成路径写入
+    idempotency_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -858,6 +953,11 @@ class ChapterBlueprint(Base):
     word_target: Mapped[int] = mapped_column(Integer, default=3000)
     rewrite_actions: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Creative Control：蓝图版本号，配合 is_active 历史（is_active=False 的旧行保留为审计）。
+    # 迁移回填历史行；新行在落库时由 ArtifactVersionStore 自增。
+    version_number: Mapped[int] = mapped_column(
+        Integer, nullable=True, default=1, server_default="1"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -944,4 +1044,146 @@ class AgentJournal(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(),
         onupdate=func.now()
+    )
+
+
+# ---------------------------------------------------------------------------
+# Creative Control：阶段化创作过程控制层
+# 设计依据：docs/superpowers/specs/2026-07-21-creative-control-design.md
+# ---------------------------------------------------------------------------
+
+
+class ArtifactControl(Base):
+    """创作产物的控制元数据：状态 / 锁定 / 乐观锁版本 / 来源 / 过期原因。
+
+    与产物本体表（WorldSetting/Character/Outline/…）分离，集中管理控制语义，
+    避免给每个产物表散弹加列。每条记录唯一对应一个 (novel, artifact_type, artifact_id)。
+    """
+
+    __tablename__ = "artifact_controls"
+    __table_args__ = (
+        UniqueConstraint(
+            "novel_id", "artifact_type", "artifact_id",
+            name="uq_artifact_control_target",
+        ),
+        Index(
+            "ix_artifact_control_novel_type", "novel_id", "artifact_type",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    artifact_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    # 产物标识：按 artifact_type 解释（novel_id / world_setting.id / chapter_number / version_number…）
+    artifact_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    # 控制状态 8 态：draft/generated/edited/approved/locked/stale/generating/failed
+    control_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="draft", server_default="draft",
+        index=True,
+    )
+    locked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # 乐观锁版本：每次受控写 +1；写请求带 expected_version 比对，不符抛 409
+    version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    stage: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # 来源元数据：{source, model, generated_at, operator_id, task_id, operation_id}
+    generation_meta: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    stale_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # 辅助/手动模式下，关键阶段产物落库后置 true 供前端拦截（不硬暂停后台）
+    awaiting_review: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+        onupdate=func.now()
+    )
+
+
+class ArtifactVersion(Base):
+    """通用产物版本快照（仅覆盖非正文产物：world/character/master_outline/volume_outline/blueprint）。
+
+    正文版本不在此表，复用 ChapterVersion。每产物至多一个 is_active 版本（部分唯一索引）。
+    """
+
+    __tablename__ = "artifact_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "novel_id", "artifact_type", "artifact_id", "version_number",
+            name="uq_artifact_version_number",
+        ),
+        # 每产物至多一个活跃版本（照搬 ChapterVersion / ChapterBlueprint 模式）
+        Index(
+            "uq_artifact_version_active",
+            "novel_id", "artifact_type", "artifact_id",
+            unique=True,
+            postgresql_where=Column("is_active").is_(True),
+        ),
+        Index(
+            "ix_artifact_version_target",
+            "novel_id", "artifact_type", "artifact_id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    artifact_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    artifact_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="manual", server_default="manual"
+    )
+    model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    operator_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
+    )
+    task_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    operation_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class OperationLog(Base):
+    """创作操作审计记录：编辑/生成/重生成/锁定/解锁/确认/回退/采纳候选/保留基线/改参数。"""
+
+    __tablename__ = "operation_logs"
+    __table_args__ = (
+        Index("ix_operation_log_novel_created", "novel_id", "created_at"),
+        Index("ix_operation_log_target", "novel_id", "artifact_type", "artifact_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    novel_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("novels.novel_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    artifact_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    artifact_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    # action: edit/generate/regenerate/lock/unlock/approve/rollback/adopt_candidate/keep_baseline/update_params
+    action: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    from_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    to_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    operator_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
+    )
+    reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    task_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    operation_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    meta: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
