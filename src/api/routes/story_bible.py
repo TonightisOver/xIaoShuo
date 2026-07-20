@@ -1,12 +1,15 @@
 """故事圣经 (Novel Bible) API 路由"""
 
 import structlog
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 
 from src.api.models.db_models import Novel, StoryBible
+from src.api.owner_guard import verify_novel_owner
+from src.core.auth_models import User
 from src.core.database import get_db_session
+from src.core.security.auth import get_current_user
 
 logger = structlog.get_logger(__name__)
 
@@ -52,8 +55,12 @@ class StoryBibleUpdate(BaseModel):
 # --- Endpoints ---
 
 @router.get("", response_model=StoryBibleResponse)
-async def get_story_bible(novel_id: str):
+async def get_story_bible(
+    novel_id: str,
+    current_user: User = Depends(get_current_user),
+):
     """获取小说的故事圣经。如果不存在，则自动初始化一条空记录。"""
+    await verify_novel_owner(novel_id, current_user)
     async with get_db_session() as session:
         # Check if novel exists first
         novel_result = await session.execute(
@@ -93,8 +100,13 @@ async def get_story_bible(novel_id: str):
 
 
 @router.put("", response_model=StoryBibleResponse)
-async def update_story_bible(novel_id: str, body: StoryBibleUpdate):
+async def update_story_bible(
+    novel_id: str,
+    body: StoryBibleUpdate,
+    current_user: User = Depends(get_current_user),
+):
     """更新小说的故事圣经设定"""
+    await verify_novel_owner(novel_id, current_user)
     async with get_db_session() as session:
         # Query story bible
         bible_result = await session.execute(
