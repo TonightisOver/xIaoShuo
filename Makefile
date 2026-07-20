@@ -10,7 +10,7 @@
 PY := poetry run
 FE := cd frontend && npm
 
-.PHONY: test-unit test-api test-integration test-backend test-frontend ruff ruff-fix build-frontend check-structure check-legacy-paths check-secrets verify
+.PHONY: test-unit test-api test-integration test-backend test-root test-frontend ruff ruff-fix build-frontend check-structure check-legacy-paths check-secrets verify
 
 ## 后端单元测试
 test-unit:
@@ -27,6 +27,11 @@ test-integration:
 ## 后端全部测试（分目录跑以避开 module 级 _db_setup 混跑隔离缺陷）
 test-backend: test-unit test-api test-integration
 	@echo "==== backend tests done ===="
+
+## 根级测试（tests/*.py：book_import/careers/inspiration/llm_config_auth）
+## 独立目标：这些文件用 module 级 _db_setup drop/create all，与 tests/api 混跑会互相破坏表。
+test-root:
+	$(PY) pytest tests/test_book_import.py tests/test_careers.py tests/test_inspiration.py tests/test_llm_config_auth.py -q
 
 ## 前端单元测试
 test-frontend:
@@ -57,5 +62,5 @@ check-secrets:
 	$(PY) python scripts/check_secrets.py
 
 ## 聚合门禁：跑全部验证（任一失败即整体失败）
-verify: test-backend test-frontend ruff check-structure check-legacy-paths check-secrets build-frontend
+verify: test-backend test-root test-frontend ruff check-structure check-legacy-paths check-secrets build-frontend
 	@echo "==== ALL CHECKS PASSED ===="

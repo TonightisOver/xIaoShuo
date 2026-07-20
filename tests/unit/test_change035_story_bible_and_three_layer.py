@@ -36,11 +36,12 @@ class TestStoryBibleAPI:
         mock_session.add = MagicMock()
         mock_session.flush = AsyncMock()
 
-        with patch("src.api.routes.story_bible.get_db_session") as mock_db:
+        with patch("src.api.routes.story_bible.get_db_session") as mock_db, \
+             patch("src.api.routes.story_bible.verify_novel_owner", new=AsyncMock()):
             mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            result = await get_story_bible(novel_id=novel_id)
+            result = await get_story_bible(novel_id=novel_id, current_user=MagicMock())
 
             # Check that it returned an auto-initialized StoryBible
             assert result.novel_id == novel_id
@@ -90,11 +91,12 @@ class TestStoryBibleAPI:
             character_cards=[{"name": "主角小帅", "role": "主角"}]
         )
 
-        with patch("src.api.routes.story_bible.get_db_session") as mock_db:
+        with patch("src.api.routes.story_bible.get_db_session") as mock_db, \
+             patch("src.api.routes.story_bible.verify_novel_owner", new=AsyncMock()):
             mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            result = await update_story_bible(novel_id=novel_id, body=update_body)
+            result = await update_story_bible(novel_id=novel_id, body=update_body, current_user=MagicMock())
 
             assert result.worldview_rules == "新世界观规则"
             assert result.hard_settings == "禁止吃西红柿"

@@ -34,6 +34,7 @@ jobs:
       - run: make test-unit
       - run: make test-api
       - run: make test-integration
+      - run: make test-root
       - run: make ruff
       - run: make check-structure
       - run: make check-legacy-paths
