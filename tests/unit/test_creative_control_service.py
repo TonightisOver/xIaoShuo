@@ -55,6 +55,7 @@ def _session_with_control_row(row, *, downstream_rows=None):
 
     # 后续 execute 调用按顺序：control row -> downstream rows -> update/insert
     session.execute = AsyncMock(side_effect=[control_result, downstream_result])
+    session.add = MagicMock()  # 同步 mock，避免 AsyncMock 协程警告
     session.flush = AsyncMock()
 
     @asynccontextmanager
@@ -278,6 +279,7 @@ async def test_lazy_create_on_missing_row():
     result = MagicMock()
     result.scalar_one_or_none.return_value = None
     session.execute = AsyncMock(return_value=result)
+    session.add = MagicMock()
     session.flush = AsyncMock()
 
     @asynccontextmanager
