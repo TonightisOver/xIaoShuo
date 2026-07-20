@@ -70,10 +70,10 @@ async def _insert_novel_direct(novel_id: str, **kwargs):
                 """
                 INSERT INTO novels (novel_id, title, idea, novel_type, target_words,
                     status, writing_style, words_per_chapter, is_long_form, total_volumes,
-                    chapters_per_volume, created_at, updated_at)
+                    chapters_per_volume, owner_id, created_at, updated_at)
                 VALUES (:novel_id, :title, :idea, :novel_type, :target_words,
                     :status, :writing_style, :words_per_chapter, :is_long_form,
-                    :total_volumes, :chapters_per_volume, NOW(), NOW())
+                    :total_volumes, :chapters_per_volume, :owner_id, NOW(), NOW())
                 """
             ),
             {
@@ -88,6 +88,9 @@ async def _insert_novel_direct(novel_id: str, **kwargs):
                 "is_long_form": kwargs.get("is_long_form", True),
                 "total_volumes": kwargs.get("total_volumes", 3),
                 "chapters_per_volume": kwargs.get("chapters_per_volume", 10),
+                # Phase 3 Task 3 给端点加了 verify_novel_owner，直接插入的 novel
+                # 必须带 owner_id 才能通过鉴权；conftest 的 mock user id=1。
+                "owner_id": kwargs.get("owner_id", 1),
             },
         )
 

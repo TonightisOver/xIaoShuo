@@ -162,6 +162,7 @@ async def _isolate_api_db(request):
         yield
         return
     from sqlalchemy import text
+
     from src.core.database import get_db_session
     try:
         async with get_db_session() as session:
