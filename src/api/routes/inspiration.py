@@ -37,7 +37,7 @@ class InspirationCreateCollectedRequest(BaseModel):
 @router.post("/start")
 async def start_inspiration_session(current_user: User = Depends(get_current_user)):
     wizard = get_inspiration_wizard()
-    return wizard.start_session()
+    return wizard.start_session(owner_id=current_user.id)
 
 
 @router.post("/{session_id}/step")
@@ -52,7 +52,10 @@ async def process_inspiration_step(
             session_id=session_id,
             step=request.step,
             user_input=request.user_input,
+            owner_id=current_user.id,
         )
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Inspiration session not accessible")
     except KeyError:
         raise HTTPException(status_code=404, detail="Inspiration session not found")
     except ValueError as exc:
@@ -80,7 +83,9 @@ async def generate_inspiration_outline(
                 request.collected, session_id=session_id,
             )
         # 回退：从 session 取（旧前端兼容）
-        return await wizard.generate_outline(session_id)
+        return await wizard.generate_outline(session_id, owner_id=current_user.id)
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Inspiration session not accessible")
     except KeyError:
         raise HTTPException(
             status_code=404,
@@ -112,6 +117,8 @@ async def create_inspiration_project(
         return await wizard.create_project(
             session_id, owner_id=current_user.id,
         )
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Inspiration session not accessible")
     except KeyError:
         raise HTTPException(
             status_code=404,

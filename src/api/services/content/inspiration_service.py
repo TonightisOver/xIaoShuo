@@ -45,13 +45,14 @@ class InspirationWizard:
     def __init__(self) -> None:
         self._sessions: dict[str, dict[str, Any]] = {}
 
-    def start_session(self) -> dict[str, Any]:
+    def start_session(self, *, owner_id: int | None = None) -> dict[str, Any]:
         self._cleanup_sessions()
         self._enforce_session_limit()
         session_id = f"inspiration-{uuid.uuid4().hex}"
         now = datetime.now(UTC).isoformat()
         self._sessions[session_id] = {
             "session_id": session_id,
+            "owner_id": owner_id,
             "current_step": "idea",
             "collected": {},
             "outline": None,
@@ -76,8 +77,16 @@ class InspirationWizard:
         session_id: str,
         step: str,
         user_input: str,
+        *,
+        owner_id: int | None = None,
     ) -> dict[str, Any]:
         session = self._get_session(session_id)
+        if (
+            owner_id is not None
+            and session.get("owner_id") is not None
+            and session.get("owner_id") != owner_id
+        ):
+            raise PermissionError("Inspiration session not accessible")
         if step not in self.steps:
             raise ValueError(f"Invalid step: {step}")
         if step != session["current_step"]:
@@ -130,9 +139,15 @@ class InspirationWizard:
             "collected": deepcopy(session["collected"]),
         }
 
-    async def generate_outline(self, session_id: str) -> dict[str, Any]:
+    async def generate_outline(self, session_id: str, *, owner_id: int | None = None) -> dict[str, Any]:
         """从 session 生成大纲（兼容旧调用，session 过期会 KeyError）。"""
         session = self._get_session(session_id)
+        if (
+            owner_id is not None
+            and session.get("owner_id") is not None
+            and session.get("owner_id") != owner_id
+        ):
+            raise PermissionError("Inspiration session not accessible")
         return await self.generate_outline_from_collected(
             session["collected"], session_id=session_id,
         )
@@ -165,6 +180,12 @@ class InspirationWizard:
     ) -> dict[str, Any]:
         """从 session 创建项目（兼容旧调用）。"""
         session = self._get_session(session_id)
+        if (
+            owner_id is not None
+            and session.get("owner_id") is not None
+            and session.get("owner_id") != owner_id
+        ):
+            raise PermissionError("Inspiration session not accessible")
         return await self.create_project_from_collected(
             session["collected"], target_words=target_words,
             owner_id=owner_id, outline=session.get("outline"),
