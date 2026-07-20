@@ -111,8 +111,8 @@ def _reload_active_llm_client(config: LLMConfig) -> None:
 
 
 @router.get("/configs", response_model=list[LLMConfigResponse])
-async def list_configs() -> list[LLMConfigResponse]:
-    """列出所有 LLM 配置（api_key 脱敏）。"""
+async def list_configs(_admin=Depends(require_admin_user)) -> list[LLMConfigResponse]:
+    """列出所有 LLM 配置（仅 admin，api_key 脱敏）。"""
     async with get_db_session() as session:
         result = await session.execute(select(LLMConfig).order_by(LLMConfig.id))
         configs = result.scalars().all()
@@ -216,6 +216,6 @@ async def activate_config(config_id: int, _admin=Depends(require_admin_user)) ->
 
 
 @router.get("/token-stats")
-async def get_token_stats() -> dict[str, Any]:
-    """返回 token 用量统计数据。"""
+async def get_token_stats(_admin=Depends(require_admin_user)) -> dict[str, Any]:
+    """返回 token 用量统计数据（仅 admin）。"""
     return get_token_tracker().get_stats()

@@ -1,7 +1,7 @@
 """LLM config auth and encryption tests.
 
-认证模型变更：写端点从 require_admin(ADMIN_TOKEN) 改为 get_current_user(session token)。
-登录用户即可管理 LLM 配置。GET 端点（list/token-stats）无需认证。
+安全模型（Task 5 后）：所有 LLM 配置端点（含 GET list/token-stats）均 require_admin_user。
+测试注册的 llmadmin 用户通过 ADMIN_USERNAME 匹配标记为 admin。
 """
 
 import pytest
@@ -20,7 +20,11 @@ TEST_ENCRYPTION_KEY = "8bj5PGK84njNhOHlIV64dHHMh7QGgdrNKm5eozsXDKY="
 async def secure_env(monkeypatch):
     monkeypatch.setenv("LLM_ENCRYPTION_KEY", TEST_ENCRYPTION_KEY)
     monkeypatch.setenv("ADMIN_TOKEN", "secret")
+    # 注册 username=llmadmin 的用户会被标记为 admin（auth.py register 逻辑）
+    monkeypatch.setenv("ADMIN_USERNAME", "llmadmin")
     crypto._get_fernet.cache_clear()
+    from src.core.config import get_settings
+    get_settings.cache_clear()
 
     engine = get_engine()
     async with engine.begin() as conn:
@@ -32,6 +36,7 @@ async def secure_env(monkeypatch):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
     crypto._get_fernet.cache_clear()
+    get_settings.cache_clear()
 
 
 @pytest.fixture
@@ -54,11 +59,18 @@ async def _register_and_login(client, username="llmadmin", password="pass1234"):
     return res.json()["session_token"]
 
 
-async def test_list_configs_no_auth_required(client):
-    """GET /configs 无需认证（脱敏数据公开）。"""
-    response = await client.get("/api/v1/llm/configs")
-    assert response.status_code == 200
-    assert response.json() == []
+async def test_list_configs_requires_admin(client):
+    """GET /configs 需 admin（Task 5.2）。匿名 401。"""
+    from src.api.main import app
+    from src.core.security.auth import get_current_user
+
+    saved = app.dependency_overrides.pop(get_current_user, None)
+    try:
+        response = await client.get("/api/v1/llm/configs")
+        assert response.status_code == 401
+    finally:
+        if saved is not None:
+            app.dependency_overrides[get_current_user] = saved
 
 
 async def test_create_config_without_session_returns_401(client):
