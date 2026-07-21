@@ -1,0 +1,139 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { createRouter, createMemoryHistory } from 'vue-router'
+import CreativeStudio from '../CreativeStudio.vue'
+
+const NOVEL_ID = '42'
+
+function makeRouter() {
+  return createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/novels/:id', name: 'novel-detail', component: { template: '<div/>' } },
+      { path: '/novels/:id/studio', name: 'studio', component: CreativeStudio },
+    ],
+  })
+}
+
+function makeFetch(routes = []) {
+  return vi.fn(async (url, opts = {}) => {
+    const method = (opts.method || 'GET').toUpperCase()
+    for (const route of routes) {
+      const matched = typeof route.match === 'string' ? url === route.match : route.match.test(url)
+      if (matched && (!route.method || route.method === method)) {
+        const body = route.body ?? {}
+        return {
+          ok: route.ok ?? true,
+          status: route.status ?? 200,
+          json: async () => body,
+          text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
+        }
+      }
+    }
+    return { ok: true, status: 200, json: async () => ({}), text: async () => '{}' }
+  })
+}
+
+async function mountStudio(fetchMock) {
+  const router = makeRouter()
+  vi.stubGlobal('fetch', fetchMock)
+  await router.push(`/novels/${NOVEL_ID}/studio`)
+  await router.isReady()
+  const wrapper = mount(CreativeStudio, {
+    global: {
+      plugins: [router],
+      stubs: { Teleport: true },
+    },
+  })
+  await flushPromises()
+  return wrapper
+}
+
+describe('CreativeStudio.vue', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', { getItem: () => 'tok', removeItem: () => {} })
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('loads novel + stage nav (10 stages) on mount', async () => {
+    const fetchMock = makeFetch([
+      { match: `/api/v1/novels/${NOVEL_ID}`, body: { id: NOVEL_ID, title: '测试小说' } },
+      {
+        match: /creative-control\/stage$/,
+        body: {
+          creation_mode: 'manual',
+          creative_stage: 1,
+          stages: Array.from({ length: 10 }, (_, i) => ({
+            number: i + 1,
+            name: `阶段${i + 1}`,
+            artifact_type: 'world',
+            control: { control_status: 'generated', version: 1 },
+          })),
+        },
+      },
+      { match: /artifacts\/world\/42$/, body: { control: { control_status: 'generated', version: 1 }, versions: [] } },
+      { match: /operations/, body: [] },
+    ])
+    const wrapper = await mountStudio(fetchMock)
+    expect(wrapper.text()).toContain('测试小说')
+    expect(wrapper.findAll('[data-stage-item]')).toHaveLength(10)
+    expect(wrapper.find('[data-mode-select]').element.value).toBe('manual')
+  })
+
+  it('shows conflict hint on 409 stale_version when editing', async () => {
+    const fetchMock = makeFetch([
+      { match: `/api/v1/novels/${NOVEL_ID}`, body: { id: NOVEL_ID, title: '冲突小说' } },
+      {
+        match: /creative-control\/stage$/,
+        body: {
+          creation_mode: 'auto', creative_stage: 1,
+          stages: [{ number: 1, name: '世界观', artifact_type: 'world', control: null }],
+        },
+      },
+      { match: /artifacts\/world\/42$/, method: 'GET', body: { control: { control_status: 'generated', version: 2 }, versions: [] } },
+      { match: /operations/, body: [] },
+      {
+        match: /artifacts\/world\/42$/,
+        method: 'PUT',
+        ok: false, status: 409,
+        body: { code: 'stale_version', message: '版本已变化', current_version: 5 },
+      },
+    ])
+    const wrapper = await mountStudio(fetchMock)
+    // 选中阶段1
+    await wrapper.find('[data-stage-item]').trigger('click')
+    await flushPromises()
+    // 点保存编辑
+    await wrapper.find('[data-action="edit"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-conflict-hint]').text()).toContain('版本已变化')
+    expect(wrapper.find('[data-conflict-hint]').text()).toContain('5')
+  })
+
+  it('clicking regenerate triggers regenerate endpoint', async () => {
+    const fetchMock = makeFetch([
+      { match: `/api/v1/novels/${NOVEL_ID}`, body: { id: NOVEL_ID, title: '重生成小说' } },
+      {
+        match: /creative-control\/stage$/,
+        body: {
+          creation_mode: 'auto', creative_stage: 1,
+          stages: [{ number: 1, name: '世界观', artifact_type: 'world', control: null }],
+        },
+      },
+      { match: /artifacts\/world\/42$/, body: { control: { control_status: 'generated', version: 1, locked: false }, versions: [] } },
+      { match: /operations/, body: [] },
+      { match: /regenerate$/, body: { status: 'generating', version: 2 } },
+    ])
+    const wrapper = await mountStudio(fetchMock)
+    await wrapper.find('[data-stage-item]').trigger('click')
+    await flushPromises()
+    await wrapper.find('[data-action="regenerate"]').trigger('click')
+    await flushPromises()
+    const regenCall = fetchMock.mock.calls.find(c => /regenerate$/.test(c[0]))
+    expect(regenCall).toBeTruthy()
+    expect(regenCall[1].method).toBe('POST')
+  })
+})
