@@ -25,15 +25,54 @@ async def _emit_progress(
     update_status: bool = False,
     status: str = "running",
 ) -> None:
-    event_bus = get_event_bus()
-    await event_bus.publish(ProgressEvent(
-        task_id=task_id,
-        event_type=event_type,
-        data=data,
-    ))
+    """发布进度事件（Task 8 / R7 / B8）。
+
+    - 永不抛异常：publish / update_status 失败仅 log，不阻断章节流程。
+    - 有 checkpoint 时给 data 注入 sequence = last_event_sequence + 1，
+      订阅方按 seq 去重/排序。seq 本身的推进由调用方在 side_effects 阶段
+      经 advance_checkpoint 完成（本函数只读不写，避免无 lease 的路由路径
+      误触 lease 守卫）。
+    """
+    payload = dict(data)
+    try:
+        from src.api.services.tasks.checkpoint_store import get_checkpoint_store
+
+        cp = await get_checkpoint_store().read(task_id)
+        if cp is not None:
+            payload["sequence"] = int(cp.get("last_event_sequence") or 0) + 1
+    except Exception as exc:
+        logger.warning(
+            "emit_progress_checkpoint_read_failed",
+            task_id=task_id,
+            error=str(exc),
+        )
+
+    try:
+        event_bus = get_event_bus()
+        await event_bus.publish(ProgressEvent(
+            task_id=task_id,
+            event_type=event_type,
+            data=payload,
+        ))
+    except Exception as exc:
+        logger.warning(
+            "emit_progress_publish_failed",
+            task_id=task_id,
+            event_type=getattr(event_type, "value", event_type),
+            error=str(exc),
+        )
+        return
+
     if update_status:
-        task_manager = get_task_manager()
-        await task_manager.update_status(task_id, status, progress=data)
+        try:
+            task_manager = get_task_manager()
+            await task_manager.update_status(task_id, status, progress=payload)
+        except Exception as exc:
+            logger.warning(
+                "emit_progress_update_status_failed",
+                task_id=task_id,
+                error=str(exc),
+            )
 
 
 async def _get_story_bible_context(novel_id: str, chapter_outline: dict) -> str | None:

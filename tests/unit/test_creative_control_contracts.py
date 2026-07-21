@@ -11,13 +11,12 @@ from src.core.creative_control.contracts import (
     ARTIFACT_TYPES,
     ARTIFACT_TYPES_VERSIONED_GENERICALLY,
     CREATIVE_STAGES,
-    CreationMode,
-    ControlStatus,
     DEPENDENCY_GRAPH,
+    ControlStatus,
+    CreationMode,
     legal_transitions,
     stage_of,
 )
-
 
 # ---------------------------------------------------------------------------
 # 阶段定义

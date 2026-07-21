@@ -160,8 +160,14 @@ class NovelManager:
                                       diff_from_previous: str | None = None,
                                       kg_conflicts: dict | None = None,
                                       user_notes: str | None = None,
-                                      is_active: bool = False) -> int:
-        """创建章节版本快照，代理到 ChapterService。"""
+                                      is_active: bool = False,
+                                      *,
+                                      idempotency_key: str | None = None,
+                                      quality_status: str | None = None) -> int:
+        """创建章节版本快照，代理到 ChapterService。
+
+        透传 idempotency_key（长篇检查点幂等）与 quality_status（手改正文置 unverified）。
+        """
         return await get_chapter_service().create_chapter_version(
             novel_id=novel_id,
             chapter_number=chapter_number,
@@ -175,6 +181,8 @@ class NovelManager:
             kg_conflicts=kg_conflicts,
             user_notes=user_notes,
             is_active=is_active,
+            idempotency_key=idempotency_key,
+            quality_status=quality_status,
         )
 
     async def list_chapter_versions(self, novel_id: str,

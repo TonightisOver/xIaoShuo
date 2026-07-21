@@ -13,6 +13,7 @@ import structlog
 from src.api.services.tasks.task_dispatcher import dispatch_task
 from src.api.services.tasks.task_manager import TaskManager, get_task_manager
 from src.core.config import get_settings
+from src.core.exceptions import LeaseLost, PausedExit
 
 logger = structlog.get_logger(__name__)
 
@@ -98,6 +99,9 @@ class PersistentTaskWorker:
 
     async def _run_claim(self, claim: dict[str, Any]) -> None:
         task_id = str(claim["task_id"])
+        # B1: worker_id 注入 claim dict，供 dispatcher → generate_* → advance_checkpoint
+        # 全链路 lease 守卫使用。业务层据此在安全边界复查 lease 所有权。
+        claim["worker_id"] = self.worker_id
         dispatch = asyncio.create_task(
             self.dispatcher(claim),
             name=f"task-dispatch:{task_id}",
@@ -129,6 +133,18 @@ class PersistentTaskWorker:
                 await dispatch
             except asyncio.CancelledError:
                 raise
+            except (LeaseLost, PausedExit) as clean_exit:
+                # B7/B12: lease 丢失或协作式暂停——worker 干净退出，
+                # 不调 release_claim / retry_or_fail_claim。
+                # lease 已归属新 worker（LeaseLost）或任务已置 paused（PausedExit），
+                # 由新 worker / resume 接管。
+                logger.info(
+                    "task_dispatch_clean_exit",
+                    task_id=task_id,
+                    worker_id=self.worker_id,
+                    reason=type(clean_exit).__name__,
+                )
+                return
             except Exception as exc:
                 error = f"{type(exc).__name__}: {exc}"
                 logger.exception(

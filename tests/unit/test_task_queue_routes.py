@@ -148,7 +148,8 @@ async def test_long_form_creates_novel_before_linked_queue_task(monkeypatch):
             "novel_id": "novel-long",
             "request": request.model_dump(mode="json"),
         },
-        max_attempts=1,
+        max_attempts=3,
+        operation_id=f"novel-long:{TaskType.NOVEL_LONG_FORM.value}",
     )
 
 
@@ -246,7 +247,8 @@ async def test_generate_volume_persists_volume_payload(monkeypatch):
         owner_id="user-1",
         task_type=TaskType.NOVEL_VOLUME.value,
         task_payload={"novel_id": "novel-1", "volume_number": 3},
-        max_attempts=1,
+        max_attempts=3,
+        operation_id="novel-1:volume:3",
     )
 
 
@@ -281,7 +283,8 @@ async def test_generate_chapters_persists_range_payload(monkeypatch):
             "chapter_start": 11,
             "chapter_end": 20,
         },
-        max_attempts=1,
+        max_attempts=3,
+        operation_id="novel-1:chapters:11-20",
     )
 
 

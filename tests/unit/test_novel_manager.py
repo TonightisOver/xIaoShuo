@@ -423,6 +423,7 @@ class TestDelegations:
             source="manual", rewrite_instruction=None, quality_score=None,
             model_name=None, prompt_summary=None, diff_from_previous=None,
             kg_conflicts=None, user_notes=None, is_active=True,
+            idempotency_key=None, quality_status=None,
         )
 
     @pytest.mark.asyncio

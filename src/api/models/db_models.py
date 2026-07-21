@@ -447,11 +447,11 @@ class TaskCheckpoint(Base):
         String(20), nullable=False, default="pending", server_default="pending"
     )
     pause_requested: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default=func.false()
+        Boolean, nullable=False, default=False, server_default="false"
     )
     failure_category: Mapped[str | None] = mapped_column(String(30), nullable=True)
     recoverable: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True, server_default=func.true()
+        Boolean, nullable=False, default=True, server_default="true"
     )
     failure_detail: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(

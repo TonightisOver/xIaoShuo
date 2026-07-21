@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     TASK_QUEUE_POLL_SECONDS: float = 1.0
     TASK_QUEUE_LEASE_SECONDS: int = 120
     TASK_QUEUE_RETRY_DELAY_SECONDS: int = 5
+    # 长篇任务断点重试预算（配合 task_checkpoints 从断点续跑，而非从头重生成）
+    LONG_FORM_MAX_ATTEMPTS: int = 3
 
     # Knowledge Graph
     KNOWLEDGE_GRAPH_ENABLED: bool = True

@@ -17,6 +17,7 @@ from src.api.services.content.novel_manager import get_novel_manager
 from src.api.services.content.volume_service import get_volume_service
 from src.api.services.tasks.task_dispatcher import TaskType
 from src.api.services.tasks.task_manager import get_task_manager
+from src.core.config import get_settings
 from src.core.security.auth import get_current_user
 from src.core.validation import ValidationError, validate_idea, validate_novel_type
 
@@ -371,7 +372,8 @@ async def generate_volume(
             "novel_id": novel_id,
             "volume_number": request.volume_number,
         },
-        max_attempts=1,
+        max_attempts=get_settings().LONG_FORM_MAX_ATTEMPTS,
+        operation_id=f"{novel_id}:volume:{request.volume_number}",
     )
     await volume_service.update_volume(
         novel_id, request.volume_number, status="generating"
@@ -430,7 +432,10 @@ async def generate_chapters(
             "chapter_start": request.chapter_start,
             "chapter_end": request.chapter_end,
         },
-        max_attempts=1,
+        max_attempts=get_settings().LONG_FORM_MAX_ATTEMPTS,
+        operation_id=(
+            f"{novel_id}:chapters:{request.chapter_start}-{request.chapter_end}"
+        ),
     )
 
     return {

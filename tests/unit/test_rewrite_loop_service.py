@@ -124,6 +124,8 @@ class TestAutoImproveChapter:
         assert result["iterations_done"] == 0
         assert result["reached_target"] is True
         assert result["improvement_history"] == []
+        # 首轮即达标：无候选，best_version 为 None
+        assert result["best_version"] is None
 
     @pytest.mark.asyncio
     async def test_max_iterations_reached(self):
@@ -185,6 +187,78 @@ class TestAutoImproveChapter:
         assert result["iterations_done"] == 2
         assert result["reached_target"] is False
         assert len(result["improvement_history"]) == 2
+        # 新契约：L3 只创建候选，绝不自行激活（由 finalize 统一激活）
+        mock_manager.activate_chapter_version.assert_not_called()
+        # 分数从未提升 → 无最优候选
+        assert result["best_version"] is None
+
+    @pytest.mark.asyncio
+    async def test_improved_candidate_returns_best_version_without_activating(self):
+        """候选改善时返回 best_version 指向候选版本号，但不激活。"""
+        from src.api.services.quality.rewrite_loop_service import RewriteLoopService
+
+        mock_manager = AsyncMock()
+        mock_manager.get_chapter = AsyncMock(
+            return_value={"content": "Mediocre chapter content"}
+        )
+        mock_manager.create_chapter_version = AsyncMock(return_value=7)
+
+        mock_rewrite = AsyncMock(return_value="Rewritten better content")
+
+        mock_rewrite_ctx = MagicMock()
+        mock_rewrite_ctx.world_setting = ""
+        mock_rewrite_ctx.chapter_outline = ""
+        mock_rewrite_ctx.prev_chapter_summary = ""
+        mock_rewrite_ctx.next_chapter_summary = ""
+        mock_rewrite_ctx.characters = ""
+        mock_rewrite_ctx.story_bible = ""
+        mock_rewrite_ctx.writing_style = ""
+
+        mock_builder = MagicMock()
+        mock_builder.build_rewrite_context = AsyncMock(return_value=mock_rewrite_ctx)
+
+        ctx_factory, _ = _fake_session()
+
+        # 第一次评估低分（触发改写），改写后评估达标
+        eval_results = [_low_scores(), _high_scores()]
+
+        async def _eval_side_effect(*args, **kwargs):
+            return eval_results.pop(0)
+
+        svc = RewriteLoopService()
+
+        with (
+            patch(
+                "src.api.services.quality.rewrite_loop_service.get_novel_manager",
+                return_value=mock_manager,
+            ),
+            patch(
+                "src.api.services.quality.rewrite_loop_service._evaluate_chapter_quality_for_novel",
+                new_callable=AsyncMock,
+                side_effect=_eval_side_effect,
+            ),
+            patch(
+                "src.core.llm.chapter_rewriter.batch_targeted_rewrite",
+                mock_rewrite,
+            ),
+            patch(
+                "src.api.services.quality.rewrite_loop_service.get_db_session",
+                ctx_factory,
+            ),
+            patch(
+                "src.api.services.quality.rewrite_loop_service.NovelContextBuilder",
+                return_value=mock_builder,
+            ),
+        ):
+            result = await svc.auto_improve_chapter(
+                _novel_id(), 1, max_iterations=3, target_score=0.6
+            )
+
+        # 候选改善（overall 0.55 → 0.78）→ best_version 指向候选
+        assert result["best_version"] == 7
+        # 仍然不激活
+        mock_manager.activate_chapter_version.assert_not_called()
+        assert result["reached_target"] is True
 
 
 # ===========================================================================

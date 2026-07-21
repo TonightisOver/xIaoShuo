@@ -43,9 +43,19 @@ async def pause_task(task_id: str) -> None:
 
 
 async def resume_task(task_id: str) -> None:
-    from src.api.services.generation.pause_state_store import get_pause_state_store
+    """恢复任务（Task 7 §七.4，修正 B5）。
 
-    await get_pause_state_store().clear_paused(task_id)
+    长篇（有 checkpoint）：走 requeue_paused_task 重新入队，由队列重新 claim
+    从断点续；不再 clear_paused 硬切 running（那只清标志不重入队 → 卡死）。
+    短篇/HITL（无 checkpoint）：降级走 clear_paused（旧行为把 status 改回 running）。
+    """
+    from src.api.services.generation.pause_state_store import get_pause_state_store
+    from src.api.services.tasks.task_manager import get_task_manager
+
+    result = await get_task_manager().requeue_paused_task(task_id)
+    if result.reason == "no_checkpoint":
+        # 短篇/HITL 降级：无 checkpoint，走旧的清标志路径。
+        await get_pause_state_store().clear_paused(task_id)
     await _emit_progress(
         task_id,
         EventType.GENERATION_RESUMED,
@@ -54,9 +64,10 @@ async def resume_task(task_id: str) -> None:
 
 
 async def is_task_paused(task_id: str) -> bool:
+    """业务层调用点：语义映射到"是否已请求暂停"（is_pause_requested）。"""
     from src.api.services.generation.pause_state_store import get_pause_state_store
 
-    return await get_pause_state_store().is_paused(task_id)
+    return await get_pause_state_store().is_pause_requested(task_id)
 
 
 async def _prepare_chapter_context(

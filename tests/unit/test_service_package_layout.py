@@ -15,6 +15,7 @@ EXPECTED_PACKAGES = {
         "task_manager",
         "task_dispatcher",
         "task_worker",
+        "checkpoint_store",
     ),
     "quality": (
         "quality_action_service",

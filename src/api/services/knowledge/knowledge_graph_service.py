@@ -36,12 +36,83 @@ class KnowledgeGraphService:
     """知识图谱服务"""
 
     async def extract_from_chapter(
-        self, novel_id: str, chapter_number: int, chapter_text: str, continuity_report: dict | None = None
+        self,
+        novel_id: str,
+        chapter_number: int,
+        chapter_text: str,
+        continuity_report: dict | None = None,
+        *,
+        applied_version: int | None = None,
     ) -> dict[str, Any]:
-        """从单章文本抽取实体和关系"""
+        """从单章文本抽取实体和关系。
+
+        Task 11 / B20：幂等判定——
+        1. KnowledgeExtractionLog.status=='completed' 则跳过（已抽过）。
+        2. 传入 applied_version 时，若 Chapter.kg_applied_version >= applied_version
+           也跳过（恢复重放不重复抽取）。
+        成功后写 kg_applied_version = applied_version。
+        """
         settings = get_settings()
         if not settings.KNOWLEDGE_GRAPH_ENABLED:
             return {"entities_count": 0, "triples_count": 0}
+
+        # 幂等：仅在 checkpoint 路径（传 applied_version）做 log 幂等判定，
+        # 避免无 checkpoint 的单次抽取路径多消耗 session.execute（破坏单测 mock 契约）。
+        # 长篇重放场景才需要"已 completed 则跳过"。
+        if applied_version is not None:
+            async with get_db_session() as session:
+                existing_log = (
+                    await session.execute(
+                        select(KnowledgeExtractionLog).where(
+                            and_(
+                                KnowledgeExtractionLog.novel_id == novel_id,
+                                KnowledgeExtractionLog.chapter_number == chapter_number,
+                                KnowledgeExtractionLog.status == "completed",
+                            )
+                        )
+                    )
+                ).scalar_one_or_none()
+                if existing_log is not None and getattr(
+                    existing_log, "status", None
+                ) == "completed":
+                    logger.info(
+                        "knowledge_extraction_skipped_idempotent",
+                        novel_id=novel_id,
+                        chapter=chapter_number,
+                    )
+                    return {
+                        "entities_count": getattr(existing_log, "entities_count", 0) or 0,
+                        "triples_count": getattr(existing_log, "triples_count", 0) or 0,
+                        "skipped": True,
+                    }
+                # 版本哨兵
+                from src.api.models.db_models import Chapter
+
+                ch = (
+                    await session.execute(
+                        select(Chapter).where(
+                            Chapter.novel_id == novel_id,
+                            Chapter.chapter_number == chapter_number,
+                        )
+                    )
+                ).scalar_one_or_none()
+                if ch is not None:
+                    applied_existing = getattr(ch, "kg_applied_version", None)
+                    if isinstance(applied_existing, int) and (
+                        applied_existing >= applied_version or applied_existing == -1
+                    ):
+                        logger.info(
+                            "knowledge_extraction_skipped_version",
+                            novel_id=novel_id,
+                            chapter=chapter_number,
+                            applied=applied_existing,
+                            requested=applied_version,
+                        )
+                        return {
+                            "entities_count": 0,
+                            "triples_count": 0,
+                            "skipped": True,
+                        }
 
         start_time = time.time()
         log_id = str(uuid.uuid4())
@@ -140,6 +211,23 @@ class KnowledgeGraphService:
                 log_id, novel_id, chapter_number, "completed",
                 entities_extracted, triples_count, duration_ms,
             )
+
+            # 写回幂等哨兵
+            if applied_version is not None:
+                from src.api.models.db_models import Chapter
+
+                async with get_db_session() as session:
+                    ch = (
+                        await session.execute(
+                            select(Chapter).where(
+                                Chapter.novel_id == novel_id,
+                                Chapter.chapter_number == chapter_number,
+                            )
+                        )
+                    ).scalar_one_or_none()
+                    if ch is not None:
+                        ch.kg_applied_version = applied_version
+                        await session.commit()
 
             return {
                 "entities_count": entities_extracted,

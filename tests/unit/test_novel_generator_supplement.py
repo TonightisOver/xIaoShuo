@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -183,14 +184,54 @@ class TestTaskPauseResume:
         assert "paused" in event_type.value or "PAUSED" in event_type.value
 
     @pytest.mark.asyncio
-    async def test_resume_task_clears_paused_and_emits(self):
+    async def test_resume_task_long_form_requeues_not_clear(self):
+        """Task 7：长篇（有 checkpoint）resume 走 requeue_paused_task 重入队，
+        不再 clear_paused 硬切。"""
         from src.api.services.generation.novel_generator import resume_task
 
         store = MagicMock()
         store.clear_paused = AsyncMock()
+        tm = MagicMock()
+        # requeued=True → 有 checkpoint，成功重入队
+        tm.requeue_paused_task = AsyncMock(
+            return_value=SimpleNamespace(
+                requeued=True, reason=None, checkpoint_status="running"
+            )
+        )
         emit = AsyncMock()
 
         with patch(
+            "src.api.services.tasks.task_manager.get_task_manager",
+            return_value=tm,
+        ), patch(
+            "src.api.services.generation.pause_state_store.get_pause_state_store",
+            return_value=store,
+        ), patch("src.api.services.generation.novel_generator._emit_progress", emit):
+            await resume_task("task-1")
+
+        tm.requeue_paused_task.assert_awaited_once_with("task-1")
+        store.clear_paused.assert_not_awaited()  # 有 checkpoint 不走降级
+        emit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_resume_task_short_form_falls_back_to_clear(self):
+        """Task 7：短篇（无 checkpoint）resume 降级走 clear_paused。"""
+        from src.api.services.generation.novel_generator import resume_task
+
+        store = MagicMock()
+        store.clear_paused = AsyncMock()
+        tm = MagicMock()
+        tm.requeue_paused_task = AsyncMock(
+            return_value=SimpleNamespace(
+                requeued=False, reason="no_checkpoint", checkpoint_status=None
+            )
+        )
+        emit = AsyncMock()
+
+        with patch(
+            "src.api.services.tasks.task_manager.get_task_manager",
+            return_value=tm,
+        ), patch(
             "src.api.services.generation.pause_state_store.get_pause_state_store",
             return_value=store,
         ), patch("src.api.services.generation.novel_generator._emit_progress", emit):
@@ -204,7 +245,7 @@ class TestTaskPauseResume:
         from src.api.services.generation.novel_generator import is_task_paused
 
         store = MagicMock()
-        store.is_paused = AsyncMock(return_value=True)
+        store.is_pause_requested = AsyncMock(return_value=True)
 
         with patch(
             "src.api.services.generation.pause_state_store.get_pause_state_store",
@@ -213,14 +254,14 @@ class TestTaskPauseResume:
             result = await is_task_paused("task-1")
 
         assert result is True
-        store.is_paused.assert_awaited_once_with("task-1")
+        store.is_pause_requested.assert_awaited_once_with("task-1")
 
     @pytest.mark.asyncio
     async def test_is_task_paused_returns_false_when_not_paused(self):
         from src.api.services.generation.novel_generator import is_task_paused
 
         store = MagicMock()
-        store.is_paused = AsyncMock(return_value=False)
+        store.is_pause_requested = AsyncMock(return_value=False)
 
         with patch(
             "src.api.services.generation.pause_state_store.get_pause_state_store",

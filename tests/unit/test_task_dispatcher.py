@@ -101,6 +101,8 @@ async def test_dispatches_long_form_generation():
     assert (task_id, novel_id) == ("task-3", "novel-3")
     assert isinstance(rebuilt, LongFormNovelRequest)
     assert rebuilt == request
+    # B1: worker_id 缺省注入为 None（离线/直调场景）
+    assert handler.await_args.kwargs.get("worker_id") is None
 
 
 @pytest.mark.asyncio
@@ -123,7 +125,7 @@ async def test_dispatches_volume_generation():
             }
         )
 
-    handler.assert_awaited_once_with("task-4", "novel-4", 7)
+    handler.assert_awaited_once_with("task-4", "novel-4", 7, worker_id=None)
 
 
 @pytest.mark.asyncio
@@ -147,7 +149,33 @@ async def test_dispatches_chapter_range_generation():
             }
         )
 
-    handler.assert_awaited_once_with("task-5", "novel-5", 11, 20)
+    handler.assert_awaited_once_with("task-5", "novel-5", 11, 20, worker_id=None)
+
+
+@pytest.mark.asyncio
+async def test_worker_id_from_claim_propagates_to_long_form_handler():
+    """B1: _run_claim 注入的 worker_id 应透传给长篇 handler 做 lease 守卫。"""
+    from src.api.services.tasks.task_dispatcher import TaskType, dispatch_task
+
+    handler = AsyncMock()
+    request = _long_request()
+    with patch(
+        "src.api.services.generation.long_form_generation_helpers.generate_long_form_background",
+        handler,
+    ):
+        await dispatch_task(
+            {
+                "task_id": "task-7",
+                "task_type": TaskType.NOVEL_LONG_FORM.value,
+                "worker_id": "worker-abc",
+                "task_payload": {
+                    "novel_id": "novel-7",
+                    "request": request.model_dump(mode="json"),
+                },
+            }
+        )
+
+    assert handler.await_args.kwargs.get("worker_id") == "worker-abc"
 
 
 @pytest.mark.asyncio

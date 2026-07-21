@@ -218,10 +218,10 @@ async def test_rewrite_activates_when_score_improves():
             _novel_id(), 1, max_iterations=1, target_score=0.9
         )
 
-    # 候选版本 2 分数上升 → 应被激活
-    activate_calls = mock_manager.activate_chapter_version.call_args_list
-    activated_versions = [c.kwargs.get("version_number") for c in activate_calls]
-    assert 2 in activated_versions
+    # Task 6：L3 不再自行激活，改为返回 best_version 交由 finalize 统一激活。
+    # 候选版本 2 分数上升 → best_version=2，activate 不被调用。
+    mock_manager.activate_chapter_version.assert_not_awaited()
+    assert result.get("best_version") == 2
 
     hist = result["improvement_history"]
     assert len(hist) == 1

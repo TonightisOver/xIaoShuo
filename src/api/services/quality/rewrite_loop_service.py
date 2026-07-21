@@ -117,6 +117,9 @@ class RewriteLoopService:
 
         improvement_history: list[dict] = []
         final_scores: dict = {}
+        # 择优记录：最优候选版本号 + 其 overall 分数（不在此处激活，交由 finalize 统一激活）
+        best_version: int | None = None
+        best_overall: float = -1.0
 
         logger.info(
             "auto_improve_start",
@@ -234,17 +237,18 @@ class RewriteLoopService:
             })
 
             if activated:
-                await manager.activate_chapter_version(
-                    novel_id=novel_id, chapter_number=chapter_number,
-                    version_number=candidate_version,
-                )
-                final_scores = scores_after
+                # 不在此处激活：仅择优记录候选版本，交由 finalize_chapter_version 统一激活
+                candidate_overall = scores_after.get("overall", 0)
+                if candidate_overall > best_overall:
+                    best_overall = candidate_overall
+                    best_version = candidate_version
+                    final_scores = scores_after
                 all_pass_after = all(
                     scores_after.get(dim, 0) >= target_score for dim in target_dims
                 )
                 if all_pass_after:
                     break
-            else:
+            elif best_version is None:
                 final_scores = scores_before
 
             logger.info(
@@ -275,4 +279,6 @@ class RewriteLoopService:
             "final_scores": final_scores,
             "reached_target": reached_target,
             "improvement_history": improvement_history,
+            # 最优候选版本号，交由 finalize_chapter_version 统一激活；无改善则为 None
+            "best_version": best_version,
         }

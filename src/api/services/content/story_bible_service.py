@@ -212,21 +212,48 @@ async def update_bible_after_generation(
     chapter_number: int,
     chapter_content: str,
     chapter_outline: dict,
+    *,
+    applied_version: int | None = None,
 ) -> dict[str, Any]:
     """章节生成后用 LLM 分析内容并自动更新 StoryBible。
 
+    Task 11 / B19：传入 applied_version 时做幂等判定——若 Chapter.bible_applied_version
+    已 >= applied_version，则跳过 LLM 调用与写回（恢复重放不重复 append）。
+    成功后写回 Chapter.bible_applied_version = applied_version。
+
     Returns:
-        更新摘要 dict
+        更新摘要 dict；幂等命中时多一个 skipped=True 字段。
     """
     from sqlalchemy import select
 
-    from src.api.models.db_models import StoryBible
+    from src.api.models.db_models import Chapter, StoryBible
     from src.core.database import get_db_session
     from src.core.llm.client import get_llm_client
 
     summary: dict[str, Any] = {"new_events": 0, "new_hooks": 0, "resolved_hooks": 0, "character_updates": 0}
 
     async with get_db_session() as session:
+        # 幂等哨兵：已应用过相同或更新的版本则跳过
+        if applied_version is not None:
+            ch_res = await session.execute(
+                select(Chapter).where(
+                    Chapter.novel_id == novel_id,
+                    Chapter.chapter_number == chapter_number,
+                )
+            )
+            ch = ch_res.scalar_one_or_none()
+            if ch is not None:
+                applied_existing = getattr(ch, "bible_applied_version", None)
+                if isinstance(applied_existing, int) and (
+                    applied_existing >= applied_version or applied_existing == -1
+                ):
+                    logger.info(
+                        "story_bible_update_skipped_idempotent novel_id=%s chapter=%d applied=%d requested=%d",
+                        novel_id, chapter_number, applied_existing, applied_version,
+                    )
+                    summary["skipped"] = True
+                    return summary
+
         result = await session.execute(
             select(StoryBible).where(StoryBible.novel_id == novel_id)
         )
@@ -316,6 +343,18 @@ async def update_bible_after_generation(
                         goal["progress"] = progress
                         break
             bible.main_goals = goals
+
+        # 写回幂等哨兵：标记该版本已消费，重放时跳过
+        if applied_version is not None:
+            ch_res2 = await session.execute(
+                select(Chapter).where(
+                    Chapter.novel_id == novel_id,
+                    Chapter.chapter_number == chapter_number,
+                )
+            )
+            ch2 = ch_res2.scalar_one_or_none()
+            if ch2 is not None:
+                ch2.bible_applied_version = applied_version
 
         await session.commit()
         logger.info("StoryBible updated after chapter %d: %s", chapter_number, summary)

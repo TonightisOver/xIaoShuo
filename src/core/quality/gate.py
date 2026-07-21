@@ -47,6 +47,9 @@ class GateResult:
     rewrite_improved: bool | None = None
     tokens_used: int = 0
     warnings: list[dict] = field(default_factory=list)
+    # L3 择优出的最优候选版本号（gate 不激活，交由 finalize_chapter_version 统一激活）。
+    # 无 L3 改善 / 未走 L3 时为 None，调用方回退到 baseline 版本。
+    final_version_number: int | None = None
 
 
 async def run_quality_gate(
@@ -179,6 +182,8 @@ async def run_quality_gate(
     except Exception as e:
         logger.warning("gate_l3_failed", novel_id=novel_id, chapter=chapter_number, error=str(e))
 
+    # L3 择优出的最优候选版本号（gate 不激活，交由调用方 finalize 统一激活）
+    best_version = rewrite_result.get("best_version") if rewrite_result else None
     improved = bool(rewrite_result and rewrite_result.get("reached_target"))
     if improved:
         final_scores = rewrite_result.get("final_scores", scores)
@@ -188,7 +193,7 @@ async def run_quality_gate(
             final_content=content, quality_status="verified", quality_scores=final_scores,
             state_delta=state_delta, l0_result=l0, risk_level=risk,
             l2_evaluated=True, rewrite_attempted=True, rewrite_improved=True,
-            warnings=_l0_warnings(l0),
+            warnings=_l0_warnings(l0), final_version_number=best_version,
         )
     await _safe(persist_callbacks.persist_quality_scores, novel_id, chapter_number, scores, _l0_warnings(l0))
     await _safe(persist_callbacks.update_quality_status, novel_id, chapter_number, "unverified")
@@ -196,7 +201,7 @@ async def run_quality_gate(
         final_content=content, quality_status="unverified", quality_scores=scores,
         state_delta=state_delta, l0_result=l0, risk_level=risk,
         l2_evaluated=True, rewrite_attempted=True, rewrite_improved=False,
-        warnings=_l0_warnings(l0),
+        warnings=_l0_warnings(l0), final_version_number=best_version,
     )
 
 

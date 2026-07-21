@@ -29,6 +29,7 @@ from src.api.services.generation.novel_generator_planning import (
 )
 from src.api.services.tasks.task_dispatcher import TaskType
 from src.api.services.tasks.task_manager import get_task_manager
+from src.core.config import get_settings
 from src.core.security.auth import get_current_user, require_admin_user
 from src.core.validation import ValidationError, validate_idea, validate_novel_type
 
@@ -208,9 +209,12 @@ async def pause_generation_task(
             detail=f"Task can only be paused when running (current status: {task['status']})",
         )
     try:
+        # Task 7（B14）：pause 只设"暂停意图"（长篇写 checkpoint.pause_requested，
+        # 短篇降级写 Task.status='paused'）。长篇 worker 在下一章安全边界自行确认，
+        # 故此处返回 pause_requested 更准确（真正确认见 is_paused_confirmed）。
         from src.api.services.generation.novel_generator import pause_task
         await pause_task(task_id)
-        return {"task_id": task_id, "status": "paused"}
+        return {"task_id": task_id, "status": "pause_requested"}
     except Exception:
         logger.exception(f"Failed to pause task {task_id}")
         raise HTTPException(status_code=500, detail="Failed to pause task")
@@ -221,19 +225,103 @@ async def resume_generation_task(
     task_id: str,
     current_user: User = Depends(get_current_user),
 ):
+    # Task 7（B5/§七.4）：长篇暂停后 Task.status 仍为 running（暂停意图在
+    # checkpoint，队列层 queue_state='idle'），故不再用 Task.status=='paused'
+    # 作前置。改为经 requeue_paused_task 按 checkpoint 状态判定：
+    #   requeued=True                → 200 已重入队
+    #   reason='not_paused'（幂等）    → 200 no-op（目标态已达成）
+    #   reason='no_checkpoint'（短篇） → 降级走旧 resume（要求 status=='paused'）
+    #   reason='illegal_state:*'      → 409 状态冲突
     task = await verify_task_owner(task_id, current_user)
-    if task["status"] != "paused":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Task can only be resumed when paused (current status: {task['status']})",
-        )
     try:
         from src.api.services.generation.novel_generator import resume_task
-        await resume_task(task_id)
-        return {"task_id": task_id, "status": "running"}
+        from src.api.services.tasks.task_manager import get_task_manager
+
+        result = await get_task_manager().requeue_paused_task(task_id)
+        if result.requeued:
+            await resume_task(task_id)
+            return {"task_id": task_id, "status": "running"}
+        if result.reason == "not_paused":
+            # 幂等：已在 running/queued，视作 no-op。
+            return {"task_id": task_id, "status": "running", "noop": True}
+        if result.reason == "no_checkpoint":
+            # 短篇/HITL 降级：沿用旧前置条件。
+            if task["status"] != "paused":
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Task can only be resumed when paused (current status: {task['status']})",
+                )
+            await resume_task(task_id)
+            return {"task_id": task_id, "status": "running"}
+        # illegal_state / task_not_found → 409
+        raise HTTPException(
+            status_code=409,
+            detail=f"Task cannot be resumed: {result.reason}",
+        )
+    except HTTPException:
+        raise
     except Exception:
         logger.exception(f"Failed to resume task {task_id}")
         raise HTTPException(status_code=500, detail="Failed to resume task")
+
+
+@tasks_router.get("/{task_id}/checkpoint")
+async def get_task_checkpoint(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Task 10：返回 checkpoint 公开摘要（不含 failure_detail 敏感字段）。
+
+    无 checkpoint（短篇/HITL）返回 404。
+    """
+    await verify_task_owner(task_id, current_user)
+    from src.api.services.tasks.checkpoint_store import get_checkpoint_store
+
+    view = await get_checkpoint_store().public_view(task_id)
+    if view is None:
+        raise HTTPException(status_code=404, detail="No checkpoint for this task")
+    return view
+
+
+@tasks_router.post("/{task_id}/retry")
+async def retry_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Task 10：从断点重试。recoverable/needs_human 重入队；unrecoverable 返回 409。"""
+    await verify_task_owner(task_id, current_user)
+    from src.api.services.tasks.task_manager import get_task_manager
+
+    result = await get_task_manager().retry_task(task_id)
+    if result.requeued:
+        return {"task_id": task_id, "status": "queued"}
+    if result.reason == "unrecoverable":
+        raise HTTPException(
+            status_code=409,
+            detail="Task is unrecoverable; cannot retry from checkpoint",
+        )
+    if result.reason == "no_checkpoint":
+        raise HTTPException(
+            status_code=404, detail="No checkpoint; cannot retry from breakpoint"
+        )
+    raise HTTPException(
+        status_code=409, detail=f"Cannot retry: {result.reason}"
+    )
+
+
+@tasks_router.post("/{task_id}/abort")
+async def abort_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Task 10：用户主动中止——置 failed，保留 checkpoint 诊断。"""
+    await verify_task_owner(task_id, current_user)
+    from src.api.services.tasks.task_manager import get_task_manager
+
+    result = await get_task_manager().abort_task(task_id)
+    if not result.requeued and result.reason == "task_not_found":
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"task_id": task_id, "status": "failed"}
 
 
 # --- Long-form novel endpoints ---
@@ -283,7 +371,8 @@ async def create_long_form_novel(
                 "novel_id": novel_id,
                 "request": request.model_dump(mode="json"),
             },
-            max_attempts=1,
+            max_attempts=get_settings().LONG_FORM_MAX_ATTEMPTS,
+            operation_id=f"{novel_id}:{TaskType.NOVEL_LONG_FORM.value}",
         )
 
         logger.info(f"Created long-form novel task {task_id} for novel {novel_id}")
@@ -471,7 +560,8 @@ async def trigger_volume_generate(
                 "novel_id": novel_id,
                 "volume_number": volume_number,
             },
-            max_attempts=1,
+            max_attempts=get_settings().LONG_FORM_MAX_ATTEMPTS,
+            operation_id=f"{novel_id}:volume:{volume_number}",
         )
 
         return {
@@ -494,18 +584,48 @@ async def pause_volume_generate(
     volume_number: int,
     current_user: User = Depends(get_current_user),
 ):
-    """暂停指定卷生成（仅小说 owner）。"""
+    """暂停指定卷生成（仅小说 owner）。
+
+    Task 7（§七.6）：卷级 pause 统一为 task 级 pause 意图。一个 task 可能跨多卷，
+    卷级 pause 语义即"task 在下一章安全边界停下"。除写 LFP.status='paused'（前端
+    展示）外，同时对该 novel 的活跃长篇 task 设 checkpoint.pause_requested=True，
+    消除 LFP.status 与 task 状态的双轨制。
+    """
     await verify_novel_owner(novel_id, current_user)
     try:
+        from sqlalchemy import select
+
+        from src.api.models.db_models import TaskCheckpoint
         from src.api.services.generation.long_form_progress_service import (
             get_long_form_progress_service,
         )
+        from src.api.services.generation.pause_state_store import (
+            get_pause_state_store,
+        )
+        from src.core.database import get_db_session
+
         service = get_long_form_progress_service()
         await service.update_volume_status(
             novel_id=novel_id,
             volume_number=volume_number,
             status="paused",
         )
+
+        # 对该 novel 尚未终态的 checkpoint 任务设暂停意图（跨进程 worker 感知）。
+        async with get_db_session() as session:
+            task_id = (
+                await session.execute(
+                    select(TaskCheckpoint.task_id).where(
+                        TaskCheckpoint.novel_id == novel_id,
+                        TaskCheckpoint.status.notin_(
+                            ["succeeded", "failed", "completed"]
+                        ),
+                    )
+                )
+            ).scalar_one_or_none()
+        if task_id is not None:
+            await get_pause_state_store().set_paused(task_id)
+
         return {"status": "paused", "novel_id": novel_id, "volume_number": volume_number}
     except Exception:
         logger.exception(f"Failed to pause volume {volume_number}")
@@ -552,7 +672,8 @@ async def resume_volume_generate(
                 "novel_id": novel_id,
                 "volume_number": volume_number,
             },
-            max_attempts=1,
+            max_attempts=get_settings().LONG_FORM_MAX_ATTEMPTS,
+            operation_id=f"{novel_id}:volume:{volume_number}",
         )
 
         return {

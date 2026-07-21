@@ -19,6 +19,9 @@ async def dispatch_task(task: dict[str, Any]) -> None:
     """只执行固定白名单中的任务类型。"""
     task_id = task["task_id"]
     payload = task.get("task_payload") or {}
+    # B1: worker_id 由 PersistentTaskWorker._run_claim 注入 claim dict；离线/直调
+    # 场景（无 worker）为 None，长篇路径据此在安全边界复查 lease（None 跳过守卫）。
+    worker_id = task.get("worker_id")
     try:
         task_type = TaskType(task["task_type"])
     except (KeyError, ValueError) as exc:
@@ -50,7 +53,9 @@ async def dispatch_task(task: dict[str, Any]) -> None:
         )
 
         request = LongFormNovelRequest.model_validate(payload["request"])
-        await generate_long_form_background(task_id, payload["novel_id"], request)
+        await generate_long_form_background(
+            task_id, payload["novel_id"], request, worker_id=worker_id
+        )
         return
 
     if task_type is TaskType.NOVEL_VOLUME:
@@ -62,6 +67,7 @@ async def dispatch_task(task: dict[str, Any]) -> None:
             task_id,
             payload["novel_id"],
             int(payload["volume_number"]),
+            worker_id=worker_id,
         )
         return
 
@@ -75,6 +81,7 @@ async def dispatch_task(task: dict[str, Any]) -> None:
             payload["novel_id"],
             int(payload["chapter_start"]),
             int(payload["chapter_end"]),
+            worker_id=worker_id,
         )
         return
 

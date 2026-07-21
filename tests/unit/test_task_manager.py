@@ -160,6 +160,58 @@ class TestCreateTask:
         added = session.add.call_args[0][0]
         assert added.owner_id == 7
 
+    @pytest.mark.asyncio
+    async def test_create_task_without_operation_id_skips_dedup(self, manager):
+        """无 operation_id（短篇/无去重需求）保持旧行为：直接 INSERT。"""
+        session = _make_session()
+        with _patch_db(session):
+            task_id = await manager.create_task(
+                idea="a", novel_type="x", target_words=1
+            )
+        # 不查询已存在（无 dedup select），直接 add
+        assert session.add.call_count == 1
+        assert task_id.startswith("novel-")
+
+    @pytest.mark.asyncio
+    async def test_create_task_dedup_returns_existing_for_active_operation(self, manager):
+        """同一 operation_id 在非终态已存在时，返回已存在 task_id，不新建。"""
+        session = _make_session()
+        existing_result = MagicMock()
+        # select(Task.task_id) 返回标量 task_id
+        existing_result.scalar_one_or_none.return_value = "novel-existing"
+        session.execute = AsyncMock(return_value=existing_result)
+
+        with _patch_db(session):
+            task_id = await manager.create_task(
+                idea="a", novel_type="x", target_words=1,
+                novel_id="novel-abc",
+                task_type="novel.long_form",
+                operation_id="novel-abc:novel.long_form",
+            )
+
+        assert task_id == "novel-existing"
+        session.add.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_create_task_dedup_creates_when_no_active_operation(self, manager):
+        """非终态无同 operation_id 时，正常新建。"""
+        session = _make_session()
+        empty_result = MagicMock()
+        empty_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=empty_result)
+
+        with _patch_db(session):
+            task_id = await manager.create_task(
+                idea="a", novel_type="x", target_words=1,
+                novel_id="novel-abc",
+                task_type="novel.long_form",
+                operation_id="novel-abc:novel.long_form",
+            )
+        assert task_id.startswith("novel-")
+        assert session.add.call_count == 1
+        added = session.add.call_args[0][0]
+        assert added.operation_id == "novel-abc:novel.long_form"
+
 
 class TestGetTask:
     @pytest.mark.asyncio
@@ -895,5 +947,177 @@ class TestRecoverInterruptedTasks:
             for value in query.compile().params.values()
             if isinstance(value, list)
         ]
-        assert ["queued", "leased"] in list_params
-        assert ["queued", "leased", "idle"] not in list_params
+        assert ["queued", "leased", "idle"] in list_params
+        assert ["queued", "leased"] not in list_params
+
+
+class TestLeaseGuardedTerminalOperations:
+    """R1: 终态推进函数加 worker_id 守卫，拒绝已丢失 lease 的旧 worker 写入。"""
+
+    @staticmethod
+    def _leased_task_mock(
+        *,
+        lease_owner="worker-a",
+        lease_expires_at=None,
+        status="running",
+        queue_state="leased",
+    ):
+        from datetime import UTC, datetime, timedelta
+
+        if lease_expires_at is None:
+            lease_expires_at = datetime.now(UTC) + timedelta(minutes=5)
+        return _make_task_mock(
+            task_id="novel-1",
+            status=status,
+            queue_state=queue_state,
+            lease_owner=lease_owner,
+            lease_expires_at=lease_expires_at,
+        )
+
+    @staticmethod
+    def _session_with_task(task_mock):
+        session = _make_session()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = task_mock
+        session.execute = AsyncMock(return_value=result)
+        return session
+
+    @pytest.mark.asyncio
+    async def test_complete_task_rejects_wrong_worker(self, manager):
+        from src.core.exceptions import LeaseLost
+
+        task_mock = self._leased_task_mock(lease_owner="other-worker")
+        session = self._session_with_task(task_mock)
+        with _patch_db(session):
+            with pytest.raises(LeaseLost):
+                await manager.complete_task(
+                    "novel-1", {"chapters": []}, worker_id="worker-a"
+                )
+        # 未写终态、未提交
+        assert task_mock.status == "running"
+        session.commit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_complete_task_allows_correct_worker(self, manager):
+        task_mock = self._leased_task_mock(lease_owner="worker-a")
+        session = self._session_with_task(task_mock)
+        with _patch_db(session):
+            await manager.complete_task(
+                "novel-1", {"chapters": [{"id": 1}]}, worker_id="worker-a"
+            )
+        assert task_mock.status == "completed"
+        session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_complete_task_no_worker_id_keeps_legacy_behavior(self, manager):
+        """worker_id=None（路由/非 worker 调用）保持旧行为，不校验 lease。"""
+        task_mock = self._leased_task_mock(lease_owner="someone-else")
+        session = self._session_with_task(task_mock)
+        with _patch_db(session):
+            await manager.complete_task("novel-1", {"chapters": []})
+        assert task_mock.status == "completed"
+        session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_complete_task_rejects_expired_lease(self, manager):
+        from datetime import UTC, datetime, timedelta
+
+        from src.core.exceptions import LeaseLost
+
+        expired = datetime.now(UTC) - timedelta(seconds=1)
+        task_mock = self._leased_task_mock(
+            lease_owner="worker-a", lease_expires_at=expired
+        )
+        session = self._session_with_task(task_mock)
+        with _patch_db(session):
+            with pytest.raises(LeaseLost):
+                await manager.complete_task(
+                    "novel-1", {"chapters": []}, worker_id="worker-a"
+                )
+
+    @pytest.mark.asyncio
+    async def test_fail_task_rejects_wrong_worker(self, manager):
+        from src.core.exceptions import LeaseLost
+
+        task_mock = self._leased_task_mock(lease_owner="other-worker")
+        session = self._session_with_task(task_mock)
+        with _patch_db(session):
+            with pytest.raises(LeaseLost):
+                await manager.fail_task("novel-1", "boom", worker_id="worker-a")
+        assert task_mock.status == "running"
+        session.commit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_fail_task_no_worker_id_keeps_legacy_behavior(self, manager):
+        task_mock = self._leased_task_mock(lease_owner="someone-else")
+        session = self._session_with_task(task_mock)
+        with _patch_db(session):
+            await manager.fail_task("novel-1", "boom")
+        assert task_mock.status == "failed"
+        session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_update_status_rejects_wrong_worker(self, manager):
+        from src.core.exceptions import LeaseLost
+
+        task_mock = self._leased_task_mock(lease_owner="other-worker")
+        session = self._session_with_task(task_mock)
+        with _patch_db(session):
+            with pytest.raises(LeaseLost):
+                await manager.update_status(
+                    "novel-1", "running", worker_id="worker-a"
+                )
+        session.commit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_update_status_no_worker_id_keeps_legacy_behavior(self, manager):
+        task_mock = self._leased_task_mock(lease_owner="someone-else")
+        session = self._session_with_task(task_mock)
+        with _patch_db(session):
+            await manager.update_status("novel-1", "running", progress={"x": 1})
+        assert task_mock.status == "running"
+        session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_assert_lease_held_raises_when_owner_mismatch(self, manager):
+        from src.core.exceptions import LeaseLost
+
+        task_mock = self._leased_task_mock(lease_owner="other-worker")
+        session = self._session_with_task(task_mock)
+        with _patch_db(session):
+            with pytest.raises(LeaseLost):
+                await manager.assert_lease_held("novel-1", "worker-a")
+
+    @pytest.mark.asyncio
+    async def test_assert_lease_held_passes_for_owner(self, manager):
+        task_mock = self._leased_task_mock(lease_owner="worker-a")
+        session = self._session_with_task(task_mock)
+        with _patch_db(session):
+            result = await manager.assert_lease_held("novel-1", "worker-a")
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_assert_lease_held_raises_for_expired(self, manager):
+        from datetime import UTC, datetime, timedelta
+
+        from src.core.exceptions import LeaseLost
+
+        expired = datetime.now(UTC) - timedelta(seconds=1)
+        task_mock = self._leased_task_mock(
+            lease_owner="worker-a", lease_expires_at=expired
+        )
+        session = self._session_with_task(task_mock)
+        with _patch_db(session):
+            with pytest.raises(LeaseLost):
+                await manager.assert_lease_held("novel-1", "worker-a")
+
+    @pytest.mark.asyncio
+    async def test_assert_lease_held_ignores_queue_state(self, manager):
+        """B2: queue_state=idle 但 lease 仍有效时不抛（暂停路径）。"""
+        task_mock = self._leased_task_mock(
+            lease_owner="worker-a", queue_state="idle"
+        )
+        session = self._session_with_task(task_mock)
+        with _patch_db(session):
+            result = await manager.assert_lease_held("novel-1", "worker-a")
+        assert result is True

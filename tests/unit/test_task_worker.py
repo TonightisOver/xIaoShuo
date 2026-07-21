@@ -49,6 +49,7 @@ def test_task_queue_settings_have_safe_defaults():
     assert settings.TASK_QUEUE_POLL_SECONDS == 1.0
     assert settings.TASK_QUEUE_LEASE_SECONDS == 120
     assert settings.TASK_QUEUE_RETRY_DELAY_SECONDS == 5
+    assert settings.LONG_FORM_MAX_ATTEMPTS == 3
 
 
 def test_get_task_worker_builds_singleton_from_settings(monkeypatch):
@@ -565,3 +566,43 @@ async def test_lifespan_closes_database_when_checkpointer_setup_fails(monkeypatc
 
     assert events == ["database_init", "checkpointer_setup", "database_close"]
     teardown.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_lease_lost_dispatcher_clean_exit_skips_release_and_retry():
+    """B7/B12: dispatch 抛 LeaseLost 时 _run_claim 不调 release/retry，干净退出。"""
+    from src.api.services.tasks.task_worker import PersistentTaskWorker
+    from src.core.exceptions import LeaseLost
+
+    async def dispatch(_claim):
+        raise LeaseLost("task-1")
+
+    manager = _manager()
+    worker = PersistentTaskWorker(
+        manager, dispatch, worker_id="worker-test", lease_seconds=1
+    )
+
+    await worker._run_claim(_claim())
+
+    manager.release_claim.assert_not_awaited()
+    manager.retry_or_fail_claim.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_paused_exit_dispatcher_clean_exit_skips_release_and_retry():
+    """PausedExit（worker 协作式暂停）与 LeaseLost 同样跳过 release/retry。"""
+    from src.api.services.tasks.task_worker import PersistentTaskWorker
+    from src.core.exceptions import PausedExit
+
+    async def dispatch(_claim):
+        raise PausedExit("task-1")
+
+    manager = _manager()
+    worker = PersistentTaskWorker(
+        manager, dispatch, worker_id="worker-test", lease_seconds=1
+    )
+
+    await worker._run_claim(_claim())
+
+    manager.release_claim.assert_not_awaited()
+    manager.retry_or_fail_claim.assert_not_awaited()
