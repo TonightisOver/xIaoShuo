@@ -113,6 +113,37 @@ describe('CreativeStudio.vue', () => {
     expect(wrapper.find('[data-conflict-hint]').text()).toContain('5')
   })
 
+  it('editing chapter (正文) sends plain text, not JSON-parsed', async () => {
+    const fetchMock = makeFetch([
+      { match: `/api/v1/novels/${NOVEL_ID}`, body: { id: NOVEL_ID, title: '正文小说' } },
+      {
+        match: /creative-control\/stage$/,
+        body: {
+          creation_mode: 'manual', creative_stage: 7,
+          stages: [{ number: 7, name: '章节正文', artifact_type: 'chapter', control: { control_status: 'generated', version: 3 } }],
+        },
+      },
+      { match: /artifacts\/chapter\/42$/, method: 'GET', body: { control: { control_status: 'generated', version: 3 }, versions: [] } },
+      { match: /operations/, body: [] },
+      { match: /artifacts\/chapter\/42$/, method: 'PUT', body: { status: 'edited', version: 5 } },
+    ])
+    const wrapper = await mountStudio(fetchMock)
+    await wrapper.find('[data-stage-item]').trigger('click')
+    await flushPromises()
+    // 正文纯文本恰好是合法 JSON（纯数字），不能被 JSON.parse 误解析
+    await wrapper.find('[data-artifact-editor]').setValue('42')
+    await wrapper.find('[data-action="edit"]').trigger('click')
+    await flushPromises()
+    const putCall = fetchMock.mock.calls.find(
+      c => /artifacts\/chapter\/42$/.test(c[0]) && (c[1]?.method || '').toUpperCase() === 'PUT',
+    )
+    expect(putCall).toBeTruthy()
+    const sent = JSON.parse(putCall[1].body)
+    // 正文应作为字符串发送，而非被解析成数字 42
+    expect(sent.content).toBe('42')
+    expect(typeof sent.content).toBe('string')
+  })
+
   it('clicking regenerate triggers regenerate endpoint', async () => {
     const fetchMock = makeFetch([
       { match: `/api/v1/novels/${NOVEL_ID}`, body: { id: NOVEL_ID, title: '重生成小说' } },

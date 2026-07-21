@@ -288,8 +288,12 @@ async function onEdit() {
   conflictHint.value = ''
   if (!control.value || !selectedStage.value) return
   try {
+    // 正文（chapter/chapter_version）作为纯文本提交；结构化产物尝试解析为 JSON。
+    const isProse = ['chapter', 'chapter_version'].includes(selectedStage.value.artifact_type)
     let content = editContent.value
-    try { content = JSON.parse(content) } catch (_) { /* 保留文本 */ }
+    if (!isProse) {
+      try { content = JSON.parse(content) } catch (_) { /* 保留文本 */ }
+    }
     const res = await editArtifact(
       selectedStage.value.artifact_type, novelId.value,
       content, control.value.version,

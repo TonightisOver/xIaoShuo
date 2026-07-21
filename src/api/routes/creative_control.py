@@ -21,6 +21,7 @@ from src.api.models.creative_control import (
     SetStatusRequest,
 )
 from src.api.owner_guard import verify_novel_owner
+from src.api.services.content.chapter_service import get_chapter_service
 from src.api.services.content.novel_manager import get_novel_manager
 from src.core.auth_models import User
 from src.core.creative_control.artifact_version_store import ArtifactVersionStore
@@ -147,6 +148,24 @@ async def edit_artifact(
             novel_id, artifact_type, artifact_id,
             content_snapshot=request.content, source="manual",
             operator_id=current_user.id,
+        )
+    elif artifact_type in ("chapter", "chapter_version"):
+        # 正文编辑：建激活版本 + 写回正文，并原子置 quality_status=unverified，
+        # 保证旧质量分数不会被当作新正文的当前分数（设计 §验收8 / 集成点4）。
+        # content 为纯文本正文（EditArtifactRequest.content 支持 str）。
+        # 正文产物的 artifact_id 语义为 chapter_number（设计 §API 契约）。
+        try:
+            chapter_number = int(artifact_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "invalid_artifact_id",
+                        "message": "正文产物的 artifact_id 必须为章节号"},
+            ) from exc
+        content_text = request.content if isinstance(request.content, str) else str(request.content)
+        new_vn = await get_chapter_service().create_chapter_version(
+            novel_id, chapter_number, content=content_text,
+            source="manual", is_active=True, quality_status="unverified",
         )
     else:
         new_vn = request.expected_version + 1

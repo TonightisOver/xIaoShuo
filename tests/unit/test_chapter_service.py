@@ -391,6 +391,73 @@ class TestCreateChapterVersion:
             with pytest.raises(ValueError, match="Chapter not found"):
                 await svc.create_chapter_version("novel-none", 999, content="x")
 
+    @pytest.mark.asyncio
+    async def test_create_active_version_with_quality_status_writes_back(self):
+        """is_active=True 且传 quality_status 时，同一事务内写回 ch.quality_status。
+
+        验收 8：手改正文后旧质量分数不当当前分数——落库激活版本时把
+        quality_status 一并置为 unverified，避免旧 verified 分数继续展示。
+        """
+        from src.api.services.content.chapter_service import get_chapter_service
+        svc = get_chapter_service()
+
+        ch_row = _make_chapter_row(1, "novel-1", 1, content="旧内容", status="generated")
+        ch_row.quality_status = "verified"
+
+        session = AsyncMock()
+        ch_result = MagicMock()
+        ch_result.scalar_one_or_none.return_value = ch_row
+        max_result = MagicMock()
+        max_result.scalar_one_or_none.return_value = 1  # existing max version
+        session.execute = AsyncMock()
+        # 1st: lock chapter row, 2nd: max version query, 3rd: deactivate others
+        session.execute.side_effect = [ch_result, max_result, MagicMock()]
+        session.add = MagicMock()
+        session.flush = AsyncMock()
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
+            result = await svc.create_chapter_version(
+                "novel-1", 1, content="人工改后的新正文",
+                source="manual", is_active=True, quality_status="unverified",
+            )
+
+        assert result == 2  # 1 + 1
+        assert ch_row.content == "人工改后的新正文"
+        assert ch_row.quality_status == "unverified"
+
+    @pytest.mark.asyncio
+    async def test_create_inactive_version_ignores_quality_status(self):
+        """is_active=False 时不写回正文，也不动 quality_status（候选快照场景）。"""
+        from src.api.services.content.chapter_service import get_chapter_service
+        svc = get_chapter_service()
+
+        ch_row = _make_chapter_row(1, "novel-1", 1, content="旧内容")
+        ch_row.quality_status = "verified"
+
+        session = AsyncMock()
+        ch_result = MagicMock()
+        ch_result.scalar_one_or_none.return_value = ch_row
+        max_result = MagicMock()
+        max_result.scalar_one_or_none.return_value = 0
+        session.execute = AsyncMock()
+        session.execute.side_effect = [ch_result, max_result]
+        session.add = MagicMock()
+        session.flush = AsyncMock()
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("src.api.services.content.chapter_service.get_db_session", return_value=session):
+            await svc.create_chapter_version(
+                "novel-1", 1, content="候选快照",
+                source="manual", is_active=False, quality_status="unverified",
+            )
+
+        # 未激活：正文与质量状态都不动
+        assert ch_row.content == "旧内容"
+        assert ch_row.quality_status == "verified"
+
 
 class TestListChapterVersions:
     """ChapterService.list_chapter_versions()"""

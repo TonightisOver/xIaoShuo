@@ -6,9 +6,13 @@ from pydantic import BaseModel, Field
 
 
 class EditArtifactRequest(BaseModel):
-    """人工编辑产物（带乐观锁）。"""
+    """人工编辑产物（带乐观锁）。
 
-    content: dict[str, Any]
+    content 兼容两种形态：结构化产物（世界观/角色/大纲等）用 dict；
+    正文（chapter）是纯文本，用 str。
+    """
+
+    content: dict[str, Any] | str
     expected_version: int = Field(ge=0)
 
 

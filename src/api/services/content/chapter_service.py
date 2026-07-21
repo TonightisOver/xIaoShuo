@@ -8,9 +8,20 @@ from sqlalchemy import func, select, update
 
 from src.api.models.db_models import Chapter, ChapterVersion
 from src.core.database import get_db_session
-from src.core.exceptions import ArtifactConflictError
+from src.core.exceptions import ArtifactConflictError, StaleChapterVersionError
 
 logger = structlog.get_logger(__name__)
+
+
+def chapter_idem_key(operation_id: str, kind: str, chapter_number: int) -> str:
+    """构造可重放写操作的确定性幂等键。
+
+    格式：``{operation_id}:{kind}:{chapter_number}``（见设计 §三 幂等键表）。
+    kind 取自调用点语义：``baseline``（创建 baseline 非活跃版本）、``activate``
+    （创建激活候选版本）。同一 operation_id + chapter 下，相同 kind 重放命中已存在
+    版本，不同 kind 各自新建。Task 6 的 generate_volume_chapters 接入检查点时调用。
+    """
+    return f"{operation_id}:{kind}:{chapter_number}"
 
 
 class ChapterService:
@@ -202,14 +213,40 @@ class ChapterService:
         kg_conflicts: dict | None = None,
         user_notes: str | None = None,
         is_active: bool = False,
+        *,
+        idempotency_key: str | None = None,
+        quality_status: str | None = None,
     ) -> int:
         """创建章节版本快照。
 
         仅当 is_active=True 时，才清零同章其它版本的 is_active 并把内容写回
         Chapter.content / Chapter.word_count；is_active=False 只创建快照，
         不触碰当前活跃正文（供候选择优比较后再决定是否激活）。
+
+        quality_status（可选）：仅当 is_active=True 时，在同一事务内一并写回
+        Chapter.quality_status。手动编辑正文走此路径置 `unverified`，保证旧质量
+        分数不会被当作新正文的当前分数（设计 §验收8 / 集成点4）。is_active=False
+        时忽略此参数（候选快照不影响当前活跃正文的质量状态）。
+
+        幂等（B18）：传入 idempotency_key 时先按键查重，命中已存在版本则直接返回
+        其 version_number 而不新建——重试同一可重放写操作不会产生重复版本。
+        幂等键来源：baseline 版本用 `{op}:baseline:{n}`，激活候选用 `{op}:activate:{n}`。
+        未传 idempotency_key（手动/回滚路径）走原有 max+1 逻辑，每次新建。
         """
         async with get_db_session() as session:
+            # 幂等查重：命中已存在版本则直接返回其 version_number
+            if idempotency_key is not None:
+                existing = await session.execute(
+                    select(ChapterVersion.version_number).where(
+                        ChapterVersion.novel_id == novel_id,
+                        ChapterVersion.chapter_number == chapter_number,
+                        ChapterVersion.idempotency_key == idempotency_key,
+                    )
+                )
+                hit = existing.scalar_one_or_none()
+                if hit is not None:
+                    return hit
+
             ch_res = await session.execute(
                 select(Chapter)
                 .where(
@@ -248,6 +285,7 @@ class ChapterService:
                 kg_conflicts=kg_conflicts,
                 user_notes=user_notes,
                 is_active=is_active,
+                idempotency_key=idempotency_key,
                 created_at=datetime.now(UTC),
             )
             session.add(version)
@@ -261,9 +299,89 @@ class ChapterService:
                 )
                 ch.content = content
                 ch.word_count = word_count
+                if quality_status is not None:
+                    ch.quality_status = quality_status
                 ch.updated_at = datetime.now(UTC)
             await session.flush()
             return new_version
+
+    async def finalize_chapter_version(
+        self,
+        novel_id: str,
+        chapter_number: int,
+        *,
+        expected_active_version: int | None,
+        selected_version: int,
+        quality_status: str | None = None,
+        quality_score: float | None = None,
+        quality_scores: dict | None = None,
+    ) -> bool:
+        """原子激活指定章节版本（B10）。
+
+        单事务内：
+        1. with_for_update 锁 Chapter 行 + 该章所有 ChapterVersion 行（行锁防并发激活）。
+        2. 乐观锁校验：当前活跃版本号必须 == expected_active_version，否则抛
+           StaleChapterVersionError（调用方基于过期页面覆盖新修改）。
+           expected_active_version=None 表示从无活跃态首次激活，要求当前确实无活跃版本。
+        3. 仅激活 selected_version，清零其余版本 is_active。
+        4. 写回 Chapter.content / word_count / quality_status（若传入）。
+
+        幂等：若 selected_version 已是活跃且 expected 匹配，直接返回 True（恢复场景）。
+        """
+        async with get_db_session() as session:
+            ch_res = await session.execute(
+                select(Chapter)
+                .where(
+                    Chapter.novel_id == novel_id,
+                    Chapter.chapter_number == chapter_number,
+                )
+                .with_for_update()
+            )
+            ch = ch_res.scalar_one_or_none()
+            if not ch:
+                raise ValueError("Chapter not found")
+
+            vers_res = await session.execute(
+                select(ChapterVersion)
+                .where(
+                    ChapterVersion.novel_id == novel_id,
+                    ChapterVersion.chapter_number == chapter_number,
+                )
+                .with_for_update()
+            )
+            versions = vers_res.scalars().all()
+
+            current_active = next(
+                (v.version_number for v in versions if v.is_active), None
+            )
+            if current_active != expected_active_version:
+                raise StaleChapterVersionError(
+                    novel_id, chapter_number, expected_active_version, current_active
+                )
+
+            target = next(
+                (v for v in versions if v.version_number == selected_version), None
+            )
+            if target is None:
+                return False
+
+            # 已是活跃且 expected 匹配 → 幂等返回，不重复写回
+            already_active = target.is_active
+            for v in versions:
+                v.is_active = v.version_number == selected_version
+
+            if target.content:
+                ch.content = target.content
+                ch.word_count = target.word_count
+            if quality_status is not None:
+                ch.status = quality_status
+            if not already_active or quality_score is not None:
+                target.quality_score = quality_score
+            if quality_scores is not None:
+                target.quality_scores = quality_scores
+            ch.updated_at = datetime.now(UTC)
+            await session.flush()
+            return True
 
     async def list_chapter_versions(self, novel_id: str, chapter_number: int) -> list[dict]:
         """返回版本列表（不含 content），按 version_number 降序。"""

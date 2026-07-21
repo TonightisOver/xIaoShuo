@@ -122,6 +122,77 @@ async def test_edit_success_returns_edited():
     assert result["version"] == 2
 
 
+@pytest.mark.asyncio
+async def test_edit_chapter_creates_version_and_marks_unverified():
+    """手动编辑正文：建 ChapterVersion（激活）+ 置 quality_status=unverified +
+    control -> edited + op_log。验收 §8：旧质量分数不当作新正文的当前分数。"""
+    user = _user()
+    req = EditArtifactRequest(content="修改后的正文纯文本", expected_version=3)
+    with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()), \
+         patch("src.api.routes.creative_control.CreativeControlService") as cs, \
+         patch("src.api.routes.creative_control.get_chapter_service") as gcs, \
+         _ol() as ol:
+        _cfg(ol)
+        cs.return_value.assert_writable = AsyncMock(return_value=None)
+        cs.return_value.set_status = AsyncMock(return_value=None)
+        chapter_svc = gcs.return_value
+        chapter_svc.create_chapter_version = AsyncMock(return_value=5)
+        result = await edit_artifact("novel-1", "chapter", "7", req, current_user=user)
+
+    # 建了激活版本并置 unverified
+    chapter_svc.create_chapter_version.assert_awaited_once()
+    _, kwargs = chapter_svc.create_chapter_version.await_args
+    assert kwargs["quality_status"] == "unverified"
+    assert kwargs["is_active"] is True
+    assert kwargs["source"] == "manual"
+    # control 转 edited
+    cs.return_value.set_status.assert_awaited_once()
+    _, skwargs = cs.return_value.set_status.await_args
+    assert skwargs["to_status"] == "edited"
+    # 审计记录 edit
+    ol.return_value.record.assert_awaited_once()
+    assert result["status"] == "edited"
+    assert result["version"] == 5
+
+
+@pytest.mark.asyncio
+async def test_edit_chapter_conflict_maps_409():
+    """正文编辑遇到过期版本（create_chapter_version 抛 ArtifactConflictError）映射 409。"""
+    from src.core.exceptions import ArtifactConflictError
+
+    user = _user()
+    req = EditArtifactRequest(content="正文", expected_version=2)
+    with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()), \
+         patch("src.api.routes.creative_control.CreativeControlService") as cs, \
+         patch("src.api.routes.creative_control.get_chapter_service") as gcs, \
+         _ol() as ol:
+        _cfg(ol)
+        cs.return_value.assert_writable = AsyncMock(
+            side_effect=ArtifactConflictError("novel-1", "chapter", "7", 2, 4)
+        )
+        with pytest.raises(HTTPException) as exc:
+            await edit_artifact("novel-1", "chapter", "7", req, current_user=user)
+    assert exc.value.status_code == 409
+    assert exc.value.detail["code"] == "stale_version"
+
+
+@pytest.mark.asyncio
+async def test_edit_chapter_non_numeric_id_maps_422():
+    """正文 artifact_id 语义为 chapter_number；非数字应 422 而非 500。"""
+    user = _user()
+    req = EditArtifactRequest(content="正文", expected_version=0)
+    with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()), \
+         patch("src.api.routes.creative_control.CreativeControlService") as cs, \
+         patch("src.api.routes.creative_control.get_chapter_service") as gcs, \
+         _ol() as ol:
+        _cfg(ol)
+        cs.return_value.assert_writable = AsyncMock(return_value=None)
+        with pytest.raises(HTTPException) as exc:
+            await edit_artifact("novel-1", "chapter", "abc", req, current_user=user)
+    assert exc.value.status_code == 422
+    gcs.return_value.create_chapter_version.assert_not_called()
+
+
 # ----------------------------------------------------------- lock/approve
 
 
