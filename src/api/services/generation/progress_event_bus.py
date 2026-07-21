@@ -7,13 +7,13 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-class EventType(str, Enum):
+class EventType(StrEnum):
     STAGE_START = "stage_start"
     STAGE_COMPLETE = "stage_complete"
     CHAPTER_PROGRESS = "chapter_progress"
