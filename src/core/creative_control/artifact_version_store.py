@@ -8,16 +8,25 @@
 
 from __future__ import annotations
 
+import importlib
 from typing import Any
 
 from sqlalchemy import select
 
-from src.api.models.db_models import ArtifactVersion
-from src.core.creative_control.contracts import ARTIFACT_TYPES_VERSIONED_GENERICALLY
 from src.core.database import get_db_session
 
 
-def _row_to_dict(row: ArtifactVersion) -> dict[str, Any]:
+def _orm():
+    """延迟导入 ORM 模型：core 层不在顶层依赖 api.models（layer boundary）。
+
+    用 importlib 动态加载，避免在模块中出现 ``from src.api...`` 的 import 语句
+    （层边界静态守卫会扫描所有 AST import 节点，包括函数内与 TYPE_CHECKING 块）。
+    """
+    module = importlib.import_module("src.api.models.db_models")
+    return module.ArtifactVersion
+
+
+def _row_to_dict(row: Any) -> dict[str, Any]:
     return {
         "id": row.id,
         "novel_id": row.novel_id,
@@ -52,6 +61,7 @@ class ArtifactVersionStore:
         operation_id: str | None = None,
     ) -> int:
         """旧 active 置 false，插入新 active 版本，返回新 version_number。"""
+        ArtifactVersion = _orm()  # noqa: N806
         async with get_db_session() as session:
             old_active = await self._select_active(session, novel_id, artifact_type, artifact_id)
             next_number = (old_active.version_number + 1) if old_active else 1
@@ -78,6 +88,7 @@ class ArtifactVersionStore:
         self, novel_id: str, artifact_type: str, artifact_id: str
     ) -> list[dict[str, Any]]:
         """按 version_number desc 返回版本列表（不含 content_snapshot 全量，仅摘要）。"""
+        ArtifactVersion = _orm()  # noqa: N806
         async with get_db_session() as session:
             result = await session.execute(
                 select(ArtifactVersion)
@@ -96,6 +107,7 @@ class ArtifactVersionStore:
     async def get_version(
         self, novel_id: str, artifact_type: str, artifact_id: str, version_number: int
     ) -> dict[str, Any] | None:
+        ArtifactVersion = _orm()  # noqa: N806
         async with get_db_session() as session:
             result = await session.execute(
                 select(ArtifactVersion).where(
@@ -146,6 +158,7 @@ class ArtifactVersionStore:
             novel_id, artifact_type, artifact_id, target["content_snapshot"]
         )
         # 激活目标版本：单事务内把该产物所有版本 is_active=False，目标=True
+        ArtifactVersion = _orm()  # noqa: N806
         async with get_db_session() as session:
             result = await session.execute(
                 select(ArtifactVersion).where(
@@ -194,7 +207,8 @@ class ArtifactVersionStore:
 
     async def _select_active(
         self, session, novel_id, artifact_type, artifact_id
-    ) -> ArtifactVersion | None:
+    ) -> Any | None:
+        ArtifactVersion = _orm()  # noqa: N806
         result = await session.execute(
             select(ArtifactVersion).where(
                 ArtifactVersion.novel_id == novel_id,

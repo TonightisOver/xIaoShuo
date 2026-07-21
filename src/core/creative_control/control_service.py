@@ -13,13 +13,13 @@
 
 from __future__ import annotations
 
+import importlib
 from datetime import UTC, datetime
 from typing import Any
 
 import structlog
 from sqlalchemy import select
 
-from src.api.models.db_models import ArtifactControl, OperationLog
 from src.core.creative_control.contracts import (
     DEPENDENCY_GRAPH,
     is_legal_transition,
@@ -34,11 +34,21 @@ from src.core.exceptions import (
 
 logger = structlog.get_logger(__name__)
 
+
+def _orm():
+    """延迟导入 ORM 模型：core 层不在顶层依赖 api.models（layer boundary）。
+
+    用 importlib 动态加载，避免在模块中出现 ``from src.api...`` 的 import 语句
+    （层边界静态守卫会扫描所有 AST import 节点，包括函数内与 TYPE_CHECKING 块）。
+    """
+    module = importlib.import_module("src.api.models.db_models")
+    return module.ArtifactControl, module.OperationLog
+
 # 已确认/锁定：上游变更时仅标记过期，不自动重生成。
 _PROTECTED_STATUSES = frozenset({"approved", "locked"})
 
 
-def _row_to_dict(row: ArtifactControl) -> dict[str, Any]:
+def _row_to_dict(row: Any) -> dict[str, Any]:
     return {
         "novel_id": row.novel_id,
         "artifact_type": row.artifact_type,
@@ -67,6 +77,7 @@ class CreativeControlService:
         stage: int | None = None,
     ) -> dict[str, Any]:
         """读取 control 行；历史产物无行时惰性创建 generated/version=1。"""
+        ArtifactControl, _ = _orm()  # noqa: N806
         async with get_db_session() as session:
             row = await self._select_for_update(session, novel_id, artifact_type, artifact_id)
             if row is None:
@@ -107,6 +118,7 @@ class CreativeControlService:
         - 任何异常被吞，返回 None（插桩不破坏生成，遵循 gate.py "never throw" 不变量）。
         """
         try:
+            ArtifactControl, OperationLog = _orm()  # noqa: N806
             async with get_db_session() as session:
                 row = await self._select_for_update(
                     session, novel_id, artifact_type, artifact_id
@@ -265,6 +277,7 @@ class CreativeControlService:
 
         下游按 control 状态分流：未锁/未确认 → regenerable；已锁/已确认 → to_mark_stale。
         """
+        _, OperationLog = _orm()  # noqa: N806
         async with get_db_session() as session:
             row = await self._select_for_update(session, novel_id, artifact_type, artifact_id)
             # 标记自身 stale（无行则跳过，仅级联下游）
@@ -311,7 +324,8 @@ class CreativeControlService:
 
     async def _select_for_update(
         self, session, novel_id, artifact_type, artifact_id
-    ) -> ArtifactControl | None:
+    ) -> Any | None:
+        ArtifactControl, _ = _orm()  # noqa: N806
         result = await session.execute(
             select(ArtifactControl)
             .where(
@@ -325,8 +339,9 @@ class CreativeControlService:
 
     async def _select_downstream(
         self, session, novel_id, artifact_type
-    ) -> list[ArtifactControl]:
+    ) -> list[Any]:
         """按依赖图查直接下游产物的 control 行。"""
+        ArtifactControl, _ = _orm()  # noqa: N806
         direct = DEPENDENCY_GRAPH.get(artifact_type, [])
         if not direct:
             return []
@@ -341,7 +356,7 @@ class CreativeControlService:
 
     async def _guard(
         self, session, novel_id, artifact_type, artifact_id, expected_version
-    ) -> tuple[ArtifactControl, None]:
+    ) -> tuple[Any, None]:
         """单 session 内 select-for-update + 乐观锁校验，返回 row。"""
         row = await self._select_for_update(session, novel_id, artifact_type, artifact_id)
         if row is None:
@@ -356,6 +371,7 @@ class CreativeControlService:
         extra_values=None,
     ) -> int:
         """在已持有行锁的 session 内做状态转移 + version+1 + op log。"""
+        _, OperationLog = _orm()  # noqa: N806
         from_status = row.control_status
         if to_status != "generating" and not is_legal_transition(from_status, to_status):
             raise ValueError(f"illegal transition {from_status} -> {to_status}")

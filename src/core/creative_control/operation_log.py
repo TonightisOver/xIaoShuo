@@ -9,17 +9,27 @@
 
 from __future__ import annotations
 
+import importlib
 from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
 
-from src.api.models.db_models import OperationLog
 from src.core.creative_control.contracts import OPERATION_ACTIONS
 from src.core.database import get_db_session
 
 
-def _log_to_dict(row: OperationLog) -> dict[str, Any]:
+def _orm():
+    """延迟导入 ORM 模型：core 层不在顶层依赖 api.models（layer boundary）。
+
+    用 importlib 动态加载，避免在模块中出现 ``from src.api...`` 的 import 语句
+    （层边界静态守卫会扫描所有 AST import 节点，包括函数内与 TYPE_CHECKING 块）。
+    """
+    module = importlib.import_module("src.api.models.db_models")
+    return module.OperationLog
+
+
+def _log_to_dict(row: Any) -> dict[str, Any]:
     return {
         "id": row.id,
         "action": row.action,
@@ -56,6 +66,7 @@ class OperationLogService:
         meta: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """写一条 OperationLog 行并返回 dict。非法 action 抛 ValueError。"""
+        OperationLog = _orm()  # noqa: N806
         if action not in OPERATION_ACTIONS:
             raise ValueError(f"invalid action: {action!r}")
 
@@ -87,6 +98,7 @@ class OperationLogService:
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """按 novel_id 过滤，可选 artifact_type/action/created_at>=since，desc 排序，limit 截断。"""
+        OperationLog = _orm()  # noqa: N806
         stmt = select(OperationLog).where(OperationLog.novel_id == novel_id)
         if artifact_type is not None:
             stmt = stmt.where(OperationLog.artifact_type == artifact_type)

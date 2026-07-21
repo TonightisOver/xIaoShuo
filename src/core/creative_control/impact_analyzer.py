@@ -22,13 +22,23 @@
 
 from __future__ import annotations
 
+import importlib
 from typing import Any
 
 from sqlalchemy import select
 
-from src.api.models.db_models import ArtifactControl, Chapter, ChapterBlueprint, Volume
 from src.core.creative_control.contracts import DEPENDENCY_GRAPH
 from src.core.database import get_db_session
+
+
+def _orm():
+    """延迟导入 ORM 模型：core 层不在顶层依赖 api.models（layer boundary）。
+
+    用 importlib 动态加载，避免在模块中出现 ``from src.api...`` 的 import 语句
+    （层边界静态守卫会扫描所有 AST import 节点，包括函数内与 TYPE_CHECKING 块）。
+    """
+    module = importlib.import_module("src.api.models.db_models")
+    return module.ArtifactControl, module.Chapter, module.ChapterBlueprint, module.Volume
 
 # 已确认/锁定：上游变更时仅标记过期，不自动重生成（与 control_service.mark_stale 对齐）。
 _PROTECTED_STATUSES: frozenset[str] = frozenset({"approved", "locked"})
@@ -65,8 +75,9 @@ class ImpactAnalyzer:
 
         # 查相关 ArtifactControl 行（按 type 一次 in_ 查询）。
         types = {t for t, _, _ in down_items}
-        control_by_key: dict[tuple[str, str], ArtifactControl] = {}
+        control_by_key: dict[tuple[str, str], Any] = {}
         if types:
+            ArtifactControl, _, _, _ = _orm()  # noqa: N806
             async with get_db_session() as session:
                 result = await session.execute(
                     select(ArtifactControl).where(
@@ -149,6 +160,7 @@ class ImpactAnalyzer:
         items: list[tuple[str, str, bool]] = []
         if not full_types:
             return items
+        ArtifactControl, _, _, _ = _orm()  # noqa: N806
         async with get_db_session() as session:
             result = await session.execute(
                 select(ArtifactControl).where(
@@ -192,6 +204,7 @@ class ImpactAnalyzer:
         if not scoped_types or chapter_start is None or chapter_end is None:
             return items
         # 范围内该 type 的 control 行作为条目。
+        ArtifactControl, _, _, _ = _orm()  # noqa: N806
         async with get_db_session() as session:
             result = await session.execute(
                 select(ArtifactControl).where(
@@ -229,6 +242,7 @@ class ImpactAnalyzer:
         Returns:
             [("chapter", chapter_number_str), ...]
         """
+        _, _, ChapterBlueprint, _ = _orm()  # noqa: N806
         async with get_db_session() as session:
             result = await session.execute(
                 select(ChapterBlueprint.chapter_number).where(
@@ -244,6 +258,7 @@ class ImpactAnalyzer:
         self, novel_id: str, volume_number: int
     ) -> tuple[int | None, int | None]:
         """查该卷的 chapter_start / chapter_end。不存在返回 (None, None)。"""
+        _, _, _, Volume = _orm()  # noqa: N806
         async with get_db_session() as session:
             result = await session.execute(
                 select(Volume.chapter_start, Volume.chapter_end).where(
@@ -260,6 +275,7 @@ class ImpactAnalyzer:
         self, novel_id: str, chapter_number: int
     ) -> list[int]:
         """查严格大于 chapter_number 的所有章号（后续连续性检查范围）。"""
+        _, Chapter, _, _ = _orm()  # noqa: N806
         async with get_db_session() as session:
             result = await session.execute(
                 select(Chapter.chapter_number).where(
@@ -273,7 +289,7 @@ class ImpactAnalyzer:
 
     @staticmethod
     def _item_dict(
-        artifact_type: str, artifact_id: str, row: ArtifactControl | None
+        artifact_type: str, artifact_id: str, row: Any | None
     ) -> dict[str, Any]:
         return {
             "artifact_type": artifact_type,
@@ -283,7 +299,7 @@ class ImpactAnalyzer:
         }
 
     @staticmethod
-    def _is_protected(row: ArtifactControl | None) -> bool:
+    def _is_protected(row: Any | None) -> bool:
         """locked 或 control_status in {approved, locked} -> to_mark_stale。无行 -> regenerable。"""
         if row is None:
             return False

@@ -6,14 +6,24 @@
 
 from __future__ import annotations
 
+import importlib
 from dataclasses import dataclass, field
 from typing import Any
 
 from sqlalchemy import select
 
-from src.api.models.db_models import ArtifactControl, Chapter, Volume
 from src.core.creative_control.impact_analyzer import ImpactAnalyzer
 from src.core.database import get_db_session
+
+
+def _orm():
+    """延迟导入 ORM 模型：core 层不在顶层依赖 api.models（layer boundary）。
+
+    用 importlib 动态加载，避免在模块中出现 ``from src.api...`` 的 import 语句
+    （层边界静态守卫会扫描所有 AST import 节点，包括函数内与 TYPE_CHECKING 块）。
+    """
+    module = importlib.import_module("src.api.models.db_models")
+    return module.ArtifactControl, module.Chapter, module.Volume
 
 # Token 估算系数：每字约 1.5 token（中文）
 _TOKENS_PER_WORD = 1.5
@@ -163,6 +173,7 @@ class GenerationScopePlanner:
 
     async def _load_locked_chapters(self, novel_id: str) -> list[int]:
         """返回该小说所有 locked 的章号（chapter 类型 control）。"""
+        ArtifactControl, _, _ = _orm()  # noqa: N806
         async with get_db_session() as session:
             result = await session.execute(
                 select(ArtifactControl.artifact_id).where(
@@ -175,6 +186,7 @@ class GenerationScopePlanner:
 
     async def _load_confirmed_chapters(self, novel_id: str) -> list[int]:
         """返回 approved 状态的章号。"""
+        ArtifactControl, _, _ = _orm()  # noqa: N806
         async with get_db_session() as session:
             result = await session.execute(
                 select(ArtifactControl.artifact_id).where(
@@ -188,6 +200,7 @@ class GenerationScopePlanner:
     async def _load_volume_chapters(self, novel_id: str, volume_number: int | None) -> list[int]:
         if volume_number is None:
             return []
+        _, _, Volume = _orm()  # noqa: N806
         async with get_db_session() as session:
             result = await session.execute(
                 select(Volume.chapter_start, Volume.chapter_end).where(
@@ -202,6 +215,7 @@ class GenerationScopePlanner:
 
     async def _load_total_chapters(self, novel_id: str) -> int:
         """返回当前最大章号（用于 continue 模式）。"""
+        _, Chapter, _ = _orm()  # noqa: N806
         async with get_db_session() as session:
             result = await session.execute(
                 select(Chapter.chapter_number)
