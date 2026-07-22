@@ -182,10 +182,12 @@ async def generate_novel_background(
         if isinstance(result, dict) and result.get("_interrupted_for_review"):
             return  # 任务保持 running/waiting_for_review，由 resume_pipeline 续跑
 
-        await task_manager.complete_task(task_id, result)
-
         if novel_id:
             await _persist_to_novel(novel_id, result)
+
+        # 所有受 fencing 保护的产物必须在 Task 仍持有租约时落库；
+        # complete_task 会清除租约，因此只能作为最后一个数据库动作。
+        await task_manager.complete_task(task_id, result)
 
         await _emit_progress(
             task_id, EventType.COMPLETED,
@@ -413,9 +415,10 @@ async def resume_pipeline(task_id: str, decision: dict[str, Any]) -> None:
         if task_data:
             novel_id = task_data.get("novel_id")
 
-        await task_manager.complete_task(task_id, result)
         if novel_id:
             await _persist_to_novel(novel_id, result)
+        # 与初次生成保持相同顺序：先持久化，再释放 Task 租约。
+        await task_manager.complete_task(task_id, result)
         await _emit_progress(
             task_id, EventType.COMPLETED,
             {"percentage": 100, "current_stage": "completed"},

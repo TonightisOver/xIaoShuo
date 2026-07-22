@@ -175,6 +175,95 @@ async def _finish_task_controls_in_session(
         ))
 
 
+async def _reacquire_task_controls_in_session(session, task: Task) -> None:
+    """人工重试时重新占用该 Task 上次失败后释放的控制目标。
+
+    失败收口会把 generating_version 推进一版并置为 failed；重试必须在同一
+    事务中把这些行重新置为 generating、刷新 payload 中的版本栅栏。暂停或
+    历史异常留下的同任务 generating 行则保持原占用，不重复推进版本。
+    """
+    payload = dict(task.task_payload or {})
+    targets = _task_control_targets(task)
+    refreshed_targets: list[dict[str, Any]] = []
+    now = datetime.now(UTC)
+    for target in targets:
+        artifact_type = str(target["artifact_type"])
+        artifact_id = str(target["artifact_id"])
+        control = (
+            await session.execute(
+                select(ArtifactControl)
+                .where(
+                    ArtifactControl.novel_id == task.novel_id,
+                    ArtifactControl.artifact_type == artifact_type,
+                    ArtifactControl.artifact_id == artifact_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        expected_generating_version = int(target["generating_version"])
+        owner_task = (control.generation_meta or {}).get("task_id") if control else None
+
+        if (
+            control is not None
+            and control.control_status == "generating"
+            and control.version == expected_generating_version
+            and owner_task == task.task_id
+        ):
+            refreshed_targets.append(dict(target))
+            continue
+
+        expected_failed_version = expected_generating_version + 1
+        if (
+            control is None
+            or control.control_status != "failed"
+            or control.version != expected_failed_version
+            or owner_task != task.task_id
+        ):
+            actual_version = control.version if control is not None else 0
+            raise ArtifactConflictError(
+                str(task.novel_id),
+                artifact_type,
+                artifact_id,
+                expected_failed_version,
+                actual_version,
+            )
+
+        previous = control.version
+        control.control_status = "generating"
+        control.version += 1
+        control.stale_reason = None
+        control.generation_meta = {
+            **(control.generation_meta or {}),
+            "source": "task",
+            "task_id": task.task_id,
+            "operation_id": task.operation_id or task.task_id,
+            "status": "retrying",
+        }
+        control.updated_at = now
+        session.add(OperationLog(
+            novel_id=str(task.novel_id),
+            artifact_type=artifact_type,
+            artifact_id=artifact_id,
+            action="generate",
+            from_version=previous,
+            to_version=control.version,
+            task_id=task.task_id,
+            operation_id=task.operation_id,
+            reason="manual_retry",
+            meta={"status": "generating", "retry": True},
+        ))
+        refreshed_targets.append({
+            "artifact_type": artifact_type,
+            "artifact_id": artifact_id,
+            "generating_version": control.version,
+        })
+
+    if targets:
+        payload["control_targets"] = refreshed_targets
+        payload.pop("control_target", None)
+        task.task_payload = payload
+
+
 class TaskManager:
     """任务管理器 - 使用 PostgreSQL 存储"""
 
@@ -1173,9 +1262,12 @@ class TaskManager:
             cp.attempt_number = 0
             cp.failure_category = None
             cp.failure_detail = None
+            await _reacquire_task_controls_in_session(session, task)
             task.status = "pending"
             task.queue_state = "queued"
+            task.attempt_count = 0
             task.available_at = datetime.now(UTC)
+            task.completed_at = None
             _clear_lease(task)
             await session.commit()
             return RequeueResult(
@@ -1204,6 +1296,12 @@ class TaskManager:
                 *(task.errors or []),
                 "用户主动中止任务",
             ]
+            await _finish_task_controls_in_session(
+                session,
+                task,
+                fail_all=True,
+                reason="用户主动中止任务",
+            )
             # checkpoint 置 failed 但保留诊断字段
             await session.execute(
                 update(TaskCheckpoint)

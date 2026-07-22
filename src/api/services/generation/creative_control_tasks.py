@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from src.api.models.db_models import Outline
 from src.api.services.content.blueprint_service import BlueprintService
+from src.api.services.content.chapter_service import get_chapter_service
 from src.api.services.creative_control.artifact_write_service import (
     CreativeArtifactWriteService,
 )
@@ -87,11 +88,28 @@ async def fix_quality_background(
         )
         task = await task_manager.get_task(task_id)
         operation_id = (task or {}).get("operation_id") or task_id
+        chapter_service = get_chapter_service()
+        active_version = await chapter_service.get_active_chapter_version(
+            novel_id, chapter_number
+        )
         result = await RewriteLoopService().auto_improve_chapter(
             novel_id=novel_id,
             chapter_number=chapter_number,
             operation_id=operation_id,
         )
+        best_version = result.get("best_version")
+        if best_version is not None:
+            final_scores = result.get("final_scores") or {}
+            await chapter_service.finalize_chapter_version(
+                novel_id,
+                chapter_number,
+                expected_active_version=(
+                    active_version.get("version_number") if active_version else None
+                ),
+                selected_version=int(best_version),
+                quality_score=final_scores.get("overall"),
+                quality_scores=final_scores,
+            )
         await task_manager.complete_task(
             task_id,
             {
