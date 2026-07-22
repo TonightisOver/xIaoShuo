@@ -26,6 +26,7 @@ from src.api.services.generation.progress_event_bus import (
 )
 from src.api.services.quality.rewrite_loop_service import RewriteLoopService
 from src.api.services.tasks.task_manager import get_task_manager
+from src.core.exceptions import LeaseLost
 from src.core.langgraph.graph import create_novel_graph
 
 logger = structlog.get_logger(__name__)
@@ -154,7 +155,10 @@ async def _build_initial_state(
 
 
 async def generate_novel_background(
-    task_id: str, request: CreateNovelRequest
+    task_id: str,
+    request: CreateNovelRequest,
+    *,
+    worker_id: str | None = None,
 ) -> None:
     """后台执行小说生成"""
     from src.core.trace_context import _bind_trace, _clear_trace
@@ -164,7 +168,7 @@ async def generate_novel_background(
     novel_id: str | None = None
 
     try:
-        await task_manager.update_status(task_id, "running")
+        await task_manager.update_status(task_id, "running", worker_id=worker_id)
         await _emit_progress(
             task_id, EventType.STAGE_START,
             {"stage": "idea_expansion", "percentage": 0},
@@ -176,6 +180,7 @@ async def generate_novel_background(
 
         result = await _run_langgraph_pipeline(
             task_id, initial_state, stage_offset=0, total_stages=len(STAGE_ORDER),
+            worker_id=worker_id,
         )
 
         # HITL interrupt：pipeline 暂停等待人工审核，不 complete，等 review API resume
@@ -187,7 +192,7 @@ async def generate_novel_background(
 
         # 所有受 fencing 保护的产物必须在 Task 仍持有租约时落库；
         # complete_task 会清除租约，因此只能作为最后一个数据库动作。
-        await task_manager.complete_task(task_id, result)
+        await task_manager.complete_task(task_id, result, worker_id=worker_id)
 
         await _emit_progress(
             task_id, EventType.COMPLETED,
@@ -202,7 +207,7 @@ async def generate_novel_background(
 
     except Exception as e:
         logger.exception("novel_generation_failed", task_id=task_id)
-        await task_manager.fail_task(task_id, str(e))
+        await task_manager.fail_task(task_id, str(e), worker_id=worker_id)
         await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
         if novel_id:
             try:
@@ -223,6 +228,8 @@ async def _run_langgraph_pipeline(
     initial_state: dict[str, Any],
     stage_offset: int = 0,
     total_stages: int | None = None,
+    *,
+    worker_id: str | None = None,
 ) -> dict[str, Any]:
     """Run the LangGraph 7-node pipeline, emitting progress events.
 
@@ -257,7 +264,9 @@ async def _run_langgraph_pipeline(
             "total_chapters": total,
             "percentage": pct,
         }
-        await task_manager.update_status(task_id, "running", progress=progress_data)
+        await task_manager.update_status(
+            task_id, "running", progress=progress_data, worker_id=worker_id
+        )
         await event_bus.publish(ProgressEvent(
             task_id=task_id,
             event_type=EventType.CHAPTER_PROGRESS,
@@ -339,7 +348,10 @@ async def _run_langgraph_pipeline(
                 progress_data["regeneration_round"] = last_regeneration_round
                 progress_data["current_stage"] = "chapter_generation_optimizing"
             await task_manager.update_status(
-                task_id, "running", progress=progress_data,
+                task_id,
+                "running",
+                progress=progress_data,
+                worker_id=worker_id,
             )
             await event_bus.publish(ProgressEvent(
                 task_id=task_id,
@@ -360,6 +372,7 @@ async def _run_langgraph_pipeline(
         await task_manager.update_status(
             task_id, "running",
             progress={"current_stage": "human_review", "waiting_for_review": True},
+            worker_id=worker_id,
         )
         await _emit_progress(
             task_id, EventType.STAGE_START,
@@ -371,7 +384,12 @@ async def _run_langgraph_pipeline(
     return result
 
 
-async def resume_pipeline(task_id: str, decision: dict[str, Any]) -> None:
+async def resume_pipeline(
+    task_id: str,
+    decision: dict[str, Any],
+    *,
+    worker_id: str | None = None,
+) -> None:
     """恢复因 HITL interrupt 暂停的生成流水线。
 
     用相同 thread_id 的 config + Command(resume=decision) 重新 astream，
@@ -404,6 +422,7 @@ async def resume_pipeline(task_id: str, decision: dict[str, Any]) -> None:
                 await task_manager.update_status(
                     task_id, "running",
                     progress={"current_stage": "human_review", "waiting_for_review": True},
+                    worker_id=worker_id,
                 )
                 return
             for node_name, state_update in event.items():
@@ -418,7 +437,7 @@ async def resume_pipeline(task_id: str, decision: dict[str, Any]) -> None:
         if novel_id:
             await _persist_to_novel(novel_id, result)
         # 与初次生成保持相同顺序：先持久化，再释放 Task 租约。
-        await task_manager.complete_task(task_id, result)
+        await task_manager.complete_task(task_id, result, worker_id=worker_id)
         await _emit_progress(
             task_id, EventType.COMPLETED,
             {"percentage": 100, "current_stage": "completed"},
@@ -427,12 +446,15 @@ async def resume_pipeline(task_id: str, decision: dict[str, Any]) -> None:
 
     except Exception as e:
         logger.exception("pipeline_resume_failed", task_id=task_id)
-        await task_manager.fail_task(task_id, str(e))
+        await task_manager.fail_task(task_id, str(e), worker_id=worker_id)
         await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
 
 
 async def generate_novel_full_background(
-    task_id: str, request: CreateNovelRequest,
+    task_id: str,
+    request: CreateNovelRequest,
+    *,
+    worker_id: str | None = None,
 ) -> None:
     """后台执行小说全功能生成（13 阶段流水线）。
 
@@ -448,7 +470,7 @@ async def generate_novel_full_background(
     novel_id: str | None = None
 
     try:
-        await task_manager.update_status(task_id, "running")
+        await task_manager.update_status(task_id, "running", worker_id=worker_id)
 
         logger.info("full_generation_starting", task_id=task_id)
 
@@ -461,7 +483,9 @@ async def generate_novel_full_background(
             {"stage": "idea_expansion", "percentage": 0},
         )
 
-        result = await _run_langgraph_pipeline(task_id, initial_state, stage_offset=0)
+        result = await _run_langgraph_pipeline(
+            task_id, initial_state, stage_offset=0, worker_id=worker_id
+        )
 
         # Persist to novel
         if novel_id:
@@ -473,6 +497,7 @@ async def generate_novel_full_background(
             feature_index=7,  # power_systems is stage 8 (0-indexed 7)
             feature_name="power_systems",
             label="力量体系",
+            worker_id=worker_id,
         )
 
         await _run_sub_feature(
@@ -480,6 +505,7 @@ async def generate_novel_full_background(
             feature_index=8,  # outline_persist is stage 9
             feature_name="outline_persist",
             label="大纲生成与持久化",
+            worker_id=worker_id,
         )
 
         await _run_sub_feature(
@@ -487,6 +513,7 @@ async def generate_novel_full_background(
             feature_index=9,  # storylines is stage 10
             feature_name="storylines",
             label="故事线生成",
+            worker_id=worker_id,
         )
 
         await _run_sub_feature(
@@ -494,6 +521,7 @@ async def generate_novel_full_background(
             feature_index=10,  # character_arcs is stage 11
             feature_name="character_arcs",
             label="人物弧光",
+            worker_id=worker_id,
         )
 
         await _run_sub_feature(
@@ -501,6 +529,7 @@ async def generate_novel_full_background(
             feature_index=11,  # scenes is stage 12
             feature_name="scenes",
             label="场景生成",
+            worker_id=worker_id,
         )
 
         await _run_sub_feature(
@@ -508,10 +537,11 @@ async def generate_novel_full_background(
             feature_index=12,  # auto_conversation is stage 13
             feature_name="auto_conversation",
             label="自动对话",
+            worker_id=worker_id,
         )
 
         # Final completion
-        await task_manager.complete_task(task_id, result)
+        await task_manager.complete_task(task_id, result, worker_id=worker_id)
         await _emit_progress(
             task_id, EventType.COMPLETED,
             {"percentage": 100, "current_stage": "completed", "pipeline": "full"},
@@ -521,7 +551,7 @@ async def generate_novel_full_background(
 
     except Exception as e:
         logger.exception("full_generation_failed", task_id=task_id)
-        await task_manager.fail_task(task_id, str(e))
+        await task_manager.fail_task(task_id, str(e), worker_id=worker_id)
         await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
         if novel_id:
             try:
@@ -539,6 +569,7 @@ async def _run_sub_feature(
     feature_index: int,
     feature_name: str,
     label: str,
+    worker_id: str | None = None,
 ) -> None:
     """Execute a single sub-feature generation step with progress events.
 
@@ -620,13 +651,20 @@ async def _run_sub_feature(
             })
 
         # Update progress after sub-feature completion
-        await task_manager.update_status(task_id, "running", progress={
-            "current_stage": feature_name,
-            "percentage": percentage,
-            "completed_chapters": len(result.get("chapters", [])),
-            "total_chapters": len(result.get("chapter_outlines", [])),
-        })
+        await task_manager.update_status(
+            task_id,
+            "running",
+            progress={
+                "current_stage": feature_name,
+                "percentage": percentage,
+                "completed_chapters": len(result.get("chapters", [])),
+                "total_chapters": len(result.get("chapter_outlines", [])),
+            },
+            worker_id=worker_id,
+        )
 
+    except LeaseLost:
+        raise
     except Exception as e:
         logger.warning(f"Sub-feature '{feature_name}' failed (non-blocking): {e}", exc_info=True)
         await _emit_progress(task_id, EventType.ERROR, {

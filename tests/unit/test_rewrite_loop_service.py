@@ -202,6 +202,10 @@ class TestAutoImproveChapter:
             return_value={"content": "Mediocre chapter content"}
         )
         mock_manager.create_chapter_version = AsyncMock(return_value=7)
+        mock_manager.get_chapter_version = AsyncMock(return_value={
+            "version_number": 7,
+            "content": "Persisted candidate content",
+        })
 
         mock_rewrite = AsyncMock(return_value="Rewritten better content")
 
@@ -236,7 +240,7 @@ class TestAutoImproveChapter:
                 "src.api.services.quality.rewrite_loop_service._evaluate_chapter_quality_for_novel",
                 new_callable=AsyncMock,
                 side_effect=_eval_side_effect,
-            ),
+            ) as mock_evaluate,
             patch(
                 "src.core.llm.chapter_rewriter.batch_targeted_rewrite",
                 mock_rewrite,
@@ -264,6 +268,8 @@ class TestAutoImproveChapter:
         assert create_kwargs["idempotency_key"] == (
             "op-long-form:quality:1:candidate:1"
         )
+        # 幂等重放时评分必须基于实际持久化的候选，而非本轮新生成但未落库的文本。
+        assert mock_evaluate.await_args_list[1].args[2] == "Persisted candidate content"
 
 
 # ===========================================================================

@@ -1231,6 +1231,16 @@ class TaskManager:
         Task.queue_state='queued'、status='pending'、清 lease。
         """
         async with get_db_session() as session:
+            # 与 advance_checkpoint 统一锁序：Task → TaskCheckpoint → Controls。
+            # 先锁 Task 也确保运行中 worker 无法在状态校验与重入队之间推进。
+            task = (
+                await session.execute(
+                    select(Task).where(Task.task_id == task_id).with_for_update()
+                )
+            ).scalar_one_or_none()
+            if task is None:
+                return RequeueResult(requeued=False, reason="task_not_found")
+
             cp = (
                 await session.execute(
                     select(TaskCheckpoint)
@@ -1248,14 +1258,22 @@ class TaskManager:
                     checkpoint_status=cp.status,
                 )
 
-            task = (
-                await session.execute(
-                    select(Task).where(Task.task_id == task_id).with_for_update()
-                )
-            ).scalar_one_or_none()
-            if task is None:
+            failed_retry = (
+                task.status == "failed"
+                and cp.status == "failed"
+                and bool(cp.recoverable)
+                and cp.failure_category in {"recoverable", "needs_human"}
+            )
+            paused_retry = (
+                cp.status == "paused"
+                and task.status in {"running", "paused"}
+                and task.queue_state == "idle"
+            )
+            if not (failed_retry or paused_retry):
                 return RequeueResult(
-                    requeued=False, reason="task_not_found", checkpoint_status=cp.status
+                    requeued=False,
+                    reason="not_retryable",
+                    checkpoint_status=cp.status,
                 )
 
             cp.status = "running"

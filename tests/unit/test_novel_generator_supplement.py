@@ -361,13 +361,16 @@ class TestLangGraphQualityDependencyInjection:
             new=AsyncMock(side_effect=persist_result),
         ):
             await resume_pipeline(
-                "task-resume", {"approval_status": "approved"}
+                "task-resume",
+                {"approval_status": "approved"},
+                worker_id="worker-resume",
             )
 
         configurable = captured["config"]["configurable"]
         assert configurable["persist_quality"] is _persist_quality_to_version
         assert isinstance(configurable["rewrite_service"], RewriteLoopService)
         assert call_order == ["persist", "complete"]
+        assert task_manager.complete_task.await_args.kwargs["worker_id"] == "worker-resume"
 
 
 # ---------------------------------------------------------------------------
@@ -445,12 +448,15 @@ class TestGenerateNovelBackgroundErrorRecovery:
              patch("src.api.services.generation.novel_generator._build_initial_state", AsyncMock(return_value=({}, "novel-100"))), \
              patch("src.api.services.generation.novel_generator._run_langgraph_pipeline", AsyncMock(return_value=pipeline_result)), \
              patch("src.api.services.generation.novel_generator._persist_to_novel", persist):
-            await generate_novel_background("task-ok", request)
+            await generate_novel_background(
+                "task-ok", request, worker_id="worker-generate"
+            )
 
         tm.complete_task.assert_awaited_once()
         args = tm.complete_task.call_args.args
         assert args[0] == "task-ok"
         assert args[1] == pipeline_result
+        assert tm.complete_task.await_args.kwargs["worker_id"] == "worker-generate"
         persist.assert_awaited_once_with("novel-100", pipeline_result)
         assert call_order == ["persist", "complete"]
         tm.fail_task.assert_not_called()

@@ -220,9 +220,20 @@ class RewriteLoopService:
                 ),
             )
 
-            # 8. 评估改写后的分数
+            # 幂等重放可能命中上一次已落库的候选版本；此时本轮 new_content
+            # 并未写入。评分必须读取实际候选正文，避免“评分新文本、激活旧文本”。
+            candidate_content = new_content
+            if operation_id:
+                persisted_candidate = await manager.get_chapter_version(
+                    novel_id, chapter_number, candidate_version
+                )
+                if not persisted_candidate or persisted_candidate.get("content") is None:
+                    raise ValueError("候选章节版本不存在，无法完成质量评估")
+                candidate_content = persisted_candidate["content"]
+
+            # 8. 评估实际持久化候选的分数
             scores_after = await _evaluate_chapter_quality_for_novel(
-                novel_id, chapter_number, new_content
+                novel_id, chapter_number, candidate_content
             )
 
             # 候选择优：仅当整体提升且受保护维度未恶化时才激活候选
@@ -239,7 +250,7 @@ class RewriteLoopService:
                 "actions_taken": action_types,
                 "candidate_version": candidate_version,
                 "activated": activated,
-                "word_count": len(new_content),
+                "word_count": len(candidate_content),
             })
 
             if activated:

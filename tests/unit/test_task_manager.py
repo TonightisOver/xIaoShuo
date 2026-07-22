@@ -1121,3 +1121,39 @@ class TestLeaseGuardedTerminalOperations:
         with _patch_db(session):
             result = await manager.assert_lease_held("novel-1", "worker-a")
         assert result is True
+
+
+class TestManualRetryLocking:
+    @pytest.mark.asyncio
+    async def test_retry_locks_task_before_checkpoint(self, manager):
+        task = _make_task_mock(
+            task_id="novel-1",
+            status="failed",
+            queue_state="idle",
+            attempt_count=3,
+            max_attempts=3,
+            task_payload={},
+        )
+        checkpoint = MagicMock(
+            status="failed",
+            failure_category="recoverable",
+            recoverable=True,
+            attempt_number=2,
+            failure_detail={"error": "temporary"},
+        )
+        task_result = MagicMock()
+        task_result.scalar_one_or_none.return_value = task
+        checkpoint_result = MagicMock()
+        checkpoint_result.scalar_one_or_none.return_value = checkpoint
+        session = _make_session()
+        session.execute = AsyncMock(side_effect=[task_result, checkpoint_result])
+
+        with _patch_db(session):
+            result = await manager.retry_task("novel-1")
+
+        assert result.requeued is True
+        first_query = str(session.execute.await_args_list[0].args[0])
+        second_query = str(session.execute.await_args_list[1].args[0])
+        assert "FROM tasks" in first_query
+        assert "FROM task_checkpoints" in second_query
+        assert task.attempt_count == 0

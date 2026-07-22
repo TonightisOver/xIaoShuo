@@ -286,6 +286,36 @@ async def test_retry_no_checkpoint_returns_404(novel_task):
     assert result.reason == "no_checkpoint"
 
 
+@pytest.mark.asyncio
+async def test_retry_rejects_task_that_is_still_running(novel_task):
+    """运行中的 worker 仍持有任务时，人工 retry 不得清租约或重复入队。"""
+    from src.api.services.tasks.task_manager import TaskManager
+
+    novel_id, task_id = novel_task
+    await _insert_task(
+        task_id,
+        novel_id,
+        status="running",
+        queue_state="leased",
+        lease_owner="worker-active",
+    )
+    await _insert_checkpoint(
+        task_id,
+        novel_id,
+        status="running",
+        failure_category=None,
+    )
+
+    result = await TaskManager().retry_task(task_id)
+    assert result.requeued is False
+    assert result.reason == "not_retryable"
+
+    task = await _read_task(task_id)
+    assert task["status"] == "running"
+    assert task["queue_state"] == "leased"
+    assert task["lease_owner"] == "worker-active"
+
+
 # ---------------------------------------------------------------------------
 # abort_task
 # ---------------------------------------------------------------------------

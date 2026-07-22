@@ -53,7 +53,7 @@ async def dispatch_task(task: dict[str, Any]) -> None:
         )
 
         request = CreateNovelRequest.model_validate(payload["request"])
-        await generate_novel_background(task_id, request)
+        await generate_novel_background(task_id, request, worker_id=worker_id)
         return
 
     if task_type is TaskType.NOVEL_FULL_GENERATE:
@@ -62,7 +62,7 @@ async def dispatch_task(task: dict[str, Any]) -> None:
         )
 
         request = CreateNovelRequest.model_validate(payload["request"])
-        await generate_novel_full_background(task_id, request)
+        await generate_novel_full_background(task_id, request, worker_id=worker_id)
         return
 
     if task_type is TaskType.NOVEL_LONG_FORM:
@@ -166,7 +166,9 @@ async def dispatch_task(task: dict[str, Any]) -> None:
     if task_type is TaskType.PIPELINE_RESUME:
         from src.api.services.generation.novel_generator import resume_pipeline
 
-        await resume_pipeline(task_id, dict(payload["decision"]))
+        await resume_pipeline(
+            task_id, dict(payload["decision"]), worker_id=worker_id
+        )
         return
 
     raise ValueError(f"Unsupported task type: {task_type!r}")

@@ -596,3 +596,12 @@ async def test_stale_attempt_cannot_write_after_new_worker_claims_task():
         await CreativeControlService().assert_generation_allowed(
             novel_id, "chapter", "1"
         )
+    from src.api.services.content.chapter_service import get_chapter_service
+
+    with pytest.raises(LeaseLost):
+        await get_chapter_service().finalize_chapter_version(
+            novel_id,
+            1,
+            expected_active_version=1,
+            selected_version=1,
+        )

@@ -378,6 +378,17 @@ class ChapterService:
         幂等：若 selected_version 已是活跃且 expected 匹配，直接返回 True（恢复场景）。
         """
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                CreativeControlService,
+                has_generation_fence,
+            )
+
+            # 候选激活本身就是正文写入，必须和创建候选一样在本事务内校验
+            # task/worker/attempt/lease，防止旧 worker 在租约交接后激活旧候选。
+            if has_generation_fence():
+                await CreativeControlService().assert_generation_allowed_in_session(
+                    session, novel_id, "chapter", str(chapter_number)
+                )
             ch_res = await session.execute(
                 select(Chapter)
                 .where(

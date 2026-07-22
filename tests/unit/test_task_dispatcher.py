@@ -38,6 +38,7 @@ async def test_dispatches_standard_generation_with_rebuilt_request():
         await dispatch_task(
             {
                 "task_id": "task-1",
+                "worker_id": "worker-1",
                 "task_type": TaskType.NOVEL_GENERATE.value,
                 "task_payload": {
                     "request": request.model_dump(mode="json")
@@ -50,6 +51,7 @@ async def test_dispatches_standard_generation_with_rebuilt_request():
     assert task_id == "task-1"
     assert isinstance(rebuilt, CreateNovelRequest)
     assert rebuilt == request
+    assert handler.await_args.kwargs == {"worker_id": "worker-1"}
 
 
 @pytest.mark.asyncio
@@ -65,6 +67,7 @@ async def test_dispatches_full_generation():
         await dispatch_task(
             {
                 "task_id": "task-2",
+                "worker_id": "worker-2",
                 "task_type": TaskType.NOVEL_FULL_GENERATE.value,
                 "task_payload": {
                     "request": request.model_dump(mode="json")
@@ -74,6 +77,7 @@ async def test_dispatches_full_generation():
 
     handler.assert_awaited_once()
     assert isinstance(handler.await_args.args[1], CreateNovelRequest)
+    assert handler.await_args.kwargs == {"worker_id": "worker-2"}
 
 
 @pytest.mark.asyncio
@@ -311,12 +315,15 @@ async def test_dispatches_pipeline_resume():
         await dispatch_task(
             {
                 "task_id": "task-6",
+                "worker_id": "worker-6",
                 "task_type": TaskType.PIPELINE_RESUME.value,
                 "task_payload": {"decision": decision},
             }
         )
 
-    handler.assert_awaited_once_with("task-6", decision)
+    handler.assert_awaited_once_with(
+        "task-6", decision, worker_id="worker-6"
+    )
 
 
 @pytest.mark.asyncio
