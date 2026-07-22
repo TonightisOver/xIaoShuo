@@ -10,6 +10,7 @@ from src.api.models.db_models import (
 )
 from src.api.services.knowledge.knowledge_graph_service import KnowledgeGraphService
 from src.api.services.quality.novel_context_service import NovelContextBuilder
+from src.core.creative_control.blueprint_enums import validate_blueprint_fields
 from src.core.database import get_db_session
 from src.core.llm.client import get_llm_client
 from src.core.llm.helpers import generate_and_parse_json
@@ -71,6 +72,8 @@ class BlueprintService:
                 chapter_number=chapter_number,
             )
             blueprint_data = self._default_blueprint(chapter_outline)
+
+        validate_blueprint_fields(blueprint_data)
 
         if not persist:
             return blueprint_data
@@ -152,6 +155,8 @@ class BlueprintService:
                 raise ValueError(
                     f"No active blueprint for novel={novel_id} chapter={chapter_number}"
                 )
+
+            validate_blueprint_fields(updates)
 
             for field, value in updates.items():
                 if field in BLUEPRINT_FIELDS and hasattr(bp, field):

@@ -210,3 +210,55 @@ class TestUpdateBlueprint:
         with patch("src.api.services.content.blueprint_service.get_db_session", ctx_factory):
             with pytest.raises(ValueError, match="No active blueprint"):
                 await svc.update_blueprint(_novel_id(), 1, {"plot_goal": "x"})
+
+
+# ===========================================================================
+# Tests for BlueprintService field validation (Task 1)
+# ===========================================================================
+
+class TestBlueprintFieldValidation:
+    """BlueprintService 写入前校验枚举值（Task 1）。"""
+
+    @pytest.mark.asyncio
+    async def test_generate_blueprint_rejects_invalid_chapter_type(self):
+        from src.api.services.content.blueprint_service import BlueprintService
+
+        ctx_factory, _ = _fake_session()
+        mock_client = AsyncMock()
+        mock_client.generate = AsyncMock(return_value=json.dumps({
+            "chapter_type": "invalid_type", "plot_goal": "x",
+            "hook_design": "", "foreshadow_actions": [], "cliffhanger": "",
+            "pacing_target": "medium", "key_characters": [], "word_target": 3000,
+        }))
+        svc = BlueprintService()
+        with (
+            patch("src.api.services.content.blueprint_service.get_db_session", ctx_factory),
+            patch("src.api.services.content.blueprint_service.get_llm_client", return_value=mock_client),
+            patch.object(svc, "_build_context", new_callable=AsyncMock, return_value={
+                "previous_chapter": "", "story_bible": "", "kg_context": "", "volume_context": "",
+            }),
+        ):
+            with pytest.raises(ValueError, match="非法 chapter_type"):
+                await svc.generate_blueprint(_novel_id(), 1, {"plot": "x"}, persist=True)
+
+    @pytest.mark.asyncio
+    async def test_update_blueprint_rejects_invalid_pacing(self):
+        from src.api.services.content.blueprint_service import BlueprintService
+
+        mock_bp = _make_blueprint_model()
+        ctx_factory, _ = _fake_session(bp=mock_bp)
+        svc = BlueprintService()
+        with patch("src.api.services.content.blueprint_service.get_db_session", ctx_factory):
+            with pytest.raises(ValueError, match="非法 pacing_target"):
+                await svc.update_blueprint(_novel_id(), 1, {"pacing_target": "turbo"})
+
+    @pytest.mark.asyncio
+    async def test_update_blueprint_rejects_word_target_out_of_range(self):
+        from src.api.services.content.blueprint_service import BlueprintService
+
+        mock_bp = _make_blueprint_model()
+        ctx_factory, _ = _fake_session(bp=mock_bp)
+        svc = BlueprintService()
+        with patch("src.api.services.content.blueprint_service.get_db_session", ctx_factory):
+            with pytest.raises(ValueError, match="word_target"):
+                await svc.update_blueprint(_novel_id(), 1, {"word_target": 100})
