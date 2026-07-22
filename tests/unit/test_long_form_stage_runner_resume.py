@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from src.api.services.generation.chapter_recovery import RecoveryAction
+from src.core.exceptions import LeaseLost
 from src.core.quality.gate import GateResult
 
 
@@ -43,6 +44,33 @@ async def test_load_persisted_chapter_result_uses_requested_version_content() ->
     assert result["content"] == "最终版本正文"
     assert result["word_count"] == 6
     chapter_service.get_chapter_version.assert_awaited_once_with("novel-1", 7, 4)
+
+
+@pytest.mark.asyncio
+async def test_persist_quality_for_gate_propagates_lease_lost() -> None:
+    from src.api.services.generation import long_form_generation_helpers as helpers
+
+    session = AsyncMock()
+
+    @asynccontextmanager
+    async def db_context():
+        yield session
+
+    guard = AsyncMock(side_effect=LeaseLost("task-stale"))
+    with (
+        patch("src.core.database.get_db_session", new=db_context),
+        patch(
+            "src.core.creative_control.control_service."
+            "assert_generation_write_allowed_in_session",
+            new=guard,
+        ),
+        pytest.raises(LeaseLost),
+    ):
+        await helpers._persist_quality_for_gate(
+            "novel-1", 7, {"overall": 0.1}, []
+        )
+
+    session.execute.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -163,6 +191,68 @@ async def test_run_chapter_stages_resumes_without_replaying_completed_phases(
     assert kg_extract.await_count == side_effect_count
     persist.assert_not_awaited()
     chapter_service.create_chapter_version.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_chapter_stages_propagates_lease_lost_from_quality_gate() -> None:
+    from src.api.services.generation import long_form_generation_helpers as helpers
+
+    store = SimpleNamespace(
+        assert_lease_held=AsyncMock(),
+        advance_checkpoint=AsyncMock(),
+    )
+    manager = SimpleNamespace(
+        update_state_delta=AsyncMock(),
+        update_quality_status=AsyncMock(),
+    )
+    chapter_service = SimpleNamespace(
+        get_active_chapter_version=AsyncMock(
+            return_value={
+                "version_number": 2,
+                "idempotency_key": "op-1:baseline:7",
+            }
+        ),
+    )
+    gate = AsyncMock(side_effect=LeaseLost("task-1"))
+
+    with (
+        patch(
+            "src.api.services.tasks.checkpoint_store.get_checkpoint_store",
+            return_value=store,
+        ),
+        patch(
+            "src.api.services.content.novel_manager.get_novel_manager",
+            return_value=manager,
+        ),
+        patch(
+            "src.api.services.content.chapter_service.get_chapter_service",
+            return_value=chapter_service,
+        ),
+        patch("src.core.quality.gate.run_quality_gate", new=gate),
+        pytest.raises(LeaseLost),
+    ):
+        await helpers._run_chapter_stages(
+            task_id="task-1",
+            novel_id="novel-1",
+            worker_id="worker-1",
+            operation_id="op-1",
+            volume_number=1,
+            global_ch_num=7,
+            total_chapters=10,
+            chapter_start=1,
+            completed_before=0,
+            ch_outline={"chapter": 7, "title": "第七章"},
+            chapter_result={"chapter": 7, "content": "持久化正文"},
+            vol_ch_idx=6,
+            request=None,
+            world_str="{}",
+            chars_str="{}",
+            expected_checkpoint_version=10,
+            recovery_action=RecoveryAction.RUN_QUALITY,
+            active_version_number=2,
+        )
+
+    store.advance_checkpoint.assert_not_awaited()
 
 
 @pytest.mark.asyncio

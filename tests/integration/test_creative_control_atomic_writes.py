@@ -640,6 +640,15 @@ async def test_stale_attempt_cannot_write_after_new_worker_claims_task():
             novel_id, 1, {"overall": 0.1}, [{"type": "stale_worker"}]
         )
 
+    from src.api.services.generation.long_form_generation_helpers import (
+        _persist_quality_for_gate,
+    )
+
+    with pytest.raises(LeaseLost):
+        await _persist_quality_for_gate(
+            novel_id, 1, {"overall": 0.2}, [{"type": "stale_worker"}]
+        )
+
     with pytest.raises(LeaseLost):
         await CreativeControlService().record_generated(
             novel_id,

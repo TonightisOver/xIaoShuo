@@ -97,10 +97,16 @@ async def _persist_quality_for_gate(
     from sqlalchemy import desc, select
 
     from src.api.models.db_models import ChapterVersion
+    from src.core.creative_control.control_service import (
+        assert_generation_write_allowed_in_session,
+    )
     from src.core.database import get_db_session
 
     try:
         async with get_db_session() as session:
+            await assert_generation_write_allowed_in_session(
+                session, novel_id, "chapter", str(chapter_number)
+            )
             stmt = (
                 select(ChapterVersion)
                 .where(
@@ -113,6 +119,8 @@ async def _persist_quality_for_gate(
             version = (await session.execute(stmt)).scalar_one_or_none()
             if version is not None:
                 version.quality_scores = scores
+    except LeaseLost:
+        raise
     except Exception as e:
         logger.warning(
             "gate_quality_scores_persist_failed",
@@ -705,6 +713,8 @@ async def _run_chapter_stages(
                 chapter_result["state_delta"] = gate_result.state_delta
                 if gate_result.final_version_number is not None:
                     final_vn = gate_result.final_version_number
+            except LeaseLost:
+                raise
             except Exception as gate_err:
                 logger.warning(
                     "quality_gate_failed_non_fatal",
@@ -1189,6 +1199,8 @@ async def generate_volume_chapters(
                     chapter_result["quality_status"] = gate_result.quality_status
                     chapter_result["quality_scores"] = gate_result.quality_scores
                     chapter_result["state_delta"] = gate_result.state_delta
+                except LeaseLost:
+                    raise
                 except Exception as gate_err:
                     logger.warning(
                         "quality_gate_failed_non_fatal",
