@@ -280,6 +280,11 @@ class CreativeControlService:
         try:
             ArtifactControl, OperationLog = _orm()  # noqa: N806
             async with get_db_session() as session:
+                if has_generation_fence():
+                    await self.assert_generation_allowed_in_session(
+                        session, novel_id, artifact_type, artifact_id,
+                        force=force,
+                    )
                 row = await self._select_for_update(
                     session, novel_id, artifact_type, artifact_id
                 )
@@ -314,6 +319,8 @@ class CreativeControlService:
                 ))
                 await session.flush()
                 return _row_to_dict(row)
+        except LeaseLost:
+            raise
         except Exception:  # noqa: BLE001 - 插桩不破坏生成
             logger.warning(
                 "creative_control_record_generated_failed",

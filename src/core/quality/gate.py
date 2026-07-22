@@ -14,6 +14,7 @@ from typing import Any
 import structlog
 
 from src.core.config import get_settings
+from src.core.exceptions import LeaseLost
 from src.core.quality.evaluator import evaluate_chapter_quality
 from src.core.quality.risk import RiskLevel, classify_risk, should_invoke_l2
 from src.core.quality.rules import run_l0_rules
@@ -69,7 +70,8 @@ async def run_quality_gate(
 ) -> GateResult:
     """对单章生成结果跑完整质量漏斗。
 
-    永不抛异常：任何失败返回可用 GateResult（最坏 unverified + 原内容）。
+    业务失败返回可用 GateResult（最坏 unverified + 原内容）；LeaseLost 必须向上传播，
+    让旧 worker 立即停止所有后续写入。
     """
     content = chapter_result.get("content", "") or ""
     word_count = chapter_result.get("word_count", len(content))
@@ -93,6 +95,8 @@ async def run_quality_gate(
             novel_type=novel_type, world_setting=world_setting, characters=characters,
         )
         await _safe(persist_callbacks.update_state_delta, novel_id, chapter_number, state_delta)
+    except LeaseLost:
+        raise
     except Exception as e:
         logger.warning("gate_state_delta_failed", novel_id=novel_id, chapter=chapter_number, error=str(e))
         state_delta = {"_unverified": True}
@@ -124,6 +128,8 @@ async def run_quality_gate(
             novel_type=novel_type, idea=idea, world_setting=world_setting,
             characters=characters, default_score=0.5,
         )
+    except LeaseLost:
+        raise
     except Exception as e:
         logger.warning("gate_l2_failed", novel_id=novel_id, chapter=chapter_number, error=str(e))
         await _safe(persist_callbacks.update_quality_status, novel_id, chapter_number, "unverified")
@@ -181,6 +187,8 @@ async def run_quality_gate(
             max_iterations=max_rewrite, target_score=threshold,
             operation_id=operation_id,
         )
+    except LeaseLost:
+        raise
     except Exception as e:
         logger.warning("gate_l3_failed", novel_id=novel_id, chapter=chapter_number, error=str(e))
 
@@ -208,9 +216,11 @@ async def run_quality_gate(
 
 
 async def _safe(fn, *args, **kwargs):
-    """安全调用回调，失败只 log 不抛。"""
+    """安全调用回调；业务失败只记录，租约丢失必须终止旧 worker。"""
     try:
         await fn(*args, **kwargs)
+    except LeaseLost:
+        raise
     except Exception as e:
         logger.warning("gate_persist_failed", error=str(e))
 

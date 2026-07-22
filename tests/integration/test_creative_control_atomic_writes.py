@@ -605,6 +605,14 @@ async def test_stale_attempt_cannot_write_after_new_worker_claims_task():
             expected_active_version=1,
             selected_version=1,
         )
+    with pytest.raises(LeaseLost):
+        await get_chapter_service().update_state_delta(
+            novel_id, 1, {"stale_worker": True}
+        )
+    with pytest.raises(LeaseLost):
+        await get_chapter_service().update_quality_status(
+            novel_id, 1, "failed"
+        )
 
     from src.api.services.content.world_service import get_world_service
 
@@ -621,4 +629,21 @@ async def test_stale_attempt_cannot_write_after_new_worker_claims_task():
         await persist_langgraph_result(
             novel_id,
             {"chapters": [{"chapter": 1, "content": "旧 worker 覆盖"}]},
+        )
+
+    from src.api.services.generation.chapter_persistence_service import (
+        persist_quality_to_version,
+    )
+
+    with pytest.raises(LeaseLost):
+        await persist_quality_to_version(
+            novel_id, 1, {"overall": 0.1}, [{"type": "stale_worker"}]
+        )
+
+    with pytest.raises(LeaseLost):
+        await CreativeControlService().record_generated(
+            novel_id,
+            "chapter",
+            "1",
+            generation_meta={"source": "stale_worker"},
         )

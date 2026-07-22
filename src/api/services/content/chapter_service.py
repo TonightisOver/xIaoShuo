@@ -133,6 +133,13 @@ class ChapterService:
             True 若章节存在并更新成功，False 若章节不存在
         """
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                assert_generation_write_allowed_in_session,
+            )
+
+            await assert_generation_write_allowed_in_session(
+                session, novel_id, "chapter", str(chapter_number)
+            )
             result = await session.execute(
                 select(Chapter).where(
                     Chapter.novel_id == novel_id,
@@ -155,6 +162,13 @@ class ChapterService:
         quality_status 取值: verified / unverified / consistency_blocked / failed
         """
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                assert_generation_write_allowed_in_session,
+            )
+
+            await assert_generation_write_allowed_in_session(
+                session, novel_id, "chapter", str(chapter_number)
+            )
             result = await session.execute(
                 select(Chapter).where(
                     Chapter.novel_id == novel_id,

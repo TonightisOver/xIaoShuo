@@ -35,6 +35,8 @@ async def _record_artifact_generated(
     """
     if artifact_type not in ARTIFACT_TYPES:
         return
+    from src.core.exceptions import LeaseLost
+
     try:
         from src.api.services.content.novel_manager import get_novel_manager
         from src.core.creative_control.control_service import CreativeControlService
@@ -50,6 +52,8 @@ async def _record_artifact_generated(
             novel_id, artifact_type, artifact_id,
             generation_meta=generation_meta, awaiting_review=awaiting,
         )
+    except LeaseLost:
+        raise
     except Exception:  # noqa: BLE001 - 插桩绝不破坏生成
         logger.warning(
             "creative_control_instrumentation_failed",
@@ -427,13 +431,21 @@ async def persist_quality_to_version(
     consistency_warnings: list,
 ) -> None:
     """将质量评分回写到章节的活跃版本记录"""
+    from src.core.exceptions import LeaseLost
+
     try:
         from sqlalchemy import and_, select
 
         from src.api.models.db_models import ChapterVersion
+        from src.core.creative_control.control_service import (
+            assert_generation_write_allowed_in_session,
+        )
         from src.core.database import get_db_session
 
         async with get_db_session() as session:
+            await assert_generation_write_allowed_in_session(
+                session, novel_id, "chapter", str(chapter_number)
+            )
             result = await session.execute(
                 select(ChapterVersion).where(
                     and_(
@@ -455,5 +467,7 @@ async def persist_quality_to_version(
                     chapter=chapter_number,
                     version=version.version_number,
                 )
+    except LeaseLost:
+        raise
     except Exception as e:
         logger.warning("persist_quality_score_failed", error=str(e))

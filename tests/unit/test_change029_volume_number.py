@@ -326,6 +326,9 @@ class TestPersistToNovelVolumeNumber:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_session.add = MagicMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute = AsyncMock(return_value=mock_result)
 
         mock_manager = AsyncMock()
         mock_manager.upsert_world_setting = AsyncMock()
@@ -372,6 +375,9 @@ class TestPersistToNovelVolumeNumber:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_session.add = MagicMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute = AsyncMock(return_value=mock_result)
 
         mock_manager = AsyncMock()
         mock_manager.upsert_world_setting = AsyncMock()

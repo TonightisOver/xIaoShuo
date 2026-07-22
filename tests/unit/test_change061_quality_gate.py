@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.core.exceptions import LeaseLost
 from src.core.quality.gate import run_quality_gate
 from src.core.quality.risk import RiskLevel
 
@@ -43,6 +44,21 @@ async def test_failed_chapter_skips_funnel():
     mock_extract.assert_not_called()
     mock_l0.assert_not_called()
     mock_l2.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_lease_lost_from_persist_callback_is_not_swallowed():
+    cb = _make_callbacks()
+    cb.update_quality_status.side_effect = LeaseLost("task-stale")
+
+    with pytest.raises(LeaseLost):
+        await run_quality_gate(
+            novel_id="n1", chapter_number=1,
+            chapter_result=_make_chapter_result(generation_failed=True),
+            chapter_outline=None, novel_type="玄幻", idea="测试",
+            world_setting="", characters="",
+            persist_callbacks=cb, chapter_index_in_volume=0,
+        )
 
 
 @pytest.mark.asyncio
