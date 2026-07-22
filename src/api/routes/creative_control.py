@@ -315,7 +315,7 @@ async def regenerate_artifact(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail="卷纲产物 ID 必须为卷号") from exc
         plan = ScopePlan(
-            endpoint="generate-volume",
+            endpoint="generate-volume-outline",
             payload={
                 "volume_number": volume_number,
                 "_control_target": {
@@ -333,8 +333,12 @@ async def regenerate_artifact(
 
     control_service, _, _, _, _ = _services()
     try:
-        await control_service.assert_writable(
-            novel_id, artifact_type, artifact_id, request.expected_version,
+        new_v = await control_service.begin_generating(
+            novel_id,
+            artifact_type,
+            artifact_id,
+            expected_version=request.expected_version,
+            operator_id=current_user.id,
             force=request.force,
         )
     except (ArtifactConflictError, ArtifactLockedError, ArtifactBusyError) as exc:
@@ -352,22 +356,26 @@ async def regenerate_artifact(
         dispatched = await CreativeGenerationDispatcher().dispatch_scope(
             novel, current_user.id, plan
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    try:
-        new_v = await control_service.begin_generating(
-            novel_id, artifact_type, artifact_id,
-            expected_version=request.expected_version,
-            operator_id=current_user.id,
-            task_id=dispatched.task_id,
-        )
-    except (ArtifactConflictError, ArtifactLockedError, ArtifactBusyError) as exc:
-        code = {
-            ArtifactConflictError: "stale_version",
-            ArtifactLockedError: "locked",
-            ArtifactBusyError: "busy",
-        }[type(exc)]
-        raise _conflict_response(exc, code, "产物版本已变化或被锁定，请刷新后重试") from exc
+    except Exception as exc:
+        try:
+            await control_service.fail_generating(
+                novel_id,
+                artifact_type,
+                artifact_id,
+                expected_version=new_v,
+                reason=f"任务投递失败: {exc}",
+                operator_id=current_user.id,
+            )
+        except Exception:  # noqa: BLE001 - 保留原始投递异常
+            logger.exception(
+                "creative_control_dispatch_failure_cleanup_failed",
+                novel_id=novel_id,
+                artifact_type=artifact_type,
+                artifact_id=artifact_id,
+            )
+        if isinstance(exc, ValueError):
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise
     return {
         "status": "generating",
         "version": new_v,

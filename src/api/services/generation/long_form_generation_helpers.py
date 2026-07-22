@@ -1603,6 +1603,32 @@ async def generate_long_form_background(
                 chapters_per_vol=chapters_per_vol,
             )
 
+        # 先读取恢复身份，再决定是否复用已经持久化的总纲/卷纲。仅凭数据库中
+        # 存在旧大纲不能判断是同一操作；attempt_count>1 或 checkpoint 已推进
+        # 才表示当前持久任务正在恢复。
+        cpv = 0
+        last_completed_volume = 0
+        checkpoint_volume: int | None = None
+        checkpoint_stage = "chapter_planned"
+        is_recovery = False
+        operation_id = task_id
+        if worker_id is not None:
+            from src.api.services.tasks.checkpoint_store import get_checkpoint_store
+
+            store = get_checkpoint_store()
+            task_row = await task_manager.get_task(task_id)
+            operation_id = (task_row or {}).get("operation_id") or task_id
+            cp = await store.ensure_checkpoint(task_id, novel_id, operation_id)
+            cpv = cp["checkpoint_version"]
+            last_completed_volume = cp.get("last_completed_volume") or 0
+            checkpoint_volume = cp.get("volume_number")
+            checkpoint_stage = cp.get("current_stage") or "chapter_planned"
+            is_recovery = bool(
+                (task_row or {}).get("attempt_count", 0) > 1
+                or cpv > 0
+                or last_completed_volume > 0
+            )
+
         # Initialize progress tracking (uses correct chapters_per_vol)
         await progress_service.initialize_progress(
             novel_id=novel_id,
@@ -1616,24 +1642,36 @@ async def generate_long_form_background(
             {"stage": "master_outline", "percentage": 0},
         )
 
-        # T2: pass chapters_per_vol so the prompt uses the correct value
-        master_outline = await generate_master_outline(
-            novel_id=novel_id,
-            request=request,
-            chapters_per_vol=chapters_per_vol,
-        )
-
-        # Update novel with master outline (uses correct chapters_per_vol)
         from src.api.services.content.novel_manager import get_novel_manager
         novel_manager = get_novel_manager()
-        await novel_manager.update_novel(
-            novel_id,
-            master_outline=master_outline,
-            total_volumes=request.volumes,
-            chapters_per_volume=chapters_per_vol,
-            words_per_chapter=request.words_per_chapter,
-            is_long_form=True,
+        persisted_novel = (
+            await novel_manager.get_novel(novel_id) if is_recovery else None
         )
+        persisted_master = (persisted_novel or {}).get("master_outline")
+        if is_recovery and isinstance(persisted_master, dict):
+            master_outline = persisted_master
+            logger.info(
+                "long_form_reusing_master_outline",
+                task_id=task_id,
+                novel_id=novel_id,
+            )
+        else:
+            # T2: pass chapters_per_vol so the prompt uses the correct value
+            master_outline = await generate_master_outline(
+                novel_id=novel_id,
+                request=request,
+                chapters_per_vol=chapters_per_vol,
+            )
+
+            # Update novel with master outline (uses correct chapters_per_vol)
+            await novel_manager.update_novel(
+                novel_id,
+                master_outline=master_outline,
+                total_volumes=request.volumes,
+                chapters_per_volume=chapters_per_vol,
+                words_per_chapter=request.words_per_chapter,
+                is_long_form=True,
+            )
 
         await _emit_progress(
             task_id, EventType.STAGE_COMPLETE,
@@ -1643,26 +1681,20 @@ async def generate_long_form_background(
         # Stage 2: Generate volume by volume
         global_chapter_start = 1
         all_chapters_generated = []
+        if is_recovery and last_completed_volume > 0:
+            completed_cutoff = last_completed_volume * chapters_per_vol
+            persisted_chapters = await novel_manager.list_chapters(novel_id)
+            all_chapters_generated.extend(
+                {
+                    **chapter,
+                    "chapter": chapter["chapter_number"],
+                    "generation_failed": chapter.get("status") == "failed",
+                }
+                for chapter in persisted_chapters
+                if chapter["chapter_number"] <= completed_cutoff
+            )
         failed_volumes: list[int] = []
         unverified_volumes: list[int] = []
-        # Task 9：本地维护 checkpoint_version（volume_start/end/task_end 推进用）
-        cpv = 0
-        if worker_id is not None:
-            from src.api.services.tasks.checkpoint_store import get_checkpoint_store
-            store = get_checkpoint_store()
-            task_row = await task_manager.get_task(task_id)
-            operation_id = (task_row or {}).get("operation_id") or task_id
-            cp = await store.ensure_checkpoint(task_id, novel_id, operation_id)
-            cpv = cp["checkpoint_version"]
-            # 恢复：跳过已完成的卷
-            last_completed_volume = cp.get("last_completed_volume") or 0
-            checkpoint_volume = cp.get("volume_number")
-            checkpoint_stage = cp.get("current_stage") or "chapter_planned"
-        else:
-            last_completed_volume = 0
-            checkpoint_volume = None
-            checkpoint_stage = "chapter_planned"
-
         for vol_num in range(1, total_volumes + 1):
             # Task 9：跳过已完成卷（崩溃恢复）
             if last_completed_volume >= vol_num:
@@ -1711,15 +1743,43 @@ async def generate_long_form_background(
             })
 
             try:
-                # Generate volume outline
-                vol_outline = await generate_volume_outline(
-                    novel_id=novel_id,
-                    master_outline=master_outline,
-                    volume_number=vol_num,
-                    chapters_per_volume=chapters_per_vol,
-                    words_per_chapter=words_per_chapter,
-                    request=request,
-                )
+                # 恢复同一持久任务时复用已落库卷纲；不存在才重新生成。
+                persisted_volume_outline = None
+                if is_recovery:
+                    from src.api.services.content.outline_service import (
+                        get_outline_service,
+                    )
+
+                    persisted_outlines = (
+                        await get_outline_service().get_volume_outlines(novel_id)
+                    )
+                    persisted_row = next(
+                        (
+                            item
+                            for item in persisted_outlines
+                            if item.get("volume_number") == vol_num
+                        ),
+                        None,
+                    )
+                    persisted_volume_outline = (
+                        (persisted_row or {}).get("content")
+                    )
+                if isinstance(persisted_volume_outline, dict):
+                    vol_outline = persisted_volume_outline
+                    logger.info(
+                        "long_form_reusing_volume_outline",
+                        novel_id=novel_id,
+                        volume_number=vol_num,
+                    )
+                else:
+                    vol_outline = await generate_volume_outline(
+                        novel_id=novel_id,
+                        master_outline=master_outline,
+                        volume_number=vol_num,
+                        chapters_per_volume=chapters_per_vol,
+                        words_per_chapter=words_per_chapter,
+                        request=request,
+                    )
 
                 # T3: Persist volume outline and chapter outlines to Outline table
                 try:
@@ -1761,6 +1821,24 @@ async def generate_long_form_background(
                     request=request,
                     worker_id=worker_id,
                 )
+
+                if is_recovery:
+                    # generate_volume_chapters 会跳过 checkpoint 已完成章；质量报告
+                    # 必须从数据库重建整卷，而不是只统计本次恢复后新生成的后半卷。
+                    persisted_chapters = await novel_manager.list_chapters(novel_id)
+                    rebuilt = [
+                        {
+                            **chapter,
+                            "chapter": chapter["chapter_number"],
+                            "generation_failed": chapter.get("status") == "failed",
+                        }
+                        for chapter in persisted_chapters
+                        if global_chapter_start
+                        <= chapter["chapter_number"]
+                        <= chapter_end
+                    ]
+                    if rebuilt:
+                        vol_chapters = rebuilt
 
                 all_chapters_generated.extend(vol_chapters)
 

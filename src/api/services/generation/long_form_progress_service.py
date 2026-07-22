@@ -48,26 +48,37 @@ class LongFormProgressService:
             List of created progress records as dicts
         """
         async with get_db_session() as session:
+            existing_result = await session.execute(
+                select(LongFormProgress)
+                .where(LongFormProgress.novel_id == novel_id)
+                .with_for_update()
+            )
+            existing_by_volume = {
+                row.volume_number: row
+                for row in existing_result.scalars().all()
+            }
             records = []
             global_chapter_start = 1
 
             for vol_num in range(1, total_volumes + 1):
                 chapter_end = global_chapter_start + chapters_per_volume - 1
-                record = LongFormProgress(
-                    novel_id=novel_id,
-                    volume_number=vol_num,
-                    status="pending",
-                    chapter_start=global_chapter_start,
-                    chapter_end=chapter_end,
-                    chapters_completed=0,
-                    errors=[],
-                )
-                session.add(record)
+                existing = existing_by_volume.get(vol_num)
+                if existing is None:
+                    existing = LongFormProgress(
+                        novel_id=novel_id,
+                        volume_number=vol_num,
+                        status="pending",
+                        chapter_start=global_chapter_start,
+                        chapter_end=chapter_end,
+                        chapters_completed=0,
+                        errors=[],
+                    )
+                    session.add(existing)
                 records.append({
                     "volume_number": vol_num,
-                    "status": "pending",
-                    "chapter_start": global_chapter_start,
-                    "chapter_end": chapter_end,
+                    "status": existing.status,
+                    "chapter_start": existing.chapter_start,
+                    "chapter_end": existing.chapter_end,
                 })
                 global_chapter_start = chapter_end + 1
 

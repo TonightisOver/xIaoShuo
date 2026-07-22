@@ -267,7 +267,7 @@ async def test_regenerate_returns_409_on_busy():
          patch("src.api.routes.creative_control.CreativeControlService") as cs, \
          _ol() as ol:
         _cfg(ol)
-        cs.return_value.assert_writable = AsyncMock(
+        cs.return_value.begin_generating = AsyncMock(
             side_effect=ArtifactBusyError("novel-1", "chapter", "5")
         )
         with pytest.raises(HTTPException) as exc:
@@ -286,7 +286,6 @@ async def test_regenerate_chapter_dispatches_persistent_task():
          patch("src.api.routes.creative_control.CreativeGenerationDispatcher") as dispatcher, \
          _ol() as ol:
         _cfg(ol)
-        cs.return_value.assert_writable = AsyncMock()
         cs.return_value.begin_generating = AsyncMock(return_value=2)
         manager.return_value.get_novel = AsyncMock(
             return_value={
@@ -311,6 +310,49 @@ async def test_regenerate_chapter_dispatches_persistent_task():
 
     assert result["task_id"] == "task-7"
     assert result["status"] == "generating"
+    cs.return_value.begin_generating.assert_awaited_once()
+    dispatcher.return_value.dispatch_scope.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_regenerate_dispatch_failure_marks_control_failed():
+    user = _user()
+    req = RegenerateRequest(expected_version=1, force=True)
+    with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()), \
+         patch("src.api.routes.creative_control.CreativeControlService") as cs, \
+         patch("src.api.routes.creative_control.get_novel_manager") as manager, \
+         patch("src.api.routes.creative_control.CreativeGenerationDispatcher") as dispatcher, \
+         _ol() as ol:
+        _cfg(ol)
+        cs.return_value.begin_generating = AsyncMock(return_value=2)
+        cs.return_value.fail_generating = AsyncMock(return_value=3)
+        manager.return_value.get_novel = AsyncMock(
+            return_value={
+                "novel_id": "novel-1",
+                "idea": "测试创意",
+                "novel_type": "玄幻",
+                "target_words": 100000,
+            }
+        )
+        dispatcher.return_value.dispatch_scope = AsyncMock(
+            side_effect=ValueError("无法投递")
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await regenerate_artifact(
+                "novel-1", "chapter", "7", req, current_user=user
+            )
+
+    assert exc.value.status_code == 422
+    cs.return_value.begin_generating.assert_awaited_once_with(
+        "novel-1",
+        "chapter",
+        "7",
+        expected_version=1,
+        operator_id=user.id,
+        force=True,
+    )
+    cs.return_value.fail_generating.assert_awaited_once()
 
 
 @pytest.mark.asyncio

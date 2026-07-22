@@ -58,7 +58,14 @@ class CreativeArtifactWriteService:
             }:
                 if not isinstance(content, dict):
                     raise ValueError(f"{artifact_type} requires structured content")
-                await self._adapters.save_in_session(
+                await self._ensure_baseline_snapshot_in_session(
+                    session,
+                    novel_id,
+                    artifact_type,
+                    artifact_id,
+                    operator_id,
+                )
+                saved_content = await self._adapters.save_in_session(
                     session, novel_id, artifact_type, artifact_id, content
                 )
                 artifact_version = await self._snapshot_in_session(
@@ -66,7 +73,7 @@ class CreativeArtifactWriteService:
                     novel_id,
                     artifact_type,
                     artifact_id,
-                    content,
+                    saved_content,
                     operator_id,
                 )
             elif artifact_type in {"chapter", "chapter_version"}:
@@ -182,6 +189,8 @@ class CreativeArtifactWriteService:
         artifact_id: str,
         content: dict[str, Any],
         operator_id: int | None,
+        *,
+        source: str = "manual",
     ) -> int:
         result = await session.execute(
             select(ArtifactVersion)
@@ -202,11 +211,47 @@ class CreativeArtifactWriteService:
             artifact_id=artifact_id,
             version_number=next_version,
             content_snapshot=content,
-            source="manual",
+            source=source,
             operator_id=operator_id,
             is_active=True,
         ))
         return next_version
+
+    async def _ensure_baseline_snapshot_in_session(
+        self,
+        session,
+        novel_id: str,
+        artifact_type: str,
+        artifact_id: str,
+        operator_id: int | None,
+    ) -> None:
+        existing = list((
+            await session.execute(
+                select(ArtifactVersion)
+                .where(
+                    ArtifactVersion.novel_id == novel_id,
+                    ArtifactVersion.artifact_type == artifact_type,
+                    ArtifactVersion.artifact_id == artifact_id,
+                )
+                .with_for_update()
+            )
+        ).scalars().all())
+        if existing:
+            return
+        baseline = await self._adapters.load_in_session(
+            session, novel_id, artifact_type, artifact_id
+        )
+        session.add(ArtifactVersion(
+            novel_id=novel_id,
+            artifact_type=artifact_type,
+            artifact_id=artifact_id,
+            version_number=1,
+            content_snapshot=baseline,
+            source="generation",
+            operator_id=operator_id,
+            is_active=True,
+        ))
+        await session.flush()
 
     async def _edit_chapter_in_session(
         self,

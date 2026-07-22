@@ -15,7 +15,7 @@ from src.api.services.creative_control.artifact_write_service import (
     CreativeArtifactWriteService,
 )
 from src.core.database import Base, get_db_session, get_engine
-from src.core.exceptions import StaleChapterVersionError
+from src.core.exceptions import ArtifactLockedError, StaleChapterVersionError
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -116,6 +116,46 @@ async def test_world_edit_and_rollback_are_single_transaction_round_trips():
 
 
 @pytest.mark.asyncio
+async def test_first_partial_edit_creates_full_baseline_and_full_new_snapshot():
+    novel_id = await _seed()
+    async with get_db_session() as session:
+        await session.execute(
+            text("DELETE FROM artifact_versions WHERE novel_id = :novel_id"),
+            {"novel_id": novel_id},
+        )
+        await session.execute(
+            text(
+                "UPDATE world_settings SET background = '旧背景' "
+                "WHERE novel_id = :novel_id"
+            ),
+            {"novel_id": novel_id},
+        )
+
+    edited = await CreativeArtifactWriteService().edit_artifact(
+        novel_id=novel_id,
+        artifact_type="world",
+        artifact_id=novel_id,
+        content={"rules": "局部新规则"},
+        expected_control_version=1,
+        expected_active_version=None,
+        operator_id=1,
+    )
+    assert edited.artifact_version == 2
+
+    async with get_db_session() as session:
+        versions = list((await session.execute(
+            select(ArtifactVersion)
+            .where(ArtifactVersion.novel_id == novel_id)
+            .order_by(ArtifactVersion.version_number)
+        )).scalars().all())
+
+    assert versions[0].content_snapshot["background"] == "旧背景"
+    assert versions[0].content_snapshot["rules"] == "旧规则"
+    assert versions[1].content_snapshot["background"] == "旧背景"
+    assert versions[1].content_snapshot["rules"] == "局部新规则"
+
+
+@pytest.mark.asyncio
 async def test_stale_chapter_edit_rolls_back_every_related_write():
     novel_id = await _seed()
     service = CreativeArtifactWriteService()
@@ -160,3 +200,23 @@ async def test_stale_chapter_edit_rolls_back_every_related_write():
     assert control.version == 2
     assert len(versions) == 2
     assert [item.version_number for item in versions if item.is_active] == [2]
+
+
+@pytest.mark.asyncio
+async def test_lock_sets_single_source_of_truth_and_blocks_generation():
+    from src.core.creative_control.control_service import CreativeControlService
+    from src.core.creative_control.scope_planner import GenerationScopePlanner
+
+    novel_id = await _seed()
+    controls = CreativeControlService()
+    approved = await controls.approve(
+        novel_id, "chapter", "1", expected_version=1, operator_id=1
+    )
+    locked = await controls.lock(
+        novel_id, "chapter", "1", expected_version=approved, operator_id=1
+    )
+
+    assert locked == 3
+    assert await GenerationScopePlanner()._load_locked_chapters(novel_id) == [1]
+    with pytest.raises(ArtifactLockedError):
+        await controls.assert_generation_allowed(novel_id, "chapter", "1")

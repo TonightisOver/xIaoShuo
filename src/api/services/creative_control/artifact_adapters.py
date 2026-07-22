@@ -193,8 +193,8 @@ class ArtifactAdapterRegistry:
         artifact_type: str,
         artifact_id: str,
         content: dict[str, Any] | str,
-    ) -> None:
-        """在调用方事务内更新真实产物，供原子编辑/回退使用。"""
+    ) -> dict[str, Any]:
+        """在调用方事务内更新真实产物并返回完整规范化快照。"""
         self._validate(artifact_type)
         if not isinstance(content, dict):
             raise ValueError(f"{artifact_type} requires structured content")
@@ -244,7 +244,7 @@ class ArtifactAdapterRegistry:
             if row is None:
                 raise ValueError(f"artifact not found: {artifact_type}/{artifact_id}")
             row.content = content
-            return
+            return dict(row.content or {})
         elif artifact_type == "blueprint":
             row = (
                 await session.execute(
@@ -270,3 +270,80 @@ class ArtifactAdapterRegistry:
         for field in fields:
             if field in content:
                 setattr(row, field, content[field])
+        return {field: getattr(row, field) for field in fields}
+
+    async def load_in_session(
+        self,
+        session,
+        novel_id: str,
+        artifact_type: str,
+        artifact_id: str,
+    ) -> dict[str, Any]:
+        """在调用方事务和行锁内读取结构化产物的完整可写快照。"""
+        self._validate(artifact_type)
+        if artifact_type == "world":
+            row = (
+                await session.execute(
+                    select(WorldSetting)
+                    .where(WorldSetting.novel_id == novel_id)
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            fields = {"background", "geography", "culture", "rules", "extra"}
+        elif artifact_type == "character":
+            row = (
+                await session.execute(
+                    select(Character)
+                    .where(
+                        Character.novel_id == novel_id,
+                        Character.id == int(artifact_id),
+                    )
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            fields = {
+                "name", "role", "description", "personality", "abilities",
+                "background_story", "extra",
+            }
+        elif artifact_type in {"master_outline", "volume_outline"}:
+            conditions = [Outline.novel_id == novel_id]
+            if artifact_type == "master_outline":
+                conditions.extend([
+                    Outline.level == "master",
+                    Outline.id == int(artifact_id),
+                ])
+            else:
+                conditions.extend([
+                    Outline.level == "volume",
+                    Outline.volume_number == int(artifact_id),
+                ])
+            row = (
+                await session.execute(
+                    select(Outline).where(*conditions).with_for_update()
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                raise ValueError(f"artifact not found: {artifact_type}/{artifact_id}")
+            return dict(row.content or {})
+        elif artifact_type == "blueprint":
+            row = (
+                await session.execute(
+                    select(ChapterBlueprint)
+                    .where(
+                        ChapterBlueprint.novel_id == novel_id,
+                        ChapterBlueprint.chapter_number == int(artifact_id),
+                        ChapterBlueprint.is_active.is_(True),
+                    )
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            fields = {
+                "chapter_type", "plot_goal", "hook_design",
+                "foreshadow_actions", "cliffhanger", "pacing_target",
+                "key_characters", "word_target",
+            }
+        else:
+            raise ValueError(f"unsupported writable artifact type: {artifact_type}")
+        if row is None:
+            raise ValueError(f"artifact not found: {artifact_type}/{artifact_id}")
+        return {field: getattr(row, field) for field in fields}

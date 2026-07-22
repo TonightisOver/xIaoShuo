@@ -1,5 +1,6 @@
 """单章持久化状态机必须从检查点阶段继续，而不是从 baseline 重跑。"""
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -226,3 +227,131 @@ async def test_required_side_effect_failure_marks_checkpoint_retryable() -> None
         recoverable=True,
     )
     store.advance_checkpoint.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_long_form_retry_reuses_outlines_and_rebuilds_full_volume_report() -> None:
+    from src.api.services.generation import long_form_generation_helpers as helpers
+
+    request = SimpleNamespace(
+        volumes=1,
+        chapters_per_volume=2,
+        words_per_chapter=3000,
+        auto_calc_chapters=False,
+        target_words=100_000,
+        idea="恢复测试小说创意",
+        novel_type="玄幻",
+        writing_style="现代白话",
+        writing_style_prompt="",
+    )
+    task_manager = SimpleNamespace(
+        update_status=AsyncMock(),
+        get_task=AsyncMock(
+            return_value={"operation_id": "op-1", "attempt_count": 2}
+        ),
+        complete_task=AsyncMock(),
+        fail_task=AsyncMock(),
+    )
+    checkpoint = {
+        "checkpoint_version": 7,
+        "last_completed_volume": 0,
+        "volume_number": 1,
+        "current_stage": "chapter_completed",
+    }
+    store = SimpleNamespace(
+        ensure_checkpoint=AsyncMock(return_value=checkpoint),
+        read=AsyncMock(return_value=checkpoint),
+        advance_checkpoint=AsyncMock(side_effect=[8, 9]),
+    )
+    persisted_master = {"title": "已持久化总纲", "volumes": []}
+    persisted_volume = {
+        "volume_number": 1,
+        "chapters": [
+            {"chapter": 1, "title": "第一章"},
+            {"chapter": 2, "title": "第二章"},
+        ],
+    }
+    persisted_chapters = [
+        {
+            "chapter_number": 1,
+            "volume_number": 1,
+            "title": "第一章",
+            "content": "旧章正文",
+            "word_count": 4,
+            "status": "generated",
+        },
+        {
+            "chapter_number": 2,
+            "volume_number": 1,
+            "title": "第二章",
+            "content": "新章正文",
+            "word_count": 4,
+            "status": "generated",
+        },
+    ]
+    novel_manager = SimpleNamespace(
+        get_novel=AsyncMock(return_value={"master_outline": persisted_master}),
+        update_novel=AsyncMock(),
+        list_chapters=AsyncMock(return_value=persisted_chapters),
+    )
+    outline_service = SimpleNamespace(
+        get_volume_outlines=AsyncMock(
+            return_value=[{"volume_number": 1, "content": persisted_volume}]
+        ),
+        upsert_volume_outline=AsyncMock(),
+        upsert_chapter_outline=AsyncMock(),
+    )
+    progress_service = SimpleNamespace(
+        initialize_progress=AsyncMock(),
+        update_volume_status=AsyncMock(),
+    )
+    volume_service = SimpleNamespace(update_volume=AsyncMock())
+    quality_report = AsyncMock(return_value={})
+
+    @asynccontextmanager
+    async def fake_db_session():
+        yield AsyncMock()
+
+    with (
+        patch.object(helpers, "get_task_manager", return_value=task_manager),
+        patch.object(
+            helpers,
+            "get_long_form_progress_service",
+            return_value=progress_service,
+        ),
+        patch(
+            "src.api.services.tasks.checkpoint_store.get_checkpoint_store",
+            return_value=store,
+        ),
+        patch(
+            "src.api.services.content.novel_manager.get_novel_manager",
+            return_value=novel_manager,
+        ),
+        patch(
+            "src.api.services.content.outline_service.get_outline_service",
+            return_value=outline_service,
+        ),
+        patch(
+            "src.api.services.content.volume_service.get_volume_service",
+            return_value=volume_service,
+        ),
+        patch("src.core.database.get_db_session", new=fake_db_session),
+        patch.object(helpers, "generate_master_outline", new=AsyncMock()) as master,
+        patch.object(helpers, "generate_volume_outline", new=AsyncMock()) as volume,
+        patch.object(
+            helpers,
+            "generate_volume_chapters",
+            new=AsyncMock(return_value=[{"chapter": 2, "content": "新章正文"}]),
+        ),
+        patch.object(helpers, "generate_volume_quality_report", new=quality_report),
+        patch.object(helpers, "_emit_progress", new=AsyncMock()),
+    ):
+        await helpers.generate_long_form_background(
+            "task-1", "novel-1", request, worker_id="worker-1"
+        )
+
+    master.assert_not_awaited()
+    volume.assert_not_awaited()
+    reported_chapters = quality_report.await_args.kwargs["chapters"]
+    assert [chapter["chapter"] for chapter in reported_chapters] == [1, 2]
+    assert task_manager.complete_task.await_args.args[1]["total_chapters"] == 2

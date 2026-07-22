@@ -151,10 +151,16 @@ describe('CreativeStudio.vue', () => {
         match: /creative-control\/stage$/,
         body: {
           creation_mode: 'auto', creative_stage: 1,
-          stages: [{ number: 1, name: '世界观', artifact_type: 'world', control: null }],
+          stages: [{
+            number: 7,
+            name: '章节正文',
+            artifact_type: 'chapter',
+            artifacts: [{ artifact_id: '42', label: '第42章' }],
+            control: null,
+          }],
         },
       },
-      { match: /artifacts\/world\/42$/, body: { control: { control_status: 'generated', version: 1, locked: false }, versions: [] } },
+      { match: /artifacts\/chapter\/42$/, body: { control: { control_status: 'generated', version: 1, locked: false }, content: '正文', versions: [], active_version_number: 1 } },
       { match: /operations/, body: [] },
       { match: /regenerate$/, body: { status: 'generating', version: 2 } },
     ])

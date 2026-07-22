@@ -24,12 +24,23 @@ def _novel():
     [
         ("blueprint/generate", {"chapter_number": 4}, TaskType.NOVEL_BLUEPRINT.value),
         ("auto-improve", {"chapter_number": 5, "issue_ids": ["q1"]}, TaskType.NOVEL_QUALITY_FIX.value),
+        (
+            "generate-volume-outline",
+            {"volume_number": 2},
+            TaskType.NOVEL_VOLUME_OUTLINE.value,
+        ),
     ],
 )
 async def test_dispatches_specialized_scope(endpoint, payload, expected_type):
     manager = AsyncMock()
     manager.create_task.return_value = "task-1"
-    plan = ScopePlan(endpoint=endpoint, payload=payload, target_chapters=[payload["chapter_number"]])
+    plan = ScopePlan(
+        endpoint=endpoint,
+        payload=payload,
+        target_chapters=(
+            [payload["chapter_number"]] if "chapter_number" in payload else []
+        ),
+    )
 
     with patch(
         "src.api.services.creative_control.generation_dispatch.get_task_manager",
@@ -67,3 +78,27 @@ async def test_non_contiguous_targets_are_dispatched_as_separate_ranges():
         {"novel_id": "novel-1", "chapter_start": 1, "chapter_end": 2},
         {"novel_id": "novel-1", "chapter_start": 4, "chapter_end": 4},
     ]
+
+
+@pytest.mark.asyncio
+async def test_repeated_user_operations_get_distinct_operation_ids():
+    manager = AsyncMock()
+    manager.create_task.side_effect = ["task-1", "task-2"]
+    plan = ScopePlan(
+        endpoint="generate-chapters",
+        payload={"chapter_start": 3, "chapter_end": 3},
+        target_chapters=[3],
+    )
+
+    with patch(
+        "src.api.services.creative_control.generation_dispatch.get_task_manager",
+        return_value=manager,
+    ):
+        dispatcher = CreativeGenerationDispatcher()
+        await dispatcher.dispatch_scope(_novel(), 3, plan)
+        await dispatcher.dispatch_scope(_novel(), 3, plan)
+
+    operation_ids = [
+        call.kwargs["operation_id"] for call in manager.create_task.await_args_list
+    ]
+    assert operation_ids[0] != operation_ids[1]

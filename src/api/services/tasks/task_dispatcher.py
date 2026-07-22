@@ -4,6 +4,7 @@ from enum import StrEnum
 from typing import Any
 
 from src.api.models.requests import CreateNovelRequest, LongFormNovelRequest
+from src.api.services.tasks.task_manager import get_task_manager
 
 
 async def _finish_control_target(
@@ -30,7 +31,9 @@ async def _finish_control_target(
         await service.fail_generating(**kwargs, reason=str(error))
 
 
-async def _run_controlled(payload: dict[str, Any], operation) -> None:
+async def _run_controlled(
+    task_id: str, payload: dict[str, Any], operation
+) -> None:
     try:
         await operation
     except Exception as exc:
@@ -39,6 +42,15 @@ async def _run_controlled(payload: dict[str, Any], operation) -> None:
         except Exception:
             pass
         raise
+    if not isinstance(payload.get("control_target"), dict):
+        return
+    task = await get_task_manager().get_task(task_id)
+    if task is not None and task.get("status") in {"failed", "cancelled"}:
+        await _finish_control_target(
+            payload,
+            error=RuntimeError(task.get("error") or "generation task failed"),
+        )
+        return
     await _finish_control_target(payload)
 
 
@@ -50,6 +62,7 @@ class TaskType(StrEnum):
     NOVEL_CHAPTERS = "novel.chapters"
     NOVEL_BLUEPRINT = "novel.blueprint"
     NOVEL_QUALITY_FIX = "novel.quality_fix"
+    NOVEL_VOLUME_OUTLINE = "novel.volume_outline"
     PIPELINE_RESUME = "pipeline.resume"
 
 
@@ -102,6 +115,7 @@ async def dispatch_task(task: dict[str, Any]) -> None:
         )
 
         await _run_controlled(
+            task_id,
             payload,
             generate_volume_background(
                 task_id,
@@ -118,6 +132,7 @@ async def dispatch_task(task: dict[str, Any]) -> None:
         )
 
         await _run_controlled(
+            task_id,
             payload,
             generate_chapters_background(
                 task_id,
@@ -135,6 +150,7 @@ async def dispatch_task(task: dict[str, Any]) -> None:
         )
 
         await _run_controlled(
+            task_id,
             payload,
             generate_blueprint_background(
                 task_id,
@@ -151,12 +167,30 @@ async def dispatch_task(task: dict[str, Any]) -> None:
         )
 
         await _run_controlled(
+            task_id,
             payload,
             fix_quality_background(
                 task_id,
                 payload["novel_id"],
                 int(payload["chapter_number"]),
                 issue_ids=list(payload.get("issue_ids") or []),
+                worker_id=worker_id,
+            ),
+        )
+        return
+
+    if task_type is TaskType.NOVEL_VOLUME_OUTLINE:
+        from src.api.services.generation.creative_control_tasks import (
+            generate_volume_outline_background,
+        )
+
+        await _run_controlled(
+            task_id,
+            payload,
+            generate_volume_outline_background(
+                task_id,
+                payload["novel_id"],
+                int(payload["volume_number"]),
                 worker_id=worker_id,
             ),
         )

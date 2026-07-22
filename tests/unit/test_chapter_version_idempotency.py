@@ -199,6 +199,38 @@ async def test_create_version_same_idempotency_key_returns_existing_no_duplicate
 
 
 @pytest.mark.asyncio
+async def test_active_idempotency_hit_restores_chapter_after_partial_crash(
+    fresh_novel_chapter,
+):
+    """正文先被下一次尝试覆盖但 checkpoint 未推进时，幂等重放恢复旧 baseline。"""
+    svc = ChapterService()
+    key = "op-crash:baseline:1"
+    first = await svc.create_chapter_version(
+        novel_id=fresh_novel_chapter,
+        chapter_number=1,
+        content="已提交 baseline",
+        source="generation",
+        is_active=True,
+        idempotency_key=key,
+    )
+    await _insert_chapter(fresh_novel_chapter, 1, content="崩溃后的新生成正文")
+
+    replay = await svc.create_chapter_version(
+        novel_id=fresh_novel_chapter,
+        chapter_number=1,
+        content="本次重放正文必须忽略",
+        source="generation",
+        is_active=True,
+        idempotency_key=key,
+    )
+
+    assert replay == first
+    assert await _count_versions(fresh_novel_chapter, 1) == 1
+    assert await _active_version_number(fresh_novel_chapter, 1) == first
+    assert await _chapter_content(fresh_novel_chapter, 1) == "已提交 baseline"
+
+
+@pytest.mark.asyncio
 async def test_create_version_without_idempotency_key_still_works(fresh_novel_chapter):
     """无 idempotency_key 走原有 max+1 路径，每次新建——向后兼容（手动/回滚）。"""
     svc = ChapterService()

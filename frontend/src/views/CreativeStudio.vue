@@ -109,6 +109,7 @@
               class="btn-primary text-xs"
               data-action="regenerate"
               @click="onRegenerate"
+              :disabled="!canRegenerate"
             >重新生成</button>
           </div>
 
@@ -226,6 +227,12 @@ const selectedArtifactId = ref(null)
 
 const selectedStage = computed(() =>
   stages.value.find(s => s.number === selectedStageNumber.value) || null
+)
+const REGENERATABLE_ARTIFACT_TYPES = new Set([
+  'volume_outline', 'blueprint', 'chapter', 'chapter_version', 'quality', 'final',
+])
+const canRegenerate = computed(() =>
+  REGENERATABLE_ARTIFACT_TYPES.has(selectedStage.value?.artifact_type),
 )
 
 function statusLabel(status) {
@@ -363,7 +370,7 @@ async function onUnlock() {
 }
 
 async function onRegenerate() {
-  if (!control.value) return
+  if (!control.value || !canRegenerate.value) return
   try {
     await regenerate(
       selectedStage.value.artifact_type, selectedArtifactId.value, control.value.version,
@@ -400,13 +407,18 @@ async function onImpactChoice(choice) {
       const items = choice === 'regen_direct'
         ? (impact.value?.direct_downstream || [])
         : (impact.value?.full_downstream || [])
-      const executable = items.filter(item =>
+      const actionable = items.filter(item =>
         item && !item.locked && item.version !== null && item.version !== undefined
       )
-      await Promise.all(executable.map(item => regenerate(
-        item.artifact_type,
-        item.artifact_id,
-        item.version,
+      await Promise.all(actionable.map(item => (
+        REGENERATABLE_ARTIFACT_TYPES.has(item.artifact_type)
+          ? regenerate(item.artifact_type, item.artifact_id, item.version)
+          : markStale(
+            item.artifact_type,
+            item.artifact_id,
+            '当前类型无独立生成器，已安全标记为过期',
+            item.version,
+          )
       )))
     }
     await loadOperations()

@@ -10,7 +10,7 @@ import importlib
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from src.core.creative_control.impact_analyzer import ImpactAnalyzer
 from src.core.database import get_db_session
@@ -179,7 +179,10 @@ class GenerationScopePlanner:
                 select(ArtifactControl.artifact_id).where(
                     ArtifactControl.novel_id == novel_id,
                     ArtifactControl.artifact_type == "chapter",
-                    ArtifactControl.locked.is_(True),
+                    or_(
+                        ArtifactControl.locked.is_(True),
+                        ArtifactControl.control_status == "locked",
+                    ),
                 )
             )
             return sorted(int(r) for r in result.scalars().all() if r is not None)

@@ -230,6 +230,7 @@ async def test_lock_on_approved_succeeds_and_bumps_version():
             "novel-1", "world", "w1", expected_version=1
         )
     assert new_version == 2
+    assert row.locked is True
     # 至少写了一条 operation_log
     assert session.add.call_count >= 1
 
@@ -253,6 +254,39 @@ async def test_approve_from_generated_bumps_version():
 # ---------------------------------------------------------------------------
 # 生成生命周期
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_begin_generating_force_atomically_unlocks():
+    row = _control_row(control_status="locked", locked=True, version=1)
+    fake_session, _ = _session_with_control_row(row)
+    service = CreativeControlService()
+    with patch(
+        "src.core.creative_control.control_service.get_db_session",
+        new=fake_session,
+    ):
+        new_version = await service.begin_generating(
+            "novel-1", "world", "w1", expected_version=1, force=True
+        )
+
+    assert new_version == 2
+    assert row.control_status == "generating"
+    assert row.locked is False
+
+
+@pytest.mark.asyncio
+async def test_begin_generating_rejects_busy_inside_locked_transaction():
+    row = _control_row(control_status="generating", version=1)
+    fake_session, _ = _session_with_control_row(row)
+    service = CreativeControlService()
+    with patch(
+        "src.core.creative_control.control_service.get_db_session",
+        new=fake_session,
+    ):
+        with pytest.raises(ArtifactBusyError):
+            await service.begin_generating(
+                "novel-1", "world", "w1", expected_version=1
+            )
 
 
 @pytest.mark.asyncio

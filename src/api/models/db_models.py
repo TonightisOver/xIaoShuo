@@ -837,7 +837,12 @@ class LongFormProgress(Base):
 
     __tablename__ = "long_form_progress"
     __table_args__ = (
-        Index("ix_lfp_novel_volume", "novel_id", "volume_number"),
+        Index(
+            "ix_lfp_novel_volume",
+            "novel_id",
+            "volume_number",
+            unique=True,
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

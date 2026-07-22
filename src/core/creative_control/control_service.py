@@ -126,7 +126,11 @@ class CreativeControlService:
         row = await self._select_for_update(
             session, novel_id, artifact_type, artifact_id
         )
-        if row is not None and row.locked and not force:
+        if (
+            row is not None
+            and (row.locked or row.control_status == "locked")
+            and not force
+        ):
             raise ArtifactLockedError(
                 novel_id, artifact_type, artifact_id
             )
@@ -254,13 +258,33 @@ class CreativeControlService:
 
     async def begin_generating(
         self, novel_id, artifact_type, artifact_id, *, expected_version,
-        operator_id=None, task_id=None, operation_id=None,
+        operator_id=None, task_id=None, operation_id=None, force=False,
     ) -> int:
-        return await self._transition(
-            novel_id, artifact_type, artifact_id, "generating",
-            expected_version=expected_version, action="generate",
-            operator_id=operator_id, task_id=task_id, operation_id=operation_id,
-        )
+        """原子抢占生成权；force=True 时在同一行锁事务内解除锁定。"""
+        async with get_db_session() as session:
+            row, _ = await self._guard(
+                session,
+                novel_id,
+                artifact_type,
+                artifact_id,
+                expected_version,
+            )
+            if row.control_status == "generating":
+                raise ArtifactBusyError(novel_id, artifact_type, artifact_id)
+            if (row.locked or row.control_status == "locked") and not force:
+                raise ArtifactLockedError(novel_id, artifact_type, artifact_id)
+            if force:
+                row.locked = False
+            return await self._apply_in_session(
+                session,
+                row,
+                to_status="generating",
+                action="generate",
+                expected_version=expected_version,
+                operator_id=operator_id,
+                task_id=task_id,
+                operation_id=operation_id,
+            )
 
     async def complete_generating(
         self, novel_id, artifact_type, artifact_id, *, expected_version,
@@ -296,18 +320,30 @@ class CreativeControlService:
                 raise ValueError(
                     f"lock requires approved status, got {row.control_status}"
                 )
-            return await self._apply_in_session(
+            version = await self._apply_in_session(
                 session, row, to_status="locked", action="lock",
                 expected_version=expected_version, operator_id=operator_id,
             )
+            row.locked = True
+            return version
 
     async def unlock(
         self, novel_id, artifact_type, artifact_id, *, expected_version, operator_id=None
     ) -> int:
-        return await self._single_session_apply(
-            novel_id, artifact_type, artifact_id, to_status="approved",
-            expected_version=expected_version, action="unlock", operator_id=operator_id,
-        )
+        async with get_db_session() as session:
+            row, _ = await self._guard(
+                session, novel_id, artifact_type, artifact_id, expected_version
+            )
+            version = await self._apply_in_session(
+                session,
+                row,
+                to_status="approved",
+                expected_version=expected_version,
+                action="unlock",
+                operator_id=operator_id,
+            )
+            row.locked = False
+            return version
 
     async def approve(
         self, novel_id, artifact_type, artifact_id, *, expected_version, operator_id=None

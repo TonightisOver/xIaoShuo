@@ -136,6 +136,9 @@ class TestLongFormProgressService:
         async def _ctx():
             session = AsyncMock()
             session.add = MagicMock()
+            result = MagicMock()
+            result.scalars.return_value.all.return_value = []
+            session.execute = AsyncMock(return_value=result)
             yield session
 
         with patch("src.api.services.generation.long_form_progress_service.get_db_session", _ctx):
@@ -165,6 +168,9 @@ class TestLongFormProgressService:
         async def _ctx():
             session = AsyncMock()
             session.add = MagicMock()
+            result = MagicMock()
+            result.scalars.return_value.all.return_value = []
+            session.execute = AsyncMock(return_value=result)
             yield session
 
         with patch("src.api.services.generation.long_form_progress_service.get_db_session", _ctx):
@@ -177,6 +183,49 @@ class TestLongFormProgressService:
         assert len(records) == 1
         assert records[0]["chapter_start"] == 1
         assert records[0]["chapter_end"] == 50
+
+    @pytest.mark.asyncio
+    async def test_initialize_progress_reuses_existing_completed_record(self):
+        """恢复初始化不得插入重复行或把已完成卷重置为 pending。"""
+        nid = _novel_id()
+        existing = _make_lfp(
+            novel_id=nid,
+            volume_number=1,
+            status="completed",
+            chapter_start=1,
+            chapter_end=20,
+            chapters_completed=20,
+        )
+
+        session = AsyncMock()
+        session.add = MagicMock()
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [existing]
+        session.execute = AsyncMock(return_value=result)
+
+        @asynccontextmanager
+        async def _ctx():
+            yield session
+
+        with patch(
+            "src.api.services.generation.long_form_progress_service.get_db_session",
+            _ctx,
+        ):
+            from src.api.services.generation.long_form_progress_service import (
+                LongFormProgressService,
+            )
+
+            records = await LongFormProgressService().initialize_progress(
+                nid, total_volumes=1, chapters_per_volume=20
+            )
+
+        assert records == [{
+            "volume_number": 1,
+            "status": "completed",
+            "chapter_start": 1,
+            "chapter_end": 20,
+        }]
+        session.add.assert_not_called()
 
     # --- update_volume_status ---
 

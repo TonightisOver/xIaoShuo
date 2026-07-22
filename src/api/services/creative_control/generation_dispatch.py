@@ -1,6 +1,7 @@
 """把创作控制生成计划投递为持久化任务。"""
 
 from dataclasses import dataclass
+from uuid import uuid4
 
 from src.api.services.tasks.task_dispatcher import TaskType
 from src.api.services.tasks.task_manager import get_task_manager
@@ -28,6 +29,7 @@ class CreativeGenerationDispatcher:
         plan: ScopePlan,
     ) -> DispatchedGeneration:
         novel_id = novel["novel_id"]
+        dispatch_id = uuid4().hex
         control_target = plan.payload.get("_control_target")
         if plan.endpoint == "blueprint/generate":
             chapter_number = int(plan.payload["chapter_number"])
@@ -43,6 +45,11 @@ class CreativeGenerationDispatcher:
                 "issue_ids": list(plan.payload.get("issue_ids") or []),
             }]
             operation_ids = [f"{novel_id}:quality-fix:{chapter_number}"]
+        elif plan.endpoint == "generate-volume-outline":
+            volume_number = int(plan.payload["volume_number"])
+            task_type = TaskType.NOVEL_VOLUME_OUTLINE.value
+            payloads = [{"novel_id": novel_id, "volume_number": volume_number}]
+            operation_ids = [f"{novel_id}:volume-outline:{volume_number}"]
         elif plan.endpoint == "generate-volume" and not (
             plan.skipped_locked or plan.skipped_confirmed
         ):
@@ -73,6 +80,10 @@ class CreativeGenerationDispatcher:
             ]
         else:
             raise ValueError(f"暂不支持执行生成端点: {plan.endpoint}")
+
+        # operation_id 标识一次用户操作：同一 Task 重试保持不变，不同时间再次
+        # 生成相同范围必须不同，避免命中上一次正文 baseline 的幂等键。
+        operation_ids = [f"{value}:{dispatch_id}" for value in operation_ids]
 
         if control_target is not None:
             for payload in payloads:

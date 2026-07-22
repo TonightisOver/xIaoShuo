@@ -234,30 +234,53 @@ class ChapterService:
         未传 idempotency_key（手动/回滚路径）走原有 max+1 逻辑，每次新建。
         """
         async with get_db_session() as session:
+            ch = (
+                await session.execute(
+                    select(Chapter)
+                    .where(
+                        Chapter.novel_id == novel_id,
+                        Chapter.chapter_number == chapter_number,
+                    )
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if ch is None:
+                raise ValueError("Chapter not found")
+
             # 幂等查重：命中已存在版本则直接返回其 version_number
             if idempotency_key is not None:
                 existing = await session.execute(
-                    select(ChapterVersion.version_number).where(
+                    select(ChapterVersion)
+                    .where(
                         ChapterVersion.novel_id == novel_id,
                         ChapterVersion.chapter_number == chapter_number,
                         ChapterVersion.idempotency_key == idempotency_key,
                     )
+                    .with_for_update()
                 )
                 hit = existing.scalar_one_or_none()
                 if hit is not None:
-                    return hit
-
-            ch_res = await session.execute(
-                select(Chapter)
-                .where(
-                    Chapter.novel_id == novel_id,
-                    Chapter.chapter_number == chapter_number,
-                )
-                .with_for_update()
-            )
-            ch = ch_res.scalar_one_or_none()
-            if not ch:
-                raise ValueError("Chapter not found")
+                    if is_active:
+                        # baseline 已提交但 checkpoint 尚未推进时，下一次生成可能先
+                        # 覆盖 Chapter。命中幂等键必须把真实正文和活跃状态恢复到已提交
+                        # 版本，避免 Chapter 与 ChapterVersion 分裂。
+                        await session.execute(
+                            ChapterVersion.__table__.update()
+                            .where(
+                                ChapterVersion.novel_id == novel_id,
+                                ChapterVersion.chapter_number == chapter_number,
+                                ChapterVersion.version_number != hit.version_number,
+                            )
+                            .values(is_active=False)
+                        )
+                        await session.flush()
+                        hit.is_active = True
+                        ch.content = hit.content or ""
+                        ch.word_count = hit.word_count
+                        if quality_status is not None:
+                            ch.quality_status = quality_status
+                        ch.updated_at = datetime.now(UTC)
+                    return hit.version_number
 
             max_ver_res = await session.execute(
                 select(func.max(ChapterVersion.version_number)).where(
