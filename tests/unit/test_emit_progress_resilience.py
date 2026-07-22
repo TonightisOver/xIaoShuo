@@ -2,7 +2,7 @@
 
 设计依据：docs/superpowers/specs/2026-07-20-long-form-stability-design.md §八
 - R7：进度事件失败不判失败——_emit_progress 包 try/except，失败仅 log，不抛。
-- B8：事件带 sequence=checkpoint.last_event_sequence+1（有 checkpoint 时）。
+- B8：调用方传入由 CheckpointStore 原子分配的 sequence。
 - R9：complete_task 非 completed 状态写真实 percentage，不强制 100。
 """
 
@@ -67,30 +67,22 @@ class TestEmitProgressResilience:
             )
 
     @pytest.mark.asyncio
-    async def test_sequence_injected_from_checkpoint(self):
-        """有 checkpoint 时 data 注入 sequence = last_event_sequence + 1。"""
+    async def test_caller_allocated_sequence_is_published(self):
+        """发布调用方已原子分配的 sequence，不在发布层重复读取检查点。"""
         from src.api.services.generation.chapter_generation_utils import _emit_progress
         from src.api.services.generation.progress_event_bus import EventType
 
         bus = MagicMock()
         bus.publish = AsyncMock()
-        store = MagicMock()
-        store.read = AsyncMock(
-            return_value={"last_event_sequence": 7, "checkpoint_version": 3}
-        )
-
-        with (
-            patch(
-                "src.api.services.generation.chapter_generation_utils.get_event_bus",
-                return_value=bus,
-            ),
-            patch(
-                "src.api.services.tasks.checkpoint_store.get_checkpoint_store",
-                return_value=store,
-            ),
+        with patch(
+            "src.api.services.generation.chapter_generation_utils.get_event_bus",
+            return_value=bus,
         ):
             await _emit_progress(
-                "task-1", EventType.CHAPTER_PROGRESS, {"percentage": 50}
+                "task-1",
+                EventType.CHAPTER_PROGRESS,
+                {"percentage": 50},
+                sequence=8,
             )
 
         published = bus.publish.await_args.args[0]
@@ -105,18 +97,9 @@ class TestEmitProgressResilience:
 
         bus = MagicMock()
         bus.publish = AsyncMock()
-        store = MagicMock()
-        store.read = AsyncMock(return_value=None)
-
-        with (
-            patch(
-                "src.api.services.generation.chapter_generation_utils.get_event_bus",
-                return_value=bus,
-            ),
-            patch(
-                "src.api.services.tasks.checkpoint_store.get_checkpoint_store",
-                return_value=store,
-            ),
+        with patch(
+            "src.api.services.generation.chapter_generation_utils.get_event_bus",
+            return_value=bus,
         ):
             await _emit_progress(
                 "task-1", EventType.CHAPTER_PROGRESS, {"percentage": 20}

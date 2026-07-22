@@ -32,6 +32,31 @@ STAGE_ORDER: tuple[str, ...] = (
     "task_end",
 )
 
+LEGAL_STAGE_PREDECESSORS: dict[str, frozenset[str]] = {
+    "chapter_planned": frozenset(
+        {"chapter_planned", "chapter_completed", "volume_start"}
+    ),
+    "generation_started": frozenset({"chapter_planned", "generation_started"}),
+    "baseline_persisted": frozenset({"generation_started", "baseline_persisted"}),
+    "quality_finalized": frozenset({"baseline_persisted", "quality_finalized"}),
+    "side_effects_recorded": frozenset(
+        {"quality_finalized", "side_effects_recorded"}
+    ),
+    "chapter_completed": frozenset(
+        {"side_effects_recorded", "chapter_completed"}
+    ),
+    "volume_start": frozenset({"chapter_planned", "volume_end", "volume_start"}),
+    "volume_end": frozenset({"chapter_completed", "volume_start", "volume_end"}),
+    "task_end": frozenset({"volume_end", "task_end"}),
+}
+
+
+def is_legal_stage_transition(current_stage: str, target_stage: str) -> bool:
+    """返回持久化检查点是否允许从当前阶段推进到目标阶段。"""
+    return current_stage in LEGAL_STAGE_PREDECESSORS.get(
+        target_stage, frozenset()
+    )
+
 
 def _checkpoint_to_dict(row: TaskCheckpoint) -> dict[str, Any]:
     return {
@@ -137,6 +162,34 @@ class CheckpointStore:
                 return None
             return _checkpoint_to_dict(row)
 
+    async def allocate_event_sequence(
+        self,
+        task_id: str,
+        worker_id: str,
+    ) -> int:
+        """在 lease 守卫下原子分配单调递增的事件序号。"""
+        async with get_db_session() as session:
+            task_row = (
+                await session.execute(
+                    select(Task).where(Task.task_id == task_id).with_for_update()
+                )
+            ).scalar_one_or_none()
+            _assert_lease_in_session(
+                task_row, worker_id, datetime.now(UTC), task_id
+            )
+            checkpoint = (
+                await session.execute(
+                    select(TaskCheckpoint)
+                    .where(TaskCheckpoint.task_id == task_id)
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if checkpoint is None:
+                raise ValueError(f"checkpoint not found: {task_id}")
+            checkpoint.last_event_sequence += 1
+            await session.flush()
+            return checkpoint.last_event_sequence
+
     async def mark_failed(
         self,
         task_id: str,
@@ -170,6 +223,7 @@ class CheckpointStore:
                     failure_detail=detail,
                     recoverable=recoverable,
                     status="failed",
+                    attempt_number=TaskCheckpoint.attempt_number + 1,
                     updated_at=datetime.now(UTC),
                 )
             )
@@ -260,6 +314,9 @@ class CheckpointStore:
                     TaskCheckpoint.task_id == task_id,
                     TaskCheckpoint.checkpoint_version
                     == expected_checkpoint_version,
+                    TaskCheckpoint.current_stage.in_(
+                        LEGAL_STAGE_PREDECESSORS.get(stage, frozenset())
+                    ),
                 )
                 .values(**values)
             )

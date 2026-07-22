@@ -251,7 +251,8 @@ class TestAutoImproveChapter:
             ),
         ):
             result = await svc.auto_improve_chapter(
-                _novel_id(), 1, max_iterations=3, target_score=0.6
+                _novel_id(), 1, max_iterations=3, target_score=0.6,
+                operation_id="op-long-form",
             )
 
         # 候选改善（overall 0.55 → 0.78）→ best_version 指向候选
@@ -259,6 +260,10 @@ class TestAutoImproveChapter:
         # 仍然不激活
         mock_manager.activate_chapter_version.assert_not_called()
         assert result["reached_target"] is True
+        _, create_kwargs = mock_manager.create_chapter_version.await_args
+        assert create_kwargs["idempotency_key"] == (
+            "op-long-form:quality:1:candidate:1"
+        )
 
 
 # ===========================================================================

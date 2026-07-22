@@ -85,6 +85,7 @@ class RewriteLoopService:
         max_iterations: int = 3,
         target_score: float = 0.6,
         dimensions: list[str] | None = None,
+        operation_id: str | None = None,
     ) -> dict:
         """自动改善闭环。
 
@@ -212,6 +213,11 @@ class RewriteLoopService:
                     f" {','.join(action_types)}"
                 ),
                 is_active=False,
+                idempotency_key=(
+                    f"{operation_id}:quality:{chapter_number}:candidate:{iteration}"
+                    if operation_id
+                    else None
+                ),
             )
 
             # 8. 评估改写后的分数

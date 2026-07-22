@@ -100,6 +100,44 @@ class TestStageOrder:
         ):
             assert stage in STAGE_ORDER
 
+    @pytest.mark.parametrize(
+        ("current", "target"),
+        [
+            ("chapter_planned", "generation_started"),
+            ("generation_started", "baseline_persisted"),
+            ("baseline_persisted", "quality_finalized"),
+            ("quality_finalized", "side_effects_recorded"),
+            ("side_effects_recorded", "chapter_completed"),
+            ("chapter_completed", "chapter_planned"),
+            ("chapter_completed", "volume_end"),
+            ("volume_end", "volume_start"),
+            ("volume_end", "task_end"),
+            ("quality_finalized", "quality_finalized"),
+        ],
+    )
+    def test_legal_stage_transitions(self, current: str, target: str):
+        from src.api.services.tasks.checkpoint_store import (
+            is_legal_stage_transition,
+        )
+
+        assert is_legal_stage_transition(current, target) is True
+
+    @pytest.mark.parametrize(
+        ("current", "target"),
+        [
+            ("baseline_persisted", "volume_start"),
+            ("quality_finalized", "generation_started"),
+            ("side_effects_recorded", "baseline_persisted"),
+            ("task_end", "chapter_planned"),
+        ],
+    )
+    def test_illegal_stage_transitions(self, current: str, target: str):
+        from src.api.services.tasks.checkpoint_store import (
+            is_legal_stage_transition,
+        )
+
+        assert is_legal_stage_transition(current, target) is False
+
 
 class TestEnsureCheckpoint:
     @pytest.mark.asyncio
@@ -321,3 +359,55 @@ class TestRead:
         with _patch_db(session):
             cp = await store.read("missing")
         assert cp is None
+
+
+class TestMarkFailed:
+    @pytest.mark.asyncio
+    async def test_worker_failure_increments_attempt_number(self):
+        from src.api.services.tasks.checkpoint_store import CheckpointStore
+
+        session = _make_session()
+        task_result = MagicMock()
+        task_result.scalar_one_or_none.return_value = _make_task_row()
+        update_result = MagicMock()
+        update_result.rowcount = 1
+        session.execute = AsyncMock(side_effect=[task_result, update_result])
+
+        with _patch_db(session):
+            changed = await CheckpointStore().mark_failed(
+                "task-1",
+                "worker-a",
+                category="side_effect_retryable",
+                recoverable=True,
+            )
+
+        assert changed is True
+        update_statement = session.execute.await_args_list[1].args[0]
+        assert "attempt_number" in {
+            getattr(column, "key", str(column))
+            for column in update_statement._values
+        }
+
+
+class TestEventSequence:
+    @pytest.mark.asyncio
+    async def test_allocate_event_sequence_increments_locked_checkpoint(self):
+        from src.api.services.tasks.checkpoint_store import CheckpointStore
+
+        session = _make_session()
+        task_result = MagicMock()
+        task_result.scalar_one_or_none.return_value = _make_task_row()
+        checkpoint = _make_checkpoint_row()
+        checkpoint.last_event_sequence = 7
+        checkpoint_result = MagicMock()
+        checkpoint_result.scalar_one_or_none.return_value = checkpoint
+        session.execute = AsyncMock(side_effect=[task_result, checkpoint_result])
+
+        with _patch_db(session):
+            sequence = await CheckpointStore().allocate_event_sequence(
+                "task-1", "worker-a"
+            )
+
+        assert sequence == 8
+        assert checkpoint.last_event_sequence == 8
+        session.flush.assert_awaited_once()

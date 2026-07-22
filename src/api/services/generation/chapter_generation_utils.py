@@ -24,28 +24,17 @@ async def _emit_progress(
     *,
     update_status: bool = False,
     status: str = "running",
+    sequence: int | None = None,
 ) -> None:
     """发布进度事件（Task 8 / R7 / B8）。
 
     - 永不抛异常：publish / update_status 失败仅 log，不阻断章节流程。
-    - 有 checkpoint 时给 data 注入 sequence = last_event_sequence + 1，
-      订阅方按 seq 去重/排序。seq 本身的推进由调用方在 side_effects 阶段
-      经 advance_checkpoint 完成（本函数只读不写，避免无 lease 的路由路径
-      误触 lease 守卫）。
+    - sequence 由持有 lease 的调用方通过 CheckpointStore 原子分配；本函数只发布，
+      不再读取检查点推算序号，避免并发事件获得相同 sequence。
     """
     payload = dict(data)
-    try:
-        from src.api.services.tasks.checkpoint_store import get_checkpoint_store
-
-        cp = await get_checkpoint_store().read(task_id)
-        if cp is not None:
-            payload["sequence"] = int(cp.get("last_event_sequence") or 0) + 1
-    except Exception as exc:
-        logger.warning(
-            "emit_progress_checkpoint_read_failed",
-            task_id=task_id,
-            error=str(exc),
-        )
+    if sequence is not None:
+        payload["sequence"] = sequence
 
     try:
         event_bus = get_event_bus()

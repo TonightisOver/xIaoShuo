@@ -28,6 +28,11 @@ from src.api.services.generation.chapter_generation_utils import (
 from src.api.services.generation.chapter_persistence_service import (
     persist_generated_chapters,
 )
+from src.api.services.generation.chapter_recovery import (
+    RecoveryAction,
+    RetryableChapterSideEffectError,
+    resolve_recovery_action,
+)
 from src.api.services.generation.long_form_progress_service import (
     get_long_form_progress_service,
 )
@@ -47,6 +52,33 @@ async def persist_single_chapter(
 ) -> None:
     """Persist one generated chapter immediately."""
     await persist_generated_chapters(novel_id, [chapter_data], chapter_data.get("volume_number"))
+
+
+async def _load_persisted_chapter_result(
+    novel_id: str,
+    chapter_number: int,
+    version_number: int,
+) -> dict[str, Any]:
+    """从最终活跃版本恢复阶段机后续所需的章节输入。"""
+    from src.api.services.content.chapter_service import get_chapter_service
+    from src.api.services.content.novel_manager import get_novel_manager
+
+    version = await get_chapter_service().get_chapter_version(
+        novel_id, chapter_number, version_number
+    )
+    chapter = await get_novel_manager().get_chapter(novel_id, chapter_number)
+    if version is None or chapter is None:
+        raise ValueError(
+            f"persisted chapter recovery data is missing: chapter={chapter_number} "
+            f"version={version_number}"
+        )
+    content = version.get("content") or ""
+    return {
+        **chapter,
+        "chapter": chapter_number,
+        "content": content,
+        "word_count": version.get("word_count", len(content)),
+    }
 
 
 async def _persist_quality_for_gate(
@@ -546,6 +578,8 @@ async def _run_chapter_stages(
     world_str: str,
     chars_str: str,
     expected_checkpoint_version: int,
+    recovery_action: RecoveryAction = RecoveryAction.GENERATE,
+    active_version_number: int | None = None,
 ) -> int:
     """执行单章的 4 个持久化阶段 + checkpoint 推进（设计 §持久化伪代码）。
 
@@ -580,130 +614,164 @@ async def _run_chapter_stages(
     cpv = expected_checkpoint_version
     content = chapter_result.get("content", "") or ""
 
-    # ---- 阶段 baseline_persisted：落库 Chapter 行 + 创建活跃 baseline 版本 ----
-    await store.assert_lease_held(task_id, worker_id)
-    await persist_single_chapter(novel_id, chapter_result)
-    baseline_vn = await chapter_service.create_chapter_version(
-        novel_id=novel_id,
-        chapter_number=global_ch_num,
-        content=content,
-        source="generation",
-        model_name="deepseek",
-        is_active=True,
-        idempotency_key=chapter_idem_key(operation_id, "baseline", global_ch_num),
-    )
-    cpv = await store.advance_checkpoint(
-        task_id, worker_id,
-        expected_checkpoint_version=cpv,
-        stage="baseline_persisted",
-        volume_number=volume_number,
-        chapter_number=global_ch_num,
-        active_version_number=baseline_vn,
-    )
+    if recovery_action is RecoveryAction.SKIP_COMPLETED:
+        return cpv
 
-    # ---- 阶段 quality_finalized：跑 gate（不碰版本）+ 统一激活最终版本 ----
-    await store.assert_lease_held(task_id, worker_id)
-    final_vn = baseline_vn
-    try:
-        gate_callbacks = GatePersistCallbacks(
-            update_state_delta=manager.update_state_delta,
-            update_quality_status=manager.update_quality_status,
-            persist_quality_scores=_persist_quality_for_gate,
-            detect_bible_conflicts=None,
-        )
-        gate_result = await run_quality_gate(
+    # ---- 阶段 baseline_persisted：落库 Chapter 行 + 创建活跃 baseline 版本 ----
+    baseline_vn = active_version_number
+    if recovery_action is RecoveryAction.GENERATE:
+        await store.assert_lease_held(task_id, worker_id)
+        await persist_single_chapter(novel_id, chapter_result)
+        baseline_vn = await chapter_service.create_chapter_version(
             novel_id=novel_id,
             chapter_number=global_ch_num,
-            chapter_result=chapter_result,
-            chapter_outline=ch_outline,
-            novel_type=getattr(request, "novel_type", "网络小说"),
-            idea=getattr(request, "idea", ""),
-            world_setting=world_str,
-            characters=chars_str,
-            persist_callbacks=gate_callbacks,
-            rewrite_service=RewriteLoopService(),
-            chapter_index_in_volume=vol_ch_idx,
+            content=content,
+            source="generation",
+            model_name="deepseek",
+            is_active=True,
+            idempotency_key=chapter_idem_key(operation_id, "baseline", global_ch_num),
         )
-        chapter_result["quality_status"] = gate_result.quality_status
-        chapter_result["quality_scores"] = gate_result.quality_scores
-        chapter_result["state_delta"] = gate_result.state_delta
-        if gate_result.final_version_number is not None:
-            final_vn = gate_result.final_version_number
-    except Exception as gate_err:
-        logger.warning(
-            "quality_gate_failed_non_fatal",
-            novel_id=novel_id, chapter=global_ch_num, error=str(gate_err),
+        cpv = await store.advance_checkpoint(
+            task_id, worker_id,
+            expected_checkpoint_version=cpv,
+            stage="baseline_persisted",
+            volume_number=volume_number,
+            chapter_number=global_ch_num,
+            active_version_number=baseline_vn,
         )
-    # 统一激活：仅当 L3 择优出不同版本时切换；否则 baseline 已活跃（幂等 no-op）。
-    if final_vn != baseline_vn:
-        await chapter_service.finalize_chapter_version(
-            novel_id, global_ch_num,
-            expected_active_version=baseline_vn,
-            selected_version=final_vn,
+    elif baseline_vn is None:
+        raise ValueError(
+            f"checkpoint for chapter {global_ch_num} has no active version"
         )
-    cpv = await store.advance_checkpoint(
-        task_id, worker_id,
-        expected_checkpoint_version=cpv,
-        stage="quality_finalized",
-        chapter_number=global_ch_num,
-        active_version_number=final_vn,
-    )
+
+    # ---- 阶段 quality_finalized：跑 gate（不碰版本）+ 统一激活最终版本 ----
+    final_vn = baseline_vn
+    if recovery_action in (RecoveryAction.GENERATE, RecoveryAction.RUN_QUALITY):
+        await store.assert_lease_held(task_id, worker_id)
+        try:
+            gate_callbacks = GatePersistCallbacks(
+                update_state_delta=manager.update_state_delta,
+                update_quality_status=manager.update_quality_status,
+                persist_quality_scores=_persist_quality_for_gate,
+                detect_bible_conflicts=None,
+            )
+            gate_result = await run_quality_gate(
+                novel_id=novel_id,
+                chapter_number=global_ch_num,
+                chapter_result=chapter_result,
+                chapter_outline=ch_outline,
+                novel_type=getattr(request, "novel_type", "网络小说"),
+                idea=getattr(request, "idea", ""),
+                world_setting=world_str,
+                characters=chars_str,
+                persist_callbacks=gate_callbacks,
+                rewrite_service=RewriteLoopService(),
+                chapter_index_in_volume=vol_ch_idx,
+                operation_id=operation_id,
+            )
+            chapter_result["quality_status"] = gate_result.quality_status
+            chapter_result["quality_scores"] = gate_result.quality_scores
+            chapter_result["state_delta"] = gate_result.state_delta
+            if gate_result.final_version_number is not None:
+                final_vn = gate_result.final_version_number
+        except Exception as gate_err:
+            logger.warning(
+                "quality_gate_failed_non_fatal",
+                novel_id=novel_id, chapter=global_ch_num, error=str(gate_err),
+            )
+        # 统一激活：仅当 L3 择优出不同版本时切换；否则 baseline 已活跃（幂等 no-op）。
+        if final_vn != baseline_vn:
+            await chapter_service.finalize_chapter_version(
+                novel_id, global_ch_num,
+                expected_active_version=baseline_vn,
+                selected_version=final_vn,
+            )
+        cpv = await store.advance_checkpoint(
+            task_id, worker_id,
+            expected_checkpoint_version=cpv,
+            stage="quality_finalized",
+            chapter_number=global_ch_num,
+            active_version_number=final_vn,
+        )
 
     # ---- 阶段 side_effects_recorded：StoryBible / KG / chapter_type / 进度事件 ----
-    await store.assert_lease_held(task_id, worker_id)
-    # 从最终活跃版本读正文（不依赖 chapter_result["content"]，规避正文回写时序问题）
-    final_version = await chapter_service.get_chapter_version(
-        novel_id, global_ch_num, final_vn
-    )
-    final_content = (final_version or {}).get("content") or content
-    # Task 11 / B19：bible 幂等——传 applied_version=final_vn
-    try:
+    if recovery_action in (
+        RecoveryAction.GENERATE,
+        RecoveryAction.RUN_QUALITY,
+        RecoveryAction.RUN_SIDE_EFFECTS,
+    ):
+        await store.assert_lease_held(task_id, worker_id)
+        # 从最终活跃版本读正文（不依赖 chapter_result["content"]，规避正文回写时序问题）
+        final_version = await chapter_service.get_chapter_version(
+            novel_id, global_ch_num, final_vn
+        )
+        final_content = (final_version or {}).get("content") or content
+        # Task 11 / B19：bible 幂等——传 applied_version=final_vn
         from src.api.services.content.story_bible_service import (
             update_bible_after_generation,
         )
-        await update_bible_after_generation(
-            novel_id, global_ch_num, final_content, ch_outline,
-            applied_version=final_vn,
-        )
-    except Exception as bible_err:
-        logger.warning(
-            "story_bible_update_failed",
-            novel_id=novel_id, chapter=global_ch_num, error=str(bible_err),
-        )
-    # Task 11 / B20：长篇路径补接 KG，只消费最终活跃版本正文；幂等由
-    # KnowledgeExtractionLog + kg_applied_version 双哨兵保证。
-    try:
+        try:
+            await update_bible_after_generation(
+                novel_id, global_ch_num, final_content, ch_outline,
+                applied_version=final_vn,
+            )
+        except Exception as exc:
+            await store.mark_failed(
+                task_id,
+                worker_id,
+                category="side_effect_retryable",
+                detail={
+                    "chapter_number": global_ch_num,
+                    "component": "story_bible",
+                },
+                recoverable=True,
+            )
+            raise RetryableChapterSideEffectError(
+                "story_bible", global_ch_num
+            ) from exc
+        # Task 11 / B20：长篇路径补接 KG，只消费最终活跃版本正文；幂等由
+        # KnowledgeExtractionLog + kg_applied_version 双哨兵保证。
         from src.api.services.knowledge.knowledge_graph_service import (
             KnowledgeGraphService,
         )
-        await KnowledgeGraphService().extract_from_chapter(
-            novel_id, global_ch_num, final_content,
-            applied_version=final_vn,
+        try:
+            await KnowledgeGraphService().extract_from_chapter(
+                novel_id, global_ch_num, final_content,
+                applied_version=final_vn,
+            )
+        except Exception as exc:
+            await store.mark_failed(
+                task_id,
+                worker_id,
+                category="side_effect_retryable",
+                detail={
+                    "chapter_number": global_ch_num,
+                    "component": "knowledge_graph",
+                },
+                recoverable=True,
+            )
+            raise RetryableChapterSideEffectError(
+                "knowledge_graph", global_ch_num
+            ) from exc
+        await _sync_chapter_type_to_db(
+            novel_id, global_ch_num, chapter_result.get("chapter_type")
         )
-    except Exception as kg_err:
-        logger.warning(
-            "knowledge_extraction_failed_non_fatal",
-            novel_id=novel_id, chapter=global_ch_num, error=str(kg_err),
+        global_completed = completed_before + (global_ch_num - (chapter_start or 1) + 1)
+        event_sequence = await store.allocate_event_sequence(task_id, worker_id)
+        await _emit_progress(task_id, EventType.CHAPTER_PROGRESS, {
+            "current_stage": "chapter_generation",
+            "volume_number": volume_number,
+            "current_chapter": global_ch_num,
+            "completed_chapters": global_completed,
+            "total_chapters": total_chapters,
+            "percentage": int((global_completed / total_chapters) * 100) if total_chapters else 0,
+        }, sequence=event_sequence)
+        cpv = await store.advance_checkpoint(
+            task_id, worker_id,
+            expected_checkpoint_version=cpv,
+            stage="side_effects_recorded",
+            chapter_number=global_ch_num,
         )
-    await _sync_chapter_type_to_db(
-        novel_id, global_ch_num, chapter_result.get("chapter_type")
-    )
-    global_completed = completed_before + (global_ch_num - (chapter_start or 1) + 1)
-    await _emit_progress(task_id, EventType.CHAPTER_PROGRESS, {
-        "current_stage": "chapter_generation",
-        "volume_number": volume_number,
-        "current_chapter": global_ch_num,
-        "completed_chapters": global_completed,
-        "total_chapters": total_chapters,
-        "percentage": int((global_completed / total_chapters) * 100) if total_chapters else 0,
-    })
-    cpv = await store.advance_checkpoint(
-        task_id, worker_id,
-        expected_checkpoint_version=cpv,
-        stage="side_effects_recorded",
-        chapter_number=global_ch_num,
-        last_event_sequence=global_ch_num,
-    )
 
     # ---- 阶段 chapter_completed：推进 last_completed_chapter + 卷进度 ----
     await store.assert_lease_held(task_id, worker_id)
@@ -820,6 +888,9 @@ async def generate_volume_chapters(
     checkpoint_enabled = worker_id is not None
     cpv = 0
     last_completed_chapter = 0
+    checkpoint_stage = "chapter_planned"
+    checkpoint_chapter: int | None = None
+    active_version_number: int | None = None
     operation_id = task_id
     if checkpoint_enabled:
         from src.api.services.tasks.checkpoint_store import get_checkpoint_store
@@ -829,9 +900,28 @@ async def generate_volume_chapters(
         cp = await store.ensure_checkpoint(task_id, novel_id, operation_id)
         cpv = cp["checkpoint_version"]
         last_completed_chapter = cp.get("last_completed_chapter") or 0
+        checkpoint_stage = cp.get("current_stage") or "chapter_planned"
+        checkpoint_chapter = cp.get("chapter_number")
+        active_version_number = cp.get("active_version_number")
 
     for vol_ch_idx, (global_ch_num, ch_outline) in enumerate(chapter_items):
         ch_outline["chapter"] = global_ch_num
+
+        recovery_action = RecoveryAction.GENERATE
+        if checkpoint_enabled:
+            current_cp = await store.read(task_id)
+            if current_cp is None:
+                raise ValueError(f"checkpoint disappeared for task {task_id}")
+            cpv = current_cp["checkpoint_version"]
+            last_completed_chapter = current_cp.get("last_completed_chapter") or 0
+            checkpoint_stage = current_cp.get("current_stage") or "chapter_planned"
+            checkpoint_chapter = current_cp.get("chapter_number")
+            active_version_number = current_cp.get("active_version_number")
+            recovery_action = resolve_recovery_action(
+                checkpoint_stage,
+                checkpoint_chapter,
+                global_ch_num,
+            )
 
         # Task 6：跳过已完成章节（崩溃恢复不重新生成 / 不重复创建版本）。
         if checkpoint_enabled and last_completed_chapter >= global_ch_num:
@@ -848,7 +938,8 @@ async def generate_volume_chapters(
                 cpv = await store.advance_checkpoint(
                     task_id, worker_id,  # type: ignore[arg-type]
                     expected_checkpoint_version=cpv,
-                    stage="chapter_planned",
+                    stage=checkpoint_stage,
+                    chapter_number=checkpoint_chapter or global_ch_num,
                     status="paused",
                 )
                 await get_task_manager().mark_paused(task_id, worker_id)  # type: ignore[arg-type]
@@ -891,6 +982,41 @@ async def generate_volume_chapters(
             previous_chapter = "\n".join(parts) if parts else "续写"
 
         try:
+            if recovery_action is not RecoveryAction.GENERATE:
+                if active_version_number is None:
+                    raise ValueError(
+                        f"checkpoint for chapter {global_ch_num} has no active version"
+                    )
+                chapter_result = await _load_persisted_chapter_result(
+                    novel_id,
+                    global_ch_num,
+                    active_version_number,
+                )
+                chapter_result["volume_number"] = volume_number
+                cpv = await _run_chapter_stages(
+                    task_id=task_id,
+                    novel_id=novel_id,
+                    worker_id=worker_id,  # type: ignore[arg-type]
+                    operation_id=operation_id,
+                    volume_number=volume_number,
+                    global_ch_num=global_ch_num,
+                    total_chapters=total_chapters,
+                    chapter_start=chapter_start,
+                    completed_before=(chapter_start or 1) - 1,
+                    ch_outline=ch_outline,
+                    chapter_result=chapter_result,
+                    vol_ch_idx=vol_ch_idx,
+                    request=request,
+                    world_str=world_str,
+                    chars_str=chars_str,
+                    expected_checkpoint_version=cpv,
+                    recovery_action=recovery_action,
+                    active_version_number=active_version_number,
+                )
+                generated_chapters.append(chapter_result)
+                generated_word_count += chapter_result.get("word_count", 0)
+                continue
+
             # Prepare story bible context and blueprint
             story_bible_ctx = await _get_story_bible_context(novel_id, ch_outline)
             bp = await _get_blueprint(novel_id, ch_outline)
@@ -919,6 +1045,31 @@ async def generate_volume_chapters(
                 chapter_target_words = min(
                     CHAPTER_WORD_HARD_CAP,
                     max(1, math.ceil(remaining_words / remaining_chapters)),
+                )
+
+            if checkpoint_enabled and checkpoint_stage != "generation_started":
+                if (
+                    checkpoint_stage != "chapter_planned"
+                    or checkpoint_chapter != global_ch_num
+                ):
+                    cpv = await store.advance_checkpoint(
+                        task_id,
+                        worker_id,  # type: ignore[arg-type]
+                        expected_checkpoint_version=cpv,
+                        stage="chapter_planned",
+                        volume_number=volume_number,
+                        chapter_number=global_ch_num,
+                    )
+                await store.assert_lease_held(
+                    task_id, worker_id  # type: ignore[arg-type]
+                )
+                cpv = await store.advance_checkpoint(
+                    task_id,
+                    worker_id,  # type: ignore[arg-type]
+                    expected_checkpoint_version=cpv,
+                    stage="generation_started",
+                    volume_number=volume_number,
+                    chapter_number=global_ch_num,
                 )
 
             chapter_result = await generate_chapter_stream(
@@ -1039,7 +1190,12 @@ async def generate_volume_chapters(
                         "chapter_artifacts_record_failed",
                         novel_id=novel_id, chapter=global_ch_num, error=str(art_err),
                     )
-        except (LeaseLost, CheckpointConflict, PausedExit):
+        except (
+            LeaseLost,
+            CheckpointConflict,
+            PausedExit,
+            RetryableChapterSideEffectError,
+        ):
             # Task 6：lease 丢失 / checkpoint 并发冲突 / 协作式暂停是控制流信号，
             # 不是章节生成失败——向上传播让外层 background 干净退出
             # （不写垃圾章、不推进终态）。
@@ -1249,7 +1405,9 @@ async def generate_volume_background(
     volume_service = get_volume_service()
 
     try:
-        await task_manager.update_status(task_id, "running")
+        await task_manager.update_status(
+            task_id, "running", worker_id=worker_id
+        )
 
         vol = await volume_service.get_volume(novel_id, volume_number)
         if not vol or not vol.get("outline"):
@@ -1289,7 +1447,9 @@ async def generate_volume_background(
         )
 
         await volume_service.update_volume(novel_id, volume_number, status="completed")
-        await task_manager.complete_task(task_id, {"chapters": vol_chapters})
+        await task_manager.complete_task(
+            task_id, {"chapters": vol_chapters}, worker_id=worker_id
+        )
         await _emit_progress(
             task_id, EventType.COMPLETED,
             {"percentage": 100, "volume_number": volume_number},
@@ -1301,13 +1461,18 @@ async def generate_volume_background(
             volume_number=volume_number,
         )
 
-    except (LeaseLost, CheckpointConflict, PausedExit):
+    except (
+        LeaseLost,
+        CheckpointConflict,
+        PausedExit,
+        RetryableChapterSideEffectError,
+    ):
         # Task 7：协作式暂停 / lease 丢失 / checkpoint 冲突是控制流信号，不是生成
         # 失败——向上传播给 worker._run_claim（跳过 release / 不置 failed）。
         raise
     except Exception as e:
         logger.exception("volume_generation_failed", error=str(e))
-        await task_manager.fail_task(task_id, str(e))
+        await task_manager.fail_task(task_id, str(e), worker_id=worker_id)
         await volume_service.update_volume(novel_id, volume_number, status="failed")
         await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
 
@@ -1321,7 +1486,9 @@ async def generate_chapters_background(
     volume_service = get_volume_service()
 
     try:
-        await task_manager.update_status(task_id, "running")
+        await task_manager.update_status(
+            task_id, "running", worker_id=worker_id
+        )
 
         # Build ordered chapter outlines for the requested range
         volumes = await volume_service.list_volumes(novel_id)
@@ -1353,7 +1520,9 @@ async def generate_chapters_background(
             worker_id=worker_id,
         )
 
-        await task_manager.complete_task(task_id, {"chapters": generated_chapters})
+        await task_manager.complete_task(
+            task_id, {"chapters": generated_chapters}, worker_id=worker_id
+        )
         await _emit_progress(
             task_id, EventType.COMPLETED,
             {"percentage": 100, "chapter_start": chapter_start, "chapter_end": chapter_end},
@@ -1366,12 +1535,17 @@ async def generate_chapters_background(
             chapter_end=chapter_end,
         )
 
-    except (LeaseLost, CheckpointConflict, PausedExit):
+    except (
+        LeaseLost,
+        CheckpointConflict,
+        PausedExit,
+        RetryableChapterSideEffectError,
+    ):
         # 协作式中断/并发冲突：向上传播到 worker._run_claim 干净退出，不判失败。
         raise
     except Exception as e:
         logger.exception("chapters_generation_failed", error=str(e))
-        await task_manager.fail_task(task_id, str(e))
+        await task_manager.fail_task(task_id, str(e), worker_id=worker_id)
         await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
 
 
@@ -1398,7 +1572,9 @@ async def generate_long_form_background(
     progress_service = get_long_form_progress_service()
 
     try:
-        await task_manager.update_status(task_id, "running")
+        await task_manager.update_status(
+            task_id, "running", worker_id=worker_id
+        )
 
         logger.info("long_form_generation_starting", task_id=task_id, novel_id=novel_id)
 
@@ -1480,8 +1656,12 @@ async def generate_long_form_background(
             cpv = cp["checkpoint_version"]
             # 恢复：跳过已完成的卷
             last_completed_volume = cp.get("last_completed_volume") or 0
+            checkpoint_volume = cp.get("volume_number")
+            checkpoint_stage = cp.get("current_stage") or "chapter_planned"
         else:
             last_completed_volume = 0
+            checkpoint_volume = None
+            checkpoint_stage = "chapter_planned"
 
         for vol_num in range(1, total_volumes + 1):
             # Task 9：跳过已完成卷（崩溃恢复）
@@ -1492,12 +1672,27 @@ async def generate_long_form_background(
             # Task 9：volume_start 阶段推进（lease 守卫内）
             if worker_id is not None:
                 try:
-                    cpv = await store.advance_checkpoint(
-                        task_id, worker_id,
-                        expected_checkpoint_version=cpv,
-                        stage="volume_start",
-                        volume_number=vol_num,
+                    fresh_cp = await store.read(task_id)
+                    if fresh_cp is not None:
+                        cpv = fresh_cp["checkpoint_version"]
+                        checkpoint_volume = fresh_cp.get("volume_number")
+                        checkpoint_stage = (
+                            fresh_cp.get("current_stage") or "chapter_planned"
+                        )
+                    resuming_current_volume = (
+                        checkpoint_volume == vol_num
+                        and checkpoint_stage
+                        not in {"volume_end", "task_end"}
                     )
+                    if not resuming_current_volume:
+                        cpv = await store.advance_checkpoint(
+                            task_id, worker_id,
+                            expected_checkpoint_version=cpv,
+                            stage="volume_start",
+                            volume_number=vol_num,
+                        )
+                        checkpoint_volume = vol_num
+                        checkpoint_stage = "volume_start"
                 except (LeaseLost, CheckpointConflict):
                     raise
 
@@ -1698,13 +1893,18 @@ async def generate_long_form_background(
                 novel_id=novel_id, error=str(novel_status_err),
             )
 
-        await task_manager.complete_task(task_id, {
-            "novel_id": novel_id,
-            "total_volumes": total_volumes,
-            "total_chapters": len(all_chapters_generated),
-            "completion_percentage": real_percentage,
-            "current_stage": final_status,
-        }, status=final_status)
+        await task_manager.complete_task(
+            task_id,
+            {
+                "novel_id": novel_id,
+                "total_volumes": total_volumes,
+                "total_chapters": len(all_chapters_generated),
+                "completion_percentage": real_percentage,
+                "current_stage": final_status,
+            },
+            status=final_status,
+            worker_id=worker_id,
+        )
 
         await _emit_progress(
             task_id, EventType.COMPLETED,
@@ -1718,7 +1918,12 @@ async def generate_long_form_background(
             total_chapters=len(all_chapters_generated),
         )
 
-    except (LeaseLost, CheckpointConflict, PausedExit):
+    except (
+        LeaseLost,
+        CheckpointConflict,
+        PausedExit,
+        RetryableChapterSideEffectError,
+    ):
         # 控制流信号：不写 fail_task（暂停不是失败、lease 丢失由新 worker 接管），
         # 向上传播由 worker._run_claim 跳过 release/retry。
         raise
@@ -1739,7 +1944,7 @@ async def generate_long_form_background(
                 )
         except Exception:
             pass
-        await task_manager.fail_task(task_id, str(e))
+        await task_manager.fail_task(task_id, str(e), worker_id=worker_id)
         await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
 
 

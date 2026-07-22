@@ -65,6 +65,7 @@ async def run_quality_gate(
     persist_callbacks: GatePersistCallbacks,
     rewrite_service: Any | None = None,
     chapter_index_in_volume: int = 0,
+    operation_id: str | None = None,
 ) -> GateResult:
     """对单章生成结果跑完整质量漏斗。
 
@@ -178,6 +179,7 @@ async def run_quality_gate(
         rewrite_result = await rewrite_service.auto_improve_chapter(
             novel_id=novel_id, chapter_number=chapter_number,
             max_iterations=max_rewrite, target_score=threshold,
+            operation_id=operation_id,
         )
     except Exception as e:
         logger.warning("gate_l3_failed", novel_id=novel_id, chapter=chapter_number, error=str(e))
