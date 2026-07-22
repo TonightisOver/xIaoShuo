@@ -537,6 +537,9 @@ async def plan_generate_scope(
         "target_chapters": dispatched.target_chapters,
         "skipped_locked": dispatched.skipped_locked,
         "skipped_confirmed": dispatched.skipped_confirmed,
+        "accepted": getattr(dispatched, "accepted", []),
+        "already_generating": getattr(dispatched, "already_generating", []),
+        "failed_to_enqueue": getattr(dispatched, "failed_to_enqueue", []),
     }
 
 
