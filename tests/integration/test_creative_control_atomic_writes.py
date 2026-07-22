@@ -672,11 +672,11 @@ async def test_blueprint_background_generation_produces_version_snapshot():
     覆盖"场景）。详见计划偏差清单。
     """
     novel_id = await _seed()
+    from src.api.models.db_models import ChapterBlueprint
     from src.api.services.content.blueprint_service import BlueprintService
     from src.api.services.generation.creative_control_tasks import (
         generate_blueprint_background,
     )
-    from src.api.models.db_models import ChapterBlueprint
 
     async with get_db_session() as session:
         session.add(Outline(
@@ -734,11 +734,11 @@ async def test_blueprint_background_generation_produces_version_snapshot():
 async def test_blueprint_regenerate_keeps_history_versions():
     """重新生成不破坏历史版本（历史 ArtifactVersion 仍在）。"""
     novel_id = await _seed()
+    from src.api.models.db_models import ChapterBlueprint
     from src.api.services.content.blueprint_service import BlueprintService
     from src.api.services.generation.creative_control_tasks import (
         generate_blueprint_background,
     )
-    from src.api.models.db_models import ChapterBlueprint
 
     async with get_db_session() as session:
         await session.execute(text(
@@ -817,7 +817,8 @@ async def test_blueprint_batch_generate_skips_locked_and_confirmed():
             ))
 
     from src.core.creative_control.scope_planner import (
-        GenerationScopeIntent, GenerationScopePlanner,
+        GenerationScopeIntent,
+        GenerationScopePlanner,
     )
     planner = GenerationScopePlanner()
     intent = GenerationScopeIntent(

@@ -36,6 +36,7 @@ EXPECTED_PACKAGES = {
         "storyline_service",
         "story_bible_service",
         "blueprint_service",
+        "blueprint_workbench_service",
         "conversation_service",
         "career_service",
         "inspiration_service",
