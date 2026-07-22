@@ -353,7 +353,7 @@ async def test_duplicate_submit_dedup(novel_task):
 
 @pytest.mark.asyncio
 async def test_single_active_version_invariant(novel_task):
-    """并发创建两个 is_active=True 版本，部分唯一索引拒绝第二个。"""
+    """服务切换活跃版本时始终维持数据库单活跃不变量。"""
     from src.api.services.content.chapter_service import ChapterService
 
     novel_id, task_id = novel_task
@@ -363,13 +363,22 @@ async def test_single_active_version_invariant(novel_task):
     await svc.create_chapter_version(
         novel_id, 1, "正文A", source="generation", is_active=True,
     )
-    # 第二个 is_active=True 应触发部分唯一索引冲突（IntegrityError）
-    from sqlalchemy.exc import IntegrityError
-
-    with pytest.raises(IntegrityError):
-        await svc.create_chapter_version(
-            novel_id, 1, "正文B", source="manual", is_active=True,
+    second = await svc.create_chapter_version(
+        novel_id, 1, "正文B", source="manual", is_active=True,
+    )
+    async with get_db_session() as session:
+        result = await session.execute(
+            text(
+                "SELECT version_number FROM chapter_versions "
+                "WHERE novel_id = :novel_id AND chapter_number = 1 "
+                "AND is_active = true"
+            ),
+            {"novel_id": novel_id},
         )
+        active_versions = list(result.scalars().all())
+
+    assert active_versions == [second]
+    assert await _count_versions(novel_id, 1) == 2
 
 
 # ---------------------------------------------------------------------------
