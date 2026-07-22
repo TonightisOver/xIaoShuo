@@ -324,20 +324,24 @@ class ChapterService:
                 idempotency_key=idempotency_key,
                 created_at=datetime.now(UTC),
             )
-            session.add(version)
             if is_active:
                 await session.execute(
                     ChapterVersion.__table__.update()
-                    .where(ChapterVersion.novel_id == novel_id,
-                           ChapterVersion.chapter_number == chapter_number,
-                           ChapterVersion.version_number != new_version)
+                    .where(
+                        ChapterVersion.novel_id == novel_id,
+                        ChapterVersion.chapter_number == chapter_number,
+                    )
                     .values(is_active=False)
                 )
+                # 部分唯一索引要求任意时刻最多一个 active；先提交清零到 DB，
+                # 再把新 active 版本加入 session，避免 autoflush 先插入而冲突。
+                await session.flush()
                 ch.content = content
                 ch.word_count = word_count
                 if quality_status is not None:
                     ch.quality_status = quality_status
                 ch.updated_at = datetime.now(UTC)
+            session.add(version)
             await session.flush()
             return new_version
 
