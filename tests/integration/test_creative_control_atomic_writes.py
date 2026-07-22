@@ -11,6 +11,7 @@ from src.api.models.db_models import (
     OperationLog,
     Outline,
     Task,
+    TaskCheckpoint,
     WorldSetting,
 )
 from src.api.services.creative_control.artifact_write_service import (
@@ -457,6 +458,106 @@ async def test_retry_keeps_reservation_and_exhaustion_fails_it_atomically():
             )
         )).scalar_one()
     assert control.control_status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_manual_retry_reacquires_failed_controls_and_resets_attempts():
+    novel_id = await _seed()
+    manager = TaskManager()
+    operation_id = f"{novel_id}:manual-retry"
+    task_id = await manager.create_task(
+        idea="人工重试占用测试",
+        novel_type="玄幻",
+        target_words=100000,
+        novel_id=novel_id,
+        owner_id=1,
+        task_type="novel.chapters",
+        task_payload={"novel_id": novel_id, "chapter_start": 1, "chapter_end": 1},
+        operation_id=operation_id,
+        max_attempts=2,
+        generation_targets=[{"artifact_type": "chapter", "artifact_id": "1"}],
+    )
+    async with get_db_session() as session:
+        task = (await session.execute(
+            select(Task).where(Task.task_id == task_id)
+        )).scalar_one()
+        task.attempt_count = task.max_attempts
+        session.add(TaskCheckpoint(
+            task_id=task_id,
+            novel_id=novel_id,
+            operation_id=operation_id,
+            current_stage="chapter_completed",
+            status="failed",
+            failure_category="recoverable",
+            recoverable=True,
+        ))
+
+    await manager.fail_task(task_id, "达到自动重试上限")
+    result = await manager.retry_task(task_id)
+    assert result.requeued is True
+
+    async with get_db_session() as session:
+        task = (await session.execute(
+            select(Task).where(Task.task_id == task_id)
+        )).scalar_one()
+        control = (await session.execute(
+            select(ArtifactControl).where(
+                ArtifactControl.novel_id == novel_id,
+                ArtifactControl.artifact_type == "chapter",
+                ArtifactControl.artifact_id == "1",
+            )
+        )).scalar_one()
+    assert task.status == "pending"
+    assert task.queue_state == "queued"
+    assert task.attempt_count == 0
+    assert task.completed_at is None
+    assert control.control_status == "generating"
+    assert control.generation_meta["task_id"] == task_id
+    assert task.task_payload["control_targets"][0]["generating_version"] == control.version
+
+
+@pytest.mark.asyncio
+async def test_abort_finishes_reserved_controls_in_same_transaction():
+    novel_id = await _seed()
+    manager = TaskManager()
+    operation_id = f"{novel_id}:abort"
+    task_id = await manager.create_task(
+        idea="人工中止占用测试",
+        novel_type="玄幻",
+        target_words=100000,
+        novel_id=novel_id,
+        owner_id=1,
+        task_type="novel.chapters",
+        task_payload={"novel_id": novel_id, "chapter_start": 1, "chapter_end": 1},
+        operation_id=operation_id,
+        generation_targets=[{"artifact_type": "chapter", "artifact_id": "1"}],
+    )
+    async with get_db_session() as session:
+        session.add(TaskCheckpoint(
+            task_id=task_id,
+            novel_id=novel_id,
+            operation_id=operation_id,
+            current_stage="chapter_started",
+            status="running",
+        ))
+
+    result = await manager.abort_task(task_id)
+    assert result.requeued is True
+
+    async with get_db_session() as session:
+        task = (await session.execute(
+            select(Task).where(Task.task_id == task_id)
+        )).scalar_one()
+        control = (await session.execute(
+            select(ArtifactControl).where(
+                ArtifactControl.novel_id == novel_id,
+                ArtifactControl.artifact_type == "chapter",
+                ArtifactControl.artifact_id == "1",
+            )
+        )).scalar_one()
+    assert task.status == "failed"
+    assert control.control_status == "failed"
+    assert control.generation_meta["status"] == "failed"
 
 
 @pytest.mark.asyncio

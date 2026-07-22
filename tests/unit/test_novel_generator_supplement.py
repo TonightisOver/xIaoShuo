@@ -332,8 +332,16 @@ class TestLangGraphQualityDependencyInjection:
         graph = MagicMock()
         graph.astream = fake_astream
         task_manager = MagicMock()
-        task_manager.get_task = AsyncMock(return_value=None)
-        task_manager.complete_task = AsyncMock()
+        call_order = []
+
+        async def persist_result(*args, **kwargs):
+            call_order.append("persist")
+
+        async def complete_task(*args, **kwargs):
+            call_order.append("complete")
+
+        task_manager.get_task = AsyncMock(return_value={"novel_id": "novel-resume"})
+        task_manager.complete_task = AsyncMock(side_effect=complete_task)
         task_manager.fail_task = AsyncMock()
 
         with patch(
@@ -348,6 +356,9 @@ class TestLangGraphQualityDependencyInjection:
         ), patch(
             "src.api.services.generation.novel_generator._emit_progress",
             new=AsyncMock(),
+        ), patch(
+            "src.api.services.generation.novel_generator._persist_to_novel",
+            new=AsyncMock(side_effect=persist_result),
         ):
             await resume_pipeline(
                 "task-resume", {"approval_status": "approved"}
@@ -356,6 +367,7 @@ class TestLangGraphQualityDependencyInjection:
         configurable = captured["config"]["configurable"]
         assert configurable["persist_quality"] is _persist_quality_to_version
         assert isinstance(configurable["rewrite_service"], RewriteLoopService)
+        assert call_order == ["persist", "complete"]
 
 
 # ---------------------------------------------------------------------------
@@ -411,11 +423,19 @@ class TestGenerateNovelBackgroundErrorRecovery:
 
         tm = MagicMock()
         tm.update_status = AsyncMock()
-        tm.complete_task = AsyncMock()
+        call_order = []
+
+        async def complete_task(*args, **kwargs):
+            call_order.append("complete")
+
+        tm.complete_task = AsyncMock(side_effect=complete_task)
         tm.fail_task = AsyncMock()
         tm.get_task = AsyncMock(return_value={"novel_id": "novel-100"})
 
-        persist = AsyncMock()
+        async def persist_result(*args, **kwargs):
+            call_order.append("persist")
+
+        persist = AsyncMock(side_effect=persist_result)
 
         request = _make_request()
         pipeline_result = {"chapters": [{"title": "第1章"}]}
@@ -432,6 +452,7 @@ class TestGenerateNovelBackgroundErrorRecovery:
         assert args[0] == "task-ok"
         assert args[1] == pipeline_result
         persist.assert_awaited_once_with("novel-100", pipeline_result)
+        assert call_order == ["persist", "complete"]
         tm.fail_task.assert_not_called()
 
 
