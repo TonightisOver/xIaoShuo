@@ -40,9 +40,10 @@ async def _seed() -> str:
         await session.execute(text(
             "INSERT INTO novels "
             "(novel_id, title, idea, novel_type, target_words, status, "
-            "writing_style, owner_id, created_at, updated_at) VALUES "
+            "writing_style, owner_id, is_long_form, words_per_chapter, "
+            "created_at, updated_at) VALUES "
             "(:id, '测试', '创作控制原子写入测试', '玄幻', 100000, "
-            "'draft', '现代白话', 1, NOW(), NOW())"
+            "'draft', '现代白话', 1, false, 3000, NOW(), NOW())"
         ), {"id": novel_id})
         session.add_all([
             WorldSetting(novel_id=novel_id, rules="旧规则"),

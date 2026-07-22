@@ -72,11 +72,13 @@ class CreativeArtifactWriteService:
             elif artifact_type in {"chapter", "chapter_version"}:
                 if expected_active_version is None:
                     raise ValueError("正文编辑必须提供 expected_active_version")
+                if not isinstance(content, str):
+                    raise ValueError("正文编辑内容必须是字符串")
                 artifact_version = await self._edit_chapter_in_session(
                     session,
                     novel_id,
                     int(artifact_id),
-                    str(content),
+                    content,
                     expected_active_version,
                 )
             else:
