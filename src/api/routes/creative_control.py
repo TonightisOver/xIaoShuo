@@ -23,6 +23,15 @@ from src.api.models.creative_control import (
 from src.api.owner_guard import verify_novel_owner
 from src.api.services.content.chapter_service import get_chapter_service
 from src.api.services.content.novel_manager import get_novel_manager
+from src.api.services.creative_control.artifact_adapters import (
+    ArtifactAdapterRegistry,
+)
+from src.api.services.creative_control.artifact_write_service import (
+    CreativeArtifactWriteService,
+)
+from src.api.services.creative_control.generation_dispatch import (
+    CreativeGenerationDispatcher,
+)
 from src.core.auth_models import User
 from src.core.creative_control.artifact_version_store import ArtifactVersionStore
 from src.core.creative_control.control_service import CreativeControlService
@@ -31,11 +40,13 @@ from src.core.creative_control.operation_log import OperationLogService
 from src.core.creative_control.scope_planner import (
     GenerationScopeIntent,
     GenerationScopePlanner,
+    ScopePlan,
 )
 from src.core.exceptions import (
     ArtifactBusyError,
     ArtifactConflictError,
     ArtifactLockedError,
+    StaleChapterVersionError,
 )
 from src.core.security.auth import get_current_user
 
@@ -60,9 +71,10 @@ def _conflict_response(exc: Exception, code: str, message: str) -> HTTPException
 
 
 def _services():
+    adapters = ArtifactAdapterRegistry()
     return (
         CreativeControlService(),
-        ArtifactVersionStore(),
+        ArtifactVersionStore(restore_callback=adapters.save),
         ImpactAnalyzer(),
         OperationLogService(),
         GenerationScopePlanner(),
@@ -80,20 +92,32 @@ async def get_stage(novel_id: str, current_user: User = Depends(get_current_user
 
     novel = await get_novel_manager().get_novel(novel_id)
     control_service = CreativeControlService()
+    adapters = ArtifactAdapterRegistry()
     summaries: list[dict[str, Any]] = []
     for stage in CREATIVE_STAGES:
-        # 每阶段产物 control（best-effort，无行则跳过）
+        stage_artifacts: list[dict[str, Any]] = []
         try:
-            ctrl = await control_service.get_or_create(
-                novel_id, stage.artifact_type, novel_id, stage=stage.number
+            artifacts = await adapters.list_artifacts(
+                novel_id, stage.artifact_type
             )
+            for artifact in artifacts:
+                ctrl = await control_service.get_or_create(
+                    novel_id,
+                    stage.artifact_type,
+                    artifact["artifact_id"],
+                    stage=stage.number,
+                )
+                stage_artifacts.append({**artifact, "control": ctrl})
         except Exception:  # noqa: BLE001 - 阶段聚合不因单产物失败中断
-            ctrl = None
+            stage_artifacts = []
         summaries.append({
             "number": stage.number,
             "name": stage.name,
             "artifact_type": stage.artifact_type,
-            "control": ctrl,
+            "artifacts": stage_artifacts,
+            "control": (
+                stage_artifacts[0]["control"] if stage_artifacts else None
+            ),
         })
     return {
         "creation_mode": (novel or {}).get("creation_mode", "auto"),
@@ -113,13 +137,30 @@ async def get_artifact(
     """查看产物 + control 元数据。"""
     await verify_novel_owner(novel_id, current_user)
     control_service, version_store, *_ = _services()
+    adapters = ArtifactAdapterRegistry()
     control = await control_service.get_or_create(
         novel_id, artifact_type, artifact_id
     )
+    try:
+        content = await adapters.load(novel_id, artifact_type, artifact_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     versions: list[dict] = []
+    active_version_number: int | None = None
     if artifact_type in ("world", "character", "master_outline", "volume_outline", "blueprint"):
         versions = await version_store.list_versions(novel_id, artifact_type, artifact_id)
-    return {"control": control, "versions": versions}
+    elif artifact_type in ("chapter", "chapter_version", "quality", "final"):
+        versions = await get_chapter_service().list_chapter_versions(
+            novel_id, int(artifact_id)
+        )
+        active = next((item for item in versions if item.get("is_active")), None)
+        active_version_number = active["version_number"] if active else None
+    return {
+        "control": control,
+        "content": content,
+        "versions": versions,
+        "active_version_number": active_version_number,
+    }
 
 
 @router.put("/{novel_id}/creative-control/artifacts/{artifact_type}/{artifact_id}")
@@ -128,11 +169,16 @@ async def edit_artifact(
     request: EditArtifactRequest, current_user: User = Depends(get_current_user),
 ):
     """人工编辑产物（带乐观锁）。改正文级产物需同时 expected_active_version。"""
-    control_service, version_store, _, op_log, _ = _services()
     await verify_novel_owner(novel_id, current_user)
     try:
-        await control_service.assert_writable(
-            novel_id, artifact_type, artifact_id, request.expected_version
+        result = await CreativeArtifactWriteService().edit_artifact(
+            novel_id=novel_id,
+            artifact_type=artifact_type,
+            artifact_id=artifact_id,
+            content=request.content,
+            expected_control_version=request.expected_version,
+            expected_active_version=request.expected_active_version,
+            operator_id=current_user.id,
         )
     except (ArtifactConflictError, ArtifactLockedError, ArtifactBusyError) as exc:
         code = {
@@ -141,46 +187,23 @@ async def edit_artifact(
             ArtifactBusyError: "busy",
         }[type(exc)]
         raise _conflict_response(exc, code, "产物版本已变化或被锁定，请刷新后重试") from exc
-
-    # 保存版本快照（非正文产物）
-    if artifact_type in ("world", "character", "master_outline", "volume_outline", "blueprint"):
-        new_vn = await version_store.save_version(
-            novel_id, artifact_type, artifact_id,
-            content_snapshot=request.content, source="manual",
-            operator_id=current_user.id,
-        )
-    elif artifact_type in ("chapter", "chapter_version"):
-        # 正文编辑：建激活版本 + 写回正文，并原子置 quality_status=unverified，
-        # 保证旧质量分数不会被当作新正文的当前分数（设计 §验收8 / 集成点4）。
-        # content 为纯文本正文（EditArtifactRequest.content 支持 str）。
-        # 正文产物的 artifact_id 语义为 chapter_number（设计 §API 契约）。
-        try:
-            chapter_number = int(artifact_id)
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=422,
-                detail={"code": "invalid_artifact_id",
-                        "message": "正文产物的 artifact_id 必须为章节号"},
-            ) from exc
-        content_text = request.content if isinstance(request.content, str) else str(request.content)
-        new_vn = await get_chapter_service().create_chapter_version(
-            novel_id, chapter_number, content=content_text,
-            source="manual", is_active=True, quality_status="unverified",
-        )
-    else:
-        new_vn = request.expected_version + 1
-    # 状态 -> edited
-    await control_service.set_status(
-        novel_id, artifact_type, artifact_id,
-        expected_version=request.expected_version, to_status="edited",
-        action="edit", operator_id=current_user.id,
-    )
-    await op_log.record(
-        novel_id=novel_id, artifact_type=artifact_type, artifact_id=artifact_id,
-        action="edit", from_version=request.expected_version, to_version=new_vn,
-        operator_id=current_user.id,
-    )
-    return {"status": "edited", "version": new_vn}
+    except StaleChapterVersionError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "stale_chapter_version",
+                "message": "章节活跃版本已变化，请刷新后重试",
+                "expected_version": exc.expected,
+                "current_version": exc.actual,
+            },
+        ) from exc
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "status": "edited",
+        "version": result.control_version,
+        "artifact_version": result.artifact_version,
+    }
 
 
 # ----------------------------------------------------------- lock/unlock/approve
@@ -192,7 +215,7 @@ async def lock_artifact(
     request: LockRequest, current_user: User = Depends(get_current_user),
 ):
     await verify_novel_owner(novel_id, current_user)
-    control_service, _, _, op_log, _ = _services()
+    control_service, _, _, _, _ = _services()
     try:
         new_v = await control_service.lock(
             novel_id, artifact_type, artifact_id,
@@ -202,11 +225,6 @@ async def lock_artifact(
         raise _conflict_response(exc, "stale_version", "产物版本已变化，请刷新后重试") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail={"code": "illegal_state", "message": str(exc)}) from exc
-    await op_log.record(
-        novel_id=novel_id, artifact_type=artifact_type, artifact_id=artifact_id,
-        action="lock", from_version=request.expected_version, to_version=new_v,
-        operator_id=current_user.id,
-    )
     return {"status": "locked", "version": new_v}
 
 
@@ -216,7 +234,7 @@ async def unlock_artifact(
     request: LockRequest, current_user: User = Depends(get_current_user),
 ):
     await verify_novel_owner(novel_id, current_user)
-    control_service, _, _, op_log, _ = _services()
+    control_service, _, _, _, _ = _services()
     try:
         new_v = await control_service.unlock(
             novel_id, artifact_type, artifact_id,
@@ -224,11 +242,6 @@ async def unlock_artifact(
         )
     except ArtifactConflictError as exc:
         raise _conflict_response(exc, "stale_version", "产物版本已变化，请刷新后重试") from exc
-    await op_log.record(
-        novel_id=novel_id, artifact_type=artifact_type, artifact_id=artifact_id,
-        action="unlock", from_version=request.expected_version, to_version=new_v,
-        operator_id=current_user.id,
-    )
     return {"status": "unlocked", "version": new_v}
 
 
@@ -238,7 +251,7 @@ async def approve_artifact(
     request: LockRequest, current_user: User = Depends(get_current_user),
 ):
     await verify_novel_owner(novel_id, current_user)
-    control_service, _, _, op_log, _ = _services()
+    control_service, _, _, _, _ = _services()
     try:
         new_v = await control_service.approve(
             novel_id, artifact_type, artifact_id,
@@ -246,11 +259,6 @@ async def approve_artifact(
         )
     except ArtifactConflictError as exc:
         raise _conflict_response(exc, "stale_version", "产物版本已变化，请刷新后重试") from exc
-    await op_log.record(
-        novel_id=novel_id, artifact_type=artifact_type, artifact_id=artifact_id,
-        action="approve", from_version=request.expected_version, to_version=new_v,
-        operator_id=current_user.id,
-    )
     return {"status": "approved", "version": new_v}
 
 
@@ -264,16 +272,70 @@ async def regenerate_artifact(
 ):
     """重新生成当前阶段产物。锁定产物需 force=True。"""
     await verify_novel_owner(novel_id, current_user)
-    control_service, _, _, op_log, _ = _services()
+    if artifact_type in {"chapter", "chapter_version", "final"}:
+        try:
+            chapter_number = int(artifact_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="章节产物 ID 必须为章号") from exc
+        plan = ScopePlan(
+            endpoint="generate-chapters",
+            payload={
+                "chapter_start": chapter_number,
+                "chapter_end": chapter_number,
+                "_control_target": {
+                    "artifact_type": artifact_type,
+                    "artifact_id": artifact_id,
+                    "generating_version": request.expected_version + 1,
+                },
+            },
+            target_chapters=[chapter_number],
+        )
+    elif artifact_type in {"blueprint", "quality"}:
+        try:
+            chapter_number = int(artifact_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="章节产物 ID 必须为章号") from exc
+        endpoint = "blueprint/generate" if artifact_type == "blueprint" else "auto-improve"
+        plan = ScopePlan(
+            endpoint=endpoint,
+            payload={
+                "chapter_number": chapter_number,
+                "issue_ids": (request.scope or {}).get("issue_ids", []),
+                "_control_target": {
+                    "artifact_type": artifact_type,
+                    "artifact_id": artifact_id,
+                    "generating_version": request.expected_version + 1,
+                },
+            },
+            target_chapters=[chapter_number],
+        )
+    elif artifact_type == "volume_outline":
+        try:
+            volume_number = int(artifact_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="卷纲产物 ID 必须为卷号") from exc
+        plan = ScopePlan(
+            endpoint="generate-volume",
+            payload={
+                "volume_number": volume_number,
+                "_control_target": {
+                    "artifact_type": artifact_type,
+                    "artifact_id": artifact_id,
+                    "generating_version": request.expected_version + 1,
+                },
+            },
+        )
+    else:
+        raise HTTPException(
+            status_code=422,
+            detail=f"当前产物类型尚无可执行的重生成任务: {artifact_type}",
+        )
+
+    control_service, _, _, _, _ = _services()
     try:
         await control_service.assert_writable(
             novel_id, artifact_type, artifact_id, request.expected_version,
             force=request.force,
-        )
-        new_v = await control_service.begin_generating(
-            novel_id, artifact_type, artifact_id,
-            expected_version=request.expected_version,
-            operator_id=current_user.id,
         )
     except (ArtifactConflictError, ArtifactLockedError, ArtifactBusyError) as exc:
         code = {
@@ -282,13 +344,37 @@ async def regenerate_artifact(
             ArtifactBusyError: "busy",
         }[type(exc)]
         raise _conflict_response(exc, code, "产物版本已变化或被锁定，请刷新后重试") from exc
-    await op_log.record(
-        novel_id=novel_id, artifact_type=artifact_type, artifact_id=artifact_id,
-        action="regenerate", from_version=request.expected_version, to_version=new_v,
-        operator_id=current_user.id, reason=request.reason,
-    )
-    # 实际生成由任务系统异步执行（现有 generate-* 端点），此处仅完成控制状态转移
-    return {"status": "generating", "version": new_v}
+
+    novel = await get_novel_manager().get_novel(novel_id)
+    if novel is None:
+        raise HTTPException(status_code=404, detail="Novel not found")
+    try:
+        dispatched = await CreativeGenerationDispatcher().dispatch_scope(
+            novel, current_user.id, plan
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        new_v = await control_service.begin_generating(
+            novel_id, artifact_type, artifact_id,
+            expected_version=request.expected_version,
+            operator_id=current_user.id,
+            task_id=dispatched.task_id,
+        )
+    except (ArtifactConflictError, ArtifactLockedError, ArtifactBusyError) as exc:
+        code = {
+            ArtifactConflictError: "stale_version",
+            ArtifactLockedError: "locked",
+            ArtifactBusyError: "busy",
+        }[type(exc)]
+        raise _conflict_response(exc, code, "产物版本已变化或被锁定，请刷新后重试") from exc
+    return {
+        "status": "generating",
+        "version": new_v,
+        "task_id": dispatched.task_id,
+        "task_ids": getattr(dispatched, "task_ids", [dispatched.task_id]),
+        "task_type": dispatched.task_type,
+    }
 
 
 @router.get("/{novel_id}/creative-control/artifacts/{artifact_type}/{artifact_id}/impact")
@@ -309,13 +395,9 @@ async def mark_stale(
 ):
     """仅标记下游过期（保留现有下游内容）。"""
     await verify_novel_owner(novel_id, current_user)
-    control_service, _, _, op_log, _ = _services()
+    control_service, _, _, _, _ = _services()
     result = await control_service.mark_stale(
         novel_id, artifact_type, artifact_id, reason=request.reason or "manual mark stale"
-    )
-    await op_log.record(
-        novel_id=novel_id, artifact_type=artifact_type, artifact_id=artifact_id,
-        action="update_params", operator_id=current_user.id, reason=request.reason,
     )
     return result
 
@@ -329,6 +411,13 @@ async def list_versions(
     current_user: User = Depends(get_current_user),
 ):
     await verify_novel_owner(novel_id, current_user)
+    if artifact_type in {"chapter", "chapter_version", "quality", "final"}:
+        try:
+            return await get_chapter_service().list_chapter_versions(
+                novel_id, int(artifact_id)
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     _, version_store, *_ = _services()
     return await version_store.list_versions(novel_id, artifact_type, artifact_id)
 
@@ -353,19 +442,40 @@ async def rollback_version(
     request: LockRequest, current_user: User = Depends(get_current_user),
 ):
     await verify_novel_owner(novel_id, current_user)
-    _, version_store, _, op_log, _ = _services()
     try:
-        result = await version_store.rollback_to(
-            novel_id, artifact_type, artifact_id, version_number,
+        result = await CreativeArtifactWriteService().rollback_artifact(
+            novel_id=novel_id,
+            artifact_type=artifact_type,
+            artifact_id=artifact_id,
+            target_version=version_number,
+            expected_control_version=request.expected_version,
+            expected_active_version=request.expected_active_version,
             operator_id=current_user.id,
         )
+    except (ArtifactConflictError, ArtifactLockedError, ArtifactBusyError) as exc:
+        code = {
+            ArtifactConflictError: "stale_version",
+            ArtifactLockedError: "locked",
+            ArtifactBusyError: "busy",
+        }[type(exc)]
+        raise _conflict_response(exc, code, "产物版本已变化或被锁定，请刷新后重试") from exc
+    except StaleChapterVersionError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "stale_chapter_version",
+                "message": "章节活跃版本已变化，请刷新后重试",
+                "expected_version": exc.expected,
+                "current_version": exc.actual,
+            },
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    await op_log.record(
-        novel_id=novel_id, artifact_type=artifact_type, artifact_id=artifact_id,
-        action="rollback", to_version=version_number, operator_id=current_user.id,
-    )
-    return result
+    return {
+        "status": "rolled_back",
+        "version": result.control_version,
+        "artifact_version": result.artifact_version,
+    }
 
 
 # ----------------------------------------------------------- 操作记录
@@ -408,22 +518,32 @@ async def preview_generate_scope(
     }
 
 
-@router.post("/{novel_id}/creative-control/generate-scope")
+@router.post("/{novel_id}/creative-control/generate-scope", status_code=202)
 async def plan_generate_scope(
     novel_id: str, request: GenerateScopeRequest,
     current_user: User = Depends(get_current_user),
 ):
-    """生成范围规划。返回 endpoint + payload + 过滤结果；前端据此调用现有生成端点。"""
+    """规划生成范围并立即投递持久化任务。"""
     await verify_novel_owner(novel_id, current_user)
     *_, planner = _services()
     intent = _to_intent(novel_id, request)
     plan = await planner.plan(intent)
+    novel = await get_novel_manager().get_novel(novel_id)
+    if novel is None:
+        raise HTTPException(status_code=404, detail="Novel not found")
+    try:
+        dispatched = await CreativeGenerationDispatcher().dispatch_scope(
+            novel, current_user.id, plan
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {
-        "endpoint": plan.endpoint,
-        "payload": plan.payload,
-        "target_chapters": plan.target_chapters,
-        "skipped_locked": plan.skipped_locked,
-        "skipped_confirmed": plan.skipped_confirmed,
+        "task_id": dispatched.task_id,
+        "task_ids": getattr(dispatched, "task_ids", [dispatched.task_id]),
+        "task_type": dispatched.task_type,
+        "target_chapters": dispatched.target_chapters,
+        "skipped_locked": dispatched.skipped_locked,
+        "skipped_confirmed": dispatched.skipped_confirmed,
     }
 
 

@@ -77,4 +77,27 @@ describe('GenerationScopeSelector.vue', () => {
     expect(payload.mode).toBe('volume')
     expect(payload.volume_number).toBe(3)
   })
+
+  it('uses chapter_number for continue mode', async () => {
+    const wrapper = mountSelector()
+    await wrapper.find('[data-mode-select]').setValue('continue')
+    await wrapper.find('[data-input="chapter_number"]').setValue(8)
+    await wrapper.find('[data-plan-btn]').trigger('click')
+
+    expect(wrapper.emitted('plan')[0][0]).toMatchObject({
+      mode: 'continue',
+      chapter_number: 8,
+    })
+    expect(wrapper.emitted('plan')[0][0]).not.toHaveProperty('chapter_start')
+  })
+
+  it('only exposes generation modes accepted by the backend', () => {
+    const wrapper = mountSelector()
+    const values = wrapper.findAll('[data-mode-select] option').map(option => option.element.value)
+
+    expect(values).toEqual([
+      'chapters', 'volume', 'continue', 'blueprint_only', 'content_only', 'fix_quality',
+    ])
+    expect(values).not.toContain('single')
+  })
 })

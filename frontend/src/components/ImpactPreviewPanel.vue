@@ -11,8 +11,8 @@
       >
         <p class="text-xs font-semibold text-ink-500 mb-1">{{ col.label }}</p>
         <ul class="space-y-0.5">
-          <li v-for="item in (impact[col.key] || [])" :key="item" class="text-sm text-ink-700">
-            {{ item }}
+          <li v-for="item in (impact[col.key] || [])" :key="itemKey(item)" class="text-sm text-ink-700">
+            {{ itemLabel(item) }}
           </li>
           <li v-if="!(impact[col.key] || []).length" class="text-xs text-ink-300">—</li>
         </ul>
@@ -62,6 +62,18 @@ defineProps({
 defineEmits(['choice'])
 
 const selected = ref('save_only')
+
+function itemKey(item) {
+  return typeof item === 'object'
+    ? `${item.artifact_type}:${item.artifact_id}`
+    : String(item)
+}
+
+function itemLabel(item) {
+  return typeof item === 'object'
+    ? `${item.artifact_type}/${item.artifact_id}`
+    : String(item)
+}
 
 const columns = [
   { key: 'direct_downstream', label: '直接下游' },

@@ -56,6 +56,20 @@
             </span>
           </div>
 
+          <select
+            v-if="(selectedStage.artifacts || []).length > 1"
+            v-model="selectedArtifactId"
+            data-artifact-select
+            class="input text-sm w-full mb-3"
+            @change="loadSelectedArtifact"
+          >
+            <option
+              v-for="artifact in selectedStage.artifacts"
+              :key="artifact.artifact_id"
+              :value="artifact.artifact_id"
+            >{{ artifact.label }}</option>
+          </select>
+
           <textarea
             v-model="editContent"
             class="input text-sm w-full h-48 font-mono"
@@ -158,6 +172,9 @@
           :novel-id="novelId"
           @plan="onScopePlan"
         />
+        <p v-if="generationTask" class="text-xs text-emerald-700 mt-2" data-generation-task>
+          生成任务已提交：{{ generationTask.task_id }}
+        </p>
       </div>
     </template>
   </div>
@@ -185,7 +202,8 @@ const novelId = computed(() => route.params.id)
 
 const {
   getStage, getArtifact, editArtifact, lock, unlock, approve,
-  regenerate, getImpact, listVersions, rollback, listOperations, setCreationMode,
+  regenerate, markStale, getImpact, listVersions, rollback, listOperations, setCreationMode,
+  executeGenerateScope,
 } = useCreativeControl(novelId)
 
 const loading = ref(true)
@@ -202,6 +220,9 @@ const operations = ref([])
 const editContent = ref('')
 const localError = ref('')
 const conflictHint = ref('')
+const generationTask = ref(null)
+const activeArtifactVersion = ref(null)
+const selectedArtifactId = ref(null)
 
 const selectedStage = computed(() =>
   stages.value.find(s => s.number === selectedStageNumber.value) || null
@@ -241,16 +262,24 @@ async function selectStage(num) {
   selectedStageNumber.value = num
   const st = selectedStage.value
   if (!st) return
+  selectedArtifactId.value = st.artifacts?.[0]?.artifact_id || novelId.value
+  await loadSelectedArtifact()
+}
+
+async function loadSelectedArtifact() {
+  const st = selectedStage.value
+  if (!st || !selectedArtifactId.value) return
   impact.value = null
   conflictHint.value = ''
   try {
-    const art = await getArtifact(st.artifact_type, novelId.value)
+    const art = await getArtifact(st.artifact_type, selectedArtifactId.value)
     control.value = art.control
     versions.value = art.versions || []
+    activeArtifactVersion.value = art.active_version_number ?? null
     // 初始编辑内容：control 的 generation_meta 或产物内容
-    editContent.value = control.value && control.value.generation_meta
-      ? JSON.stringify(control.value.generation_meta, null, 2)
-      : ''
+    editContent.value = typeof art.content === 'string'
+      ? art.content
+      : JSON.stringify(art.content ?? {}, null, 2)
   } catch (e) {
     localError.value = e.message
   }
@@ -263,7 +292,7 @@ async function onSelectStage(num) {
 async function loadImpact() {
   if (!selectedStage.value) return
   try {
-    impact.value = await getImpact(selectedStage.value.artifact_type, novelId.value)
+    impact.value = await getImpact(selectedStage.value.artifact_type, selectedArtifactId.value)
   } catch (e) {
     localError.value = e.message
   }
@@ -295,8 +324,8 @@ async function onEdit() {
       try { content = JSON.parse(content) } catch (_) { /* 保留文本 */ }
     }
     const res = await editArtifact(
-      selectedStage.value.artifact_type, novelId.value,
-      content, control.value.version,
+      selectedStage.value.artifact_type, selectedArtifactId.value,
+      content, control.value.version, activeArtifactVersion.value,
     )
     await selectStage(selectedStageNumber.value)
     await loadOperations()
@@ -309,7 +338,7 @@ async function onEdit() {
 async function onApprove() {
   if (!control.value) return
   try {
-    await approve(selectedStage.value.artifact_type, novelId.value, control.value.version)
+    await approve(selectedStage.value.artifact_type, selectedArtifactId.value, control.value.version)
     await selectStage(selectedStageNumber.value)
     await loadOperations()
   } catch (e) { _handleConflict(e) }
@@ -318,7 +347,7 @@ async function onApprove() {
 async function onLock() {
   if (!control.value) return
   try {
-    await lock(selectedStage.value.artifact_type, novelId.value, control.value.version)
+    await lock(selectedStage.value.artifact_type, selectedArtifactId.value, control.value.version)
     await selectStage(selectedStageNumber.value)
     await loadOperations()
   } catch (e) { _handleConflict(e) }
@@ -327,7 +356,7 @@ async function onLock() {
 async function onUnlock() {
   if (!control.value) return
   try {
-    await unlock(selectedStage.value.artifact_type, novelId.value, control.value.version)
+    await unlock(selectedStage.value.artifact_type, selectedArtifactId.value, control.value.version)
     await selectStage(selectedStageNumber.value)
     await loadOperations()
   } catch (e) { _handleConflict(e) }
@@ -337,7 +366,7 @@ async function onRegenerate() {
   if (!control.value) return
   try {
     await regenerate(
-      selectedStage.value.artifact_type, novelId.value, control.value.version,
+      selectedStage.value.artifact_type, selectedArtifactId.value, control.value.version,
       { force: control.value.locked },
     )
     await selectStage(selectedStageNumber.value)
@@ -349,33 +378,47 @@ async function onRollback(versionNumber) {
   if (!control.value) return
   try {
     await rollback(
-      selectedStage.value.artifact_type, novelId.value,
-      versionNumber, control.value.version,
+      selectedStage.value.artifact_type, selectedArtifactId.value,
+      versionNumber, control.value.version, activeArtifactVersion.value,
     )
     await selectStage(selectedStageNumber.value)
     await loadOperations()
   } catch (e) { _handleConflict(e) }
 }
 
-function onImpactChoice() {
-  // 影响方式选择后由调用方按需触发重生成或 mark-stale；此处仅记录意图
+async function onImpactChoice(choice) {
+  if (!control.value || !selectedStage.value || choice === 'save_only') return
+  try {
+    if (choice === 'mark_stale') {
+      await markStale(
+        selectedStage.value.artifact_type,
+        selectedArtifactId.value,
+        '用户选择保留下游并标记过期',
+        control.value.version,
+      )
+    } else {
+      const items = choice === 'regen_direct'
+        ? (impact.value?.direct_downstream || [])
+        : (impact.value?.full_downstream || [])
+      const executable = items.filter(item =>
+        item && !item.locked && item.version !== null && item.version !== undefined
+      )
+      await Promise.all(executable.map(item => regenerate(
+        item.artifact_type,
+        item.artifact_id,
+        item.version,
+      )))
+    }
+    await loadOperations()
+  } catch (e) {
+    _handleConflict(e)
+  }
 }
 
 async function onScopePlan(payload) {
   // 调用 generate-scope 端点获取实际生成指令并跳转/触发
   try {
-    const res = await fetch(
-      `/api/v1/projects/${novelId.value}/creative-control/generate-scope`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      },
-    )
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}))
-      throw new Error(d.detail || '生成范围规划失败')
-    }
+    generationTask.value = await executeGenerateScope(payload)
     await loadOperations()
   } catch (e) { localError.value = e.message }
 }

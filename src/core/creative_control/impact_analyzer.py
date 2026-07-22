@@ -296,6 +296,7 @@ class ImpactAnalyzer:
             "artifact_id": artifact_id,
             "control_status": row.control_status if row is not None else None,
             "locked": bool(row.locked) if row is not None else False,
+            "version": getattr(row, "version", None) if row is not None else None,
         }
 
     @staticmethod

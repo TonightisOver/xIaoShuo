@@ -167,4 +167,105 @@ describe('CreativeStudio.vue', () => {
     expect(regenCall).toBeTruthy()
     expect(regenCall[1].method).toBe('POST')
   })
+
+  it('loads and edits the selected real artifact id and content', async () => {
+    const fetchMock = makeFetch([
+      { match: `/api/v1/novels/${NOVEL_ID}`, body: { id: NOVEL_ID, title: '多角色小说' } },
+      {
+        match: /creative-control\/stage$/,
+        body: {
+          creation_mode: 'manual', creative_stage: 2,
+          stages: [{
+            number: 2,
+            name: '角色',
+            artifact_type: 'character',
+            artifacts: [{ artifact_id: 'character-7', label: '主角' }],
+            control: { control_status: 'generated', version: 4 },
+          }],
+        },
+      },
+      {
+        match: /artifacts\/character\/character-7$/,
+        method: 'GET',
+        body: {
+          artifact_id: 'character-7',
+          content: { name: '林川' },
+          control: { control_status: 'generated', version: 4 },
+          versions: [],
+        },
+      },
+      { match: /operations/, body: [] },
+      {
+        match: /artifacts\/character\/character-7$/,
+        method: 'PUT',
+        body: { status: 'edited', version: 5 },
+      },
+    ])
+    const wrapper = await mountStudio(fetchMock)
+
+    expect(wrapper.find('[data-artifact-editor]').element.value).toContain('林川')
+    await wrapper.find('[data-action="edit"]').trigger('click')
+    await flushPromises()
+
+    const putCall = fetchMock.mock.calls.find(
+      call => /artifacts\/character\/character-7$/.test(call[0]) && call[1]?.method === 'PUT',
+    )
+    expect(putCall).toBeTruthy()
+  })
+
+  it('can select a different artifact instance in the same stage', async () => {
+    const fetchMock = makeFetch([
+      { match: `/api/v1/novels/${NOVEL_ID}`, body: { id: NOVEL_ID, title: '群像小说' } },
+      {
+        match: /creative-control\/stage$/,
+        body: {
+          creation_mode: 'manual', creative_stage: 2,
+          stages: [{
+            number: 2, name: '角色', artifact_type: 'character',
+            artifacts: [
+              { artifact_id: '7', label: '林川' },
+              { artifact_id: '8', label: '苏白' },
+            ],
+          }],
+        },
+      },
+      { match: /artifacts\/character\/7$/, body: { content: { name: '林川' }, control: { version: 1 }, versions: [] } },
+      { match: /artifacts\/character\/8$/, body: { content: { name: '苏白' }, control: { version: 1 }, versions: [] } },
+      { match: /operations/, body: [] },
+    ])
+    const wrapper = await mountStudio(fetchMock)
+
+    await wrapper.find('[data-artifact-select]').setValue('8')
+    await flushPromises()
+
+    expect(wrapper.find('[data-artifact-editor]').element.value).toContain('苏白')
+    expect(fetchMock.mock.calls.some(call => /artifacts\/character\/8$/.test(call[0]))).toBe(true)
+  })
+
+  it('executes mark-stale impact choice instead of ignoring it', async () => {
+    const fetchMock = makeFetch([
+      { match: `/api/v1/novels/${NOVEL_ID}`, body: { id: NOVEL_ID, title: '影响测试' } },
+      {
+        match: /creative-control\/stage$/,
+        body: {
+          creation_mode: 'manual', creative_stage: 1,
+          stages: [{ number: 1, name: '世界观', artifact_type: 'world', artifacts: [{ artifact_id: '42', label: '世界观' }] }],
+        },
+      },
+      { match: /artifacts\/world\/42$/, method: 'GET', body: { content: { rules: '旧' }, control: { version: 2 }, versions: [] } },
+      { match: /artifacts\/world\/42\/impact$/, body: { direct_downstream: [], full_downstream: [], regenerable: [], to_mark_stale: [] } },
+      { match: /artifacts\/world\/42\/mark-stale$/, method: 'POST', body: { to_mark_stale: [] } },
+      { match: /operations/, body: [] },
+    ])
+    const wrapper = await mountStudio(fetchMock)
+
+    await wrapper.find('[data-load-impact]').trigger('click')
+    await flushPromises()
+    await wrapper.find('[data-choice="mark_stale"]').trigger('change')
+    await flushPromises()
+
+    expect(fetchMock.mock.calls.some(
+      call => /artifacts\/world\/42\/mark-stale$/.test(call[0]) && call[1]?.method === 'POST',
+    )).toBe(true)
+  })
 })

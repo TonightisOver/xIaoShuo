@@ -135,9 +135,13 @@ class TestPersistGeneratedChapters:
         session, cm = _make_mock_session()
         # 模拟已有行：scalar_one_or_none 返回一个 mock 行对象
         existing_row = MagicMock()
+        no_control_result = MagicMock()
+        no_control_result.scalar_one_or_none = MagicMock(return_value=None)
         exec_result = MagicMock()
         exec_result.scalar_one_or_none = MagicMock(return_value=existing_row)
-        session.execute = AsyncMock(return_value=exec_result)
+        session.execute = AsyncMock(
+            side_effect=[no_control_result, exec_result]
+        )
         chapters = [_make_chapter_dict(chapter=1, volume_number=1, content="新内容")]
 
         with patch("src.core.database.get_db_session", return_value=cm):
@@ -148,6 +152,28 @@ class TestPersistGeneratedChapters:
         # 验证关键字段被更新到已有行
         assert existing_row.content == "新内容"
         assert existing_row.status == "generated"
+
+    @pytest.mark.asyncio
+    async def test_locked_chapter_is_rejected_before_business_write(self):
+        from src.core.exceptions import ArtifactLockedError
+
+        session, cm = _make_mock_session()
+        locked_control = MagicMock()
+        locked_control.locked = True
+        control_result = MagicMock()
+        control_result.scalar_one_or_none.return_value = locked_control
+        session.execute = AsyncMock(return_value=control_result)
+
+        with (
+            patch("src.core.database.get_db_session", return_value=cm),
+            pytest.raises(ArtifactLockedError),
+        ):
+            await persist_generated_chapters(
+                "novel-1", [_make_chapter_dict(chapter=5)]
+            )
+
+        assert session.execute.await_count == 1
+        session.add.assert_not_called()
 
 
 # ============================================================
@@ -319,12 +345,13 @@ class TestPersistLanggraphResult:
 
         mock_char_svc = MagicMock()
         mock_char_svc.get_character_by_name = AsyncMock(return_value=None)
-        mock_char_svc.create_character = AsyncMock()
+        mock_char_svc.create_character = AsyncMock(return_value=42)
 
         mock_volume_svc = MagicMock()
         mock_volume_svc.create_volume = AsyncMock()
 
         with patch("src.core.database.get_db_session", return_value=cm), \
+             patch("src.core.creative_control.control_service.get_db_session", return_value=cm), \
              patch("src.api.services.content.novel_manager.get_novel_manager", return_value=mock_manager), \
              patch("src.api.services.content.character_service.get_character_service", return_value=mock_char_svc), \
              patch("src.api.services.content.volume_service.get_volume_service", return_value=mock_volume_svc):
@@ -337,7 +364,7 @@ class TestPersistLanggraphResult:
         # volume 创建 1 次
         assert mock_volume_svc.create_volume.call_count == 1
         # 章节写入 2 次（delete + add 循环 2 次）
-        assert session.execute.call_count == 2  # 2 次 delete
+        assert session.execute.call_count == 3  # 世界观锁检查 + 2 次 delete
         assert session.add.call_count == 2
         # 版本创建 2 次（每章 content 都创建版本）
         assert mock_manager.create_chapter_version.call_count == 2
@@ -370,6 +397,7 @@ class TestPersistLanggraphResult:
         mock_volume_svc.create_volume = AsyncMock()
 
         with patch("src.core.database.get_db_session", return_value=cm), \
+             patch("src.core.creative_control.control_service.get_db_session", return_value=cm), \
              patch("src.api.services.content.novel_manager.get_novel_manager", return_value=mock_manager), \
              patch("src.api.services.content.character_service.get_character_service", return_value=mock_char_svc), \
              patch("src.api.services.content.volume_service.get_volume_service", return_value=mock_volume_svc):

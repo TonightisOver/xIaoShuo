@@ -6,12 +6,50 @@ from typing import Any
 from src.api.models.requests import CreateNovelRequest, LongFormNovelRequest
 
 
+async def _finish_control_target(
+    payload: dict[str, Any], *, error: Exception | None = None
+) -> None:
+    target = payload.get("control_target")
+    if not isinstance(target, dict):
+        return
+    from src.core.creative_control.control_service import CreativeControlService
+
+    service = CreativeControlService()
+    kwargs = {
+        "novel_id": payload["novel_id"],
+        "artifact_type": str(target["artifact_type"]),
+        "artifact_id": str(target["artifact_id"]),
+        "expected_version": int(target["generating_version"]),
+    }
+    if error is None:
+        await service.complete_generating(
+            **kwargs,
+            generation_meta={"source": "task", "status": "completed"},
+        )
+    else:
+        await service.fail_generating(**kwargs, reason=str(error))
+
+
+async def _run_controlled(payload: dict[str, Any], operation) -> None:
+    try:
+        await operation
+    except Exception as exc:
+        try:
+            await _finish_control_target(payload, error=exc)
+        except Exception:
+            pass
+        raise
+    await _finish_control_target(payload)
+
+
 class TaskType(StrEnum):
     NOVEL_GENERATE = "novel.generate"
     NOVEL_FULL_GENERATE = "novel.full_generate"
     NOVEL_LONG_FORM = "novel.long_form"
     NOVEL_VOLUME = "novel.volume"
     NOVEL_CHAPTERS = "novel.chapters"
+    NOVEL_BLUEPRINT = "novel.blueprint"
+    NOVEL_QUALITY_FIX = "novel.quality_fix"
     PIPELINE_RESUME = "pipeline.resume"
 
 
@@ -63,11 +101,14 @@ async def dispatch_task(task: dict[str, Any]) -> None:
             generate_volume_background,
         )
 
-        await generate_volume_background(
-            task_id,
-            payload["novel_id"],
-            int(payload["volume_number"]),
-            worker_id=worker_id,
+        await _run_controlled(
+            payload,
+            generate_volume_background(
+                task_id,
+                payload["novel_id"],
+                int(payload["volume_number"]),
+                worker_id=worker_id,
+            ),
         )
         return
 
@@ -76,12 +117,48 @@ async def dispatch_task(task: dict[str, Any]) -> None:
             generate_chapters_background,
         )
 
-        await generate_chapters_background(
-            task_id,
-            payload["novel_id"],
-            int(payload["chapter_start"]),
-            int(payload["chapter_end"]),
-            worker_id=worker_id,
+        await _run_controlled(
+            payload,
+            generate_chapters_background(
+                task_id,
+                payload["novel_id"],
+                int(payload["chapter_start"]),
+                int(payload["chapter_end"]),
+                worker_id=worker_id,
+            ),
+        )
+        return
+
+    if task_type is TaskType.NOVEL_BLUEPRINT:
+        from src.api.services.generation.creative_control_tasks import (
+            generate_blueprint_background,
+        )
+
+        await _run_controlled(
+            payload,
+            generate_blueprint_background(
+                task_id,
+                payload["novel_id"],
+                int(payload["chapter_number"]),
+                worker_id=worker_id,
+            ),
+        )
+        return
+
+    if task_type is TaskType.NOVEL_QUALITY_FIX:
+        from src.api.services.generation.creative_control_tasks import (
+            fix_quality_background,
+        )
+
+        await _run_controlled(
+            payload,
+            fix_quality_background(
+                task_id,
+                payload["novel_id"],
+                int(payload["chapter_number"]),
+                issue_ids=list(payload.get("issue_ids") or []),
+                worker_id=worker_id,
+            ),
         )
         return
 

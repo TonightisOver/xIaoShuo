@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import importlib
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from sqlalchemy import select
@@ -46,6 +47,15 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
 
 class ArtifactVersionStore:
     """通用产物版本快照读写。"""
+
+    def __init__(
+        self,
+        restore_callback: (
+            Callable[[str, str, str, dict[str, Any] | str], Awaitable[None]]
+            | None
+        ) = None,
+    ) -> None:
+        self._restore_callback = restore_callback
 
     async def save_version(
         self,
@@ -196,14 +206,12 @@ class ArtifactVersionStore:
         artifact_id: str,
         content_snapshot: dict[str, Any],
     ) -> None:
-        """把版本内容回写到产物本体表。
-
-        委托给对应 content service（WorldService/CharacterService/OutlineService/
-        VolumeService/BlueprintService）。本方法在集成层被覆盖；核心层保持可单测。
-        """
-        # 默认实现：no-op（由 src/api/services/creative_control_service.py 注入真实委托）。
-        # 单测通过 monkeypatch 覆盖。
-        return None
+        """通过 API 层注入的适配器把版本内容回写到真实产物。"""
+        if self._restore_callback is None:
+            raise RuntimeError("artifact restore callback is not configured")
+        await self._restore_callback(
+            novel_id, artifact_type, artifact_id, content_snapshot
+        )
 
     async def _select_active(
         self, session, novel_id, artifact_type, artifact_id

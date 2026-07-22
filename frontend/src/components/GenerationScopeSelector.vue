@@ -11,12 +11,14 @@
       >
         <option value="chapters">章节范围</option>
         <option value="volume">单卷</option>
-        <option value="single">单章</option>
         <option value="continue">从某章继续</option>
+        <option value="blueprint_only">仅生成蓝图</option>
+        <option value="content_only">仅生成正文</option>
+        <option value="fix_quality">修复质量问题</option>
       </select>
     </div>
 
-    <div v-if="form.mode === 'chapters' || form.mode === 'continue'" class="flex items-center gap-2">
+    <div v-if="form.mode === 'chapters' || form.mode === 'content_only'" class="flex items-center gap-2">
       <label class="text-sm text-ink-600">起始章</label>
       <input
         type="number"
@@ -25,7 +27,7 @@
         v-model.number="form.chapter_start"
         class="input w-24 text-sm"
       />
-      <template v-if="form.mode === 'chapters'">
+      <template>
         <label class="text-sm text-ink-600">结束章</label>
         <input
           type="number"
@@ -48,7 +50,7 @@
       />
     </div>
 
-    <div v-if="form.mode === 'single'" class="flex items-center gap-2">
+    <div v-if="['continue', 'blueprint_only', 'fix_quality'].includes(form.mode)" class="flex items-center gap-2">
       <label class="text-sm text-ink-600">章号</label>
       <input
         type="number"
@@ -136,14 +138,14 @@ function buildPayload() {
     respect_locked: form.respect_locked,
     skip_confirmed: form.skip_confirmed,
   }
-  if (form.mode === 'chapters') {
+  if (form.mode === 'chapters' || form.mode === 'content_only') {
     p.chapter_start = form.chapter_start
     p.chapter_end = form.chapter_end
   } else if (form.mode === 'continue') {
-    p.chapter_start = form.chapter_start
+    p.chapter_number = form.chapter_number
   } else if (form.mode === 'volume') {
     p.volume_number = form.volume_number
-  } else if (form.mode === 'single') {
+  } else if (form.mode === 'blueprint_only' || form.mode === 'fix_quality') {
     p.chapter_number = form.chapter_number
   }
   return p

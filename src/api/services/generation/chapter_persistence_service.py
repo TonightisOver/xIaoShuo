@@ -83,6 +83,13 @@ async def persist_langgraph_result(
         # World setting
         ws = result.get("world_setting")
         if ws and isinstance(ws, dict):
+            from src.core.creative_control.control_service import (
+                CreativeControlService,
+            )
+
+            await CreativeControlService().assert_generation_allowed(
+                novel_id, "world", novel_id
+            )
             await manager.upsert_world_setting(
                 novel_id,
                 background=ws.get("background") or ws.get("世界背景"),
@@ -122,11 +129,21 @@ async def persist_langgraph_result(
                 char_svc = get_character_service()
                 existing = await char_svc.get_character_by_name(novel_id, char_data["name"])
                 if existing:
+                    from src.core.creative_control.control_service import (
+                        CreativeControlService,
+                    )
+
+                    char_id = existing["id"]
+                    await CreativeControlService().assert_generation_allowed(
+                        novel_id, "character", str(char_id)
+                    )
                     await char_svc.update_character(novel_id, existing["id"], **char_data)
                 else:
-                    await char_svc.create_character(novel_id, **char_data)
+                    char_id = await char_svc.create_character(
+                        novel_id, **char_data
+                    )
                 await _record_artifact_generated(
-                    novel_id, "character", char_data["name"],
+                    novel_id, "character", str(char_id),
                     generation_meta={"source": "generation"},
                 )
 
@@ -230,10 +247,17 @@ async def persist_generated_chapters(
     from sqlalchemy import select
 
     from src.api.models.db_models import Chapter
+    from src.core.creative_control.control_service import CreativeControlService
     from src.core.database import get_db_session
 
     async with get_db_session() as session:
         for ch in chapters:
+            await CreativeControlService().assert_generation_allowed_in_session(
+                session,
+                novel_id,
+                "chapter",
+                str(ch["chapter"]),
+            )
             # upsert：同 novel_id+chapter_number 已存在则 UPDATE，避免唯一约束冲突
             existing = (
                 await session.execute(

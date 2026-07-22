@@ -51,6 +51,13 @@ EXPECTED_PACKAGES = {
         "ai_generation_service",
         "pause_state_store",
         "progress_event_bus",
+        "chapter_recovery",
+        "creative_control_tasks",
+    ),
+    "creative_control": (
+        "artifact_adapters",
+        "artifact_write_service",
+        "generation_dispatch",
     ),
 }
 

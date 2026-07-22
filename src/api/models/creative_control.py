@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class EditArtifactRequest(BaseModel):
@@ -14,6 +14,7 @@ class EditArtifactRequest(BaseModel):
 
     content: dict[str, Any] | str
     expected_version: int = Field(ge=0)
+    expected_active_version: int | None = Field(default=None, ge=1)
 
 
 class RegenerateRequest(BaseModel):
@@ -27,6 +28,7 @@ class RegenerateRequest(BaseModel):
 
 class LockRequest(BaseModel):
     expected_version: int = Field(ge=0)
+    expected_active_version: int | None = Field(default=None, ge=1)
 
 
 class SetStatusRequest(BaseModel):
@@ -51,6 +53,20 @@ class GenerateScopeRequest(BaseModel):
     skip_confirmed: bool = False
     respect_locked: bool = True
     words_per_chapter: int = Field(default=3000, ge=100)
+
+    @model_validator(mode="after")
+    def validate_mode_fields(self):
+        if self.mode in {"chapters", "content_only"}:
+            if self.chapter_start is None or self.chapter_end is None:
+                raise ValueError("章节范围必须同时提供 chapter_start 和 chapter_end")
+            if self.chapter_end < self.chapter_start:
+                raise ValueError("chapter_end 不能小于 chapter_start")
+        elif self.mode == "volume" and self.volume_number is None:
+            raise ValueError("单卷生成必须提供 volume_number")
+        elif self.mode in {"continue", "blueprint_only", "fix_quality"}:
+            if self.chapter_number is None:
+                raise ValueError(f"{self.mode} 必须提供 chapter_number")
+        return self
 
 
 class SetModeRequest(BaseModel):

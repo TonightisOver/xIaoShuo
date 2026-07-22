@@ -63,10 +63,11 @@ export function useCreativeControl(novelIdRef) {
     return _req('GET', `/artifacts/${artifactType}/${artifactId}`)
   }
 
-  async function editArtifact(artifactType, artifactId, content, expectedVersion) {
+  async function editArtifact(artifactType, artifactId, content, expectedVersion, expectedActiveVersion = null) {
     return _req('PUT', `/artifacts/${artifactType}/${artifactId}`, {
       content,
       expected_version: expectedVersion,
+      expected_active_version: expectedActiveVersion,
     })
   }
 
@@ -111,11 +112,11 @@ export function useCreativeControl(novelIdRef) {
     return _req('GET', `/artifacts/${artifactType}/${artifactId}/versions`)
   }
 
-  async function rollback(artifactType, artifactId, versionNumber, expectedVersion) {
+  async function rollback(artifactType, artifactId, versionNumber, expectedVersion, expectedActiveVersion = null) {
     return _req(
       'POST',
       `/artifacts/${artifactType}/${artifactId}/versions/${versionNumber}/rollback`,
-      { expected_version: expectedVersion },
+      { expected_version: expectedVersion, expected_active_version: expectedActiveVersion },
     )
   }
 
@@ -146,6 +147,10 @@ export function useCreativeControl(novelIdRef) {
     return res.json()
   }
 
+  async function executeGenerateScope(payload) {
+    return _req('POST', '/generate-scope', payload)
+  }
+
   async function setCreationMode(mode) {
     return _req('PUT', '/mode', { creation_mode: mode })
   }
@@ -166,6 +171,7 @@ export function useCreativeControl(novelIdRef) {
     rollback,
     listOperations,
     previewGenerateScope,
+    executeGenerateScope,
     setCreationMode,
   }
 }

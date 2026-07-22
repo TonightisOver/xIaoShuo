@@ -21,6 +21,7 @@ from src.api.models.creative_control import (
 from src.api.routes.creative_control import (
     approve_artifact,
     edit_artifact,
+    get_artifact,
     get_impact,
     get_stage,
     list_operations,
@@ -61,13 +62,46 @@ async def test_get_stage_verifies_owner():
     user = _user()
     with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()) as verify, \
          patch("src.api.routes.creative_control.get_novel_manager") as gm, \
-         patch("src.api.routes.creative_control.CreativeControlService") as cs:
+         patch("src.api.routes.creative_control.CreativeControlService") as cs, \
+         patch("src.api.routes.creative_control.ArtifactAdapterRegistry") as adapters:
         gm.return_value.get_novel = AsyncMock(return_value={"creation_mode": "auto", "creative_stage": 1})
         cs.return_value.get_or_create = AsyncMock(return_value={"control_status": "generated", "version": 1})
+        adapters.return_value.list_artifacts = AsyncMock(
+            side_effect=lambda _novel_id, artifact_type: (
+                [{"artifact_id": "42", "label": "林舟"}]
+                if artifact_type == "character"
+                else []
+            )
+        )
         result = await get_stage("novel-1", current_user=user)
     verify.assert_awaited_once_with("novel-1", user)
     assert result["creation_mode"] == "auto"
     assert len(result["stages"]) == 10
+    character_stage = next(
+        stage for stage in result["stages"] if stage["artifact_type"] == "character"
+    )
+    assert character_stage["artifacts"][0]["artifact_id"] == "42"
+
+
+@pytest.mark.asyncio
+async def test_get_artifact_returns_real_content():
+    user = _user()
+    with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()), \
+         patch("src.api.routes.creative_control.CreativeControlService") as cs, \
+         patch("src.api.routes.creative_control.ArtifactVersionStore") as vs, \
+         patch("src.api.routes.creative_control.ArtifactAdapterRegistry") as adapters:
+        cs.return_value.get_or_create = AsyncMock(
+            return_value={"control_status": "generated", "version": 1}
+        )
+        vs.return_value.list_versions = AsyncMock(return_value=[])
+        adapters.return_value.load = AsyncMock(
+            return_value={"name": "林舟", "role": "主角"}
+        )
+        result = await get_artifact(
+            "novel-1", "character", "42", current_user=user
+        )
+
+    assert result["content"]["name"] == "林舟"
 
 
 # ----------------------------------------------------------- edit 409
@@ -78,8 +112,8 @@ async def test_edit_returns_409_on_stale_version():
     user = _user()
     req = EditArtifactRequest(content={"rules": "x"}, expected_version=1)
     with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()), \
-         patch("src.api.routes.creative_control.CreativeControlService") as cs:
-        cs.return_value.assert_writable = AsyncMock(
+         patch("src.api.routes.creative_control.CreativeArtifactWriteService") as writes:
+        writes.return_value.edit_artifact = AsyncMock(
             side_effect=ArtifactConflictError("novel-1", "world", "w1", 1, 3)
         )
         with pytest.raises(HTTPException) as exc:
@@ -94,9 +128,8 @@ async def test_edit_returns_409_on_locked():
     user = _user()
     req = EditArtifactRequest(content={"rules": "x"}, expected_version=1)
     with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()), \
-         patch("src.api.routes.creative_control.CreativeControlService") as cs, \
-         patch("src.api.routes.creative_control.ArtifactVersionStore"):
-        cs.return_value.assert_writable = AsyncMock(
+         patch("src.api.routes.creative_control.CreativeArtifactWriteService") as writes:
+        writes.return_value.edit_artifact = AsyncMock(
             side_effect=ArtifactLockedError("novel-1", "world", "w1")
         )
         with pytest.raises(HTTPException) as exc:
@@ -110,16 +143,16 @@ async def test_edit_success_returns_edited():
     user = _user()
     req = EditArtifactRequest(content={"rules": "x"}, expected_version=1)
     with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()), \
-         patch("src.api.routes.creative_control.CreativeControlService") as cs, \
-         patch("src.api.routes.creative_control.ArtifactVersionStore") as vs, \
+         patch("src.api.routes.creative_control.CreativeArtifactWriteService") as writes, \
          _ol() as ol:
         _cfg(ol)
-        cs.return_value.assert_writable = AsyncMock(return_value=None)
-        cs.return_value.set_status = AsyncMock(return_value=None)
-        vs.return_value.save_version = AsyncMock(return_value=2)
+        writes.return_value.edit_artifact = AsyncMock(
+            return_value=SimpleNamespace(control_version=2, artifact_version=3)
+        )
         result = await edit_artifact("novel-1", "world", "w1", req, current_user=user)
     assert result["status"] == "edited"
     assert result["version"] == 2
+    assert result["artifact_version"] == 3
 
 
 @pytest.mark.asyncio
@@ -127,32 +160,28 @@ async def test_edit_chapter_creates_version_and_marks_unverified():
     """手动编辑正文：建 ChapterVersion（激活）+ 置 quality_status=unverified +
     control -> edited + op_log。验收 §8：旧质量分数不当作新正文的当前分数。"""
     user = _user()
-    req = EditArtifactRequest(content="修改后的正文纯文本", expected_version=3)
+    req = EditArtifactRequest(
+        content="修改后的正文纯文本",
+        expected_version=3,
+        expected_active_version=4,
+    )
     with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()), \
-         patch("src.api.routes.creative_control.CreativeControlService") as cs, \
-         patch("src.api.routes.creative_control.get_chapter_service") as gcs, \
+         patch("src.api.routes.creative_control.CreativeArtifactWriteService") as writes, \
          _ol() as ol:
         _cfg(ol)
-        cs.return_value.assert_writable = AsyncMock(return_value=None)
-        cs.return_value.set_status = AsyncMock(return_value=None)
-        chapter_svc = gcs.return_value
-        chapter_svc.create_chapter_version = AsyncMock(return_value=5)
+        writes.return_value.edit_artifact = AsyncMock(
+            return_value=SimpleNamespace(control_version=4, artifact_version=5)
+        )
         result = await edit_artifact("novel-1", "chapter", "7", req, current_user=user)
 
-    # 建了激活版本并置 unverified
-    chapter_svc.create_chapter_version.assert_awaited_once()
-    _, kwargs = chapter_svc.create_chapter_version.await_args
-    assert kwargs["quality_status"] == "unverified"
-    assert kwargs["is_active"] is True
-    assert kwargs["source"] == "manual"
-    # control 转 edited
-    cs.return_value.set_status.assert_awaited_once()
-    _, skwargs = cs.return_value.set_status.await_args
-    assert skwargs["to_status"] == "edited"
-    # 审计记录 edit
-    ol.return_value.record.assert_awaited_once()
+    kwargs = writes.return_value.edit_artifact.await_args.kwargs
+    assert kwargs["expected_active_version"] == 4
+    assert kwargs["content"] == "修改后的正文纯文本"
+    # control service 是唯一审计写入者，路由不重复记录
+    ol.return_value.record.assert_not_awaited()
     assert result["status"] == "edited"
-    assert result["version"] == 5
+    assert result["version"] == 4
+    assert result["artifact_version"] == 5
 
 
 @pytest.mark.asyncio
@@ -161,13 +190,14 @@ async def test_edit_chapter_conflict_maps_409():
     from src.core.exceptions import ArtifactConflictError
 
     user = _user()
-    req = EditArtifactRequest(content="正文", expected_version=2)
+    req = EditArtifactRequest(
+        content="正文", expected_version=2, expected_active_version=1
+    )
     with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()), \
-         patch("src.api.routes.creative_control.CreativeControlService") as cs, \
-         patch("src.api.routes.creative_control.get_chapter_service") as gcs, \
+         patch("src.api.routes.creative_control.CreativeArtifactWriteService") as writes, \
          _ol() as ol:
         _cfg(ol)
-        cs.return_value.assert_writable = AsyncMock(
+        writes.return_value.edit_artifact = AsyncMock(
             side_effect=ArtifactConflictError("novel-1", "chapter", "7", 2, 4)
         )
         with pytest.raises(HTTPException) as exc:
@@ -182,15 +212,15 @@ async def test_edit_chapter_non_numeric_id_maps_422():
     user = _user()
     req = EditArtifactRequest(content="正文", expected_version=0)
     with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()), \
-         patch("src.api.routes.creative_control.CreativeControlService") as cs, \
-         patch("src.api.routes.creative_control.get_chapter_service") as gcs, \
+         patch("src.api.routes.creative_control.CreativeArtifactWriteService") as writes, \
          _ol() as ol:
         _cfg(ol)
-        cs.return_value.assert_writable = AsyncMock(return_value=None)
+        writes.return_value.edit_artifact = AsyncMock(
+            side_effect=ValueError("invalid artifact id")
+        )
         with pytest.raises(HTTPException) as exc:
             await edit_artifact("novel-1", "chapter", "abc", req, current_user=user)
     assert exc.value.status_code == 422
-    gcs.return_value.create_chapter_version.assert_not_called()
 
 
 # ----------------------------------------------------------- lock/approve
@@ -246,6 +276,58 @@ async def test_regenerate_returns_409_on_busy():
     assert exc.value.detail["code"] == "busy"
 
 
+@pytest.mark.asyncio
+async def test_regenerate_chapter_dispatches_persistent_task():
+    user = _user()
+    req = RegenerateRequest(expected_version=1)
+    with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()), \
+         patch("src.api.routes.creative_control.CreativeControlService") as cs, \
+         patch("src.api.routes.creative_control.get_novel_manager") as manager, \
+         patch("src.api.routes.creative_control.CreativeGenerationDispatcher") as dispatcher, \
+         _ol() as ol:
+        _cfg(ol)
+        cs.return_value.assert_writable = AsyncMock()
+        cs.return_value.begin_generating = AsyncMock(return_value=2)
+        manager.return_value.get_novel = AsyncMock(
+            return_value={
+                "novel_id": "novel-1",
+                "idea": "测试创意",
+                "novel_type": "玄幻",
+                "target_words": 100000,
+            }
+        )
+        dispatcher.return_value.dispatch_scope = AsyncMock(
+            return_value=SimpleNamespace(
+                task_id="task-7",
+                task_type="novel.chapters",
+                target_chapters=[7],
+                skipped_locked=[],
+                skipped_confirmed=[],
+            )
+        )
+        result = await regenerate_artifact(
+            "novel-1", "chapter", "7", req, current_user=user
+        )
+
+    assert result["task_id"] == "task-7"
+    assert result["status"] == "generating"
+
+
+@pytest.mark.asyncio
+async def test_unsupported_regenerate_does_not_change_control_status():
+    user = _user()
+    req = RegenerateRequest(expected_version=1)
+    with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()), \
+         patch("src.api.routes.creative_control.CreativeControlService") as cs:
+        with pytest.raises(HTTPException) as exc:
+            await regenerate_artifact(
+                "novel-1", "world", "novel-1", req, current_user=user
+            )
+
+    assert exc.value.status_code == 422
+    cs.return_value.begin_generating.assert_not_called()
+
+
 # ----------------------------------------------------------- impact / stale / versions
 
 
@@ -282,10 +364,10 @@ async def test_rollback_returns_404_on_missing_version():
     user = _user()
     req = LockRequest(expected_version=1)
     with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()), \
-         patch("src.api.routes.creative_control.ArtifactVersionStore") as vs, \
-         _ol() as ol:
-        _cfg(ol)
-        vs.return_value.rollback_to = AsyncMock(side_effect=ValueError("version not found: 99"))
+         patch("src.api.routes.creative_control.CreativeArtifactWriteService") as writes:
+        writes.return_value.rollback_artifact = AsyncMock(
+            side_effect=ValueError("version not found: 99")
+        )
         with pytest.raises(HTTPException) as exc:
             await rollback_version("novel-1", "world", "w1", 99, req, current_user=user)
     assert exc.value.status_code == 404
@@ -334,16 +416,36 @@ async def test_plan_generate_scope():
     user = _user()
     req = GenerateScopeRequest(mode="chapters", chapter_start=1, chapter_end=3)
     with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()), \
-         patch("src.api.routes.creative_control.GenerationScopePlanner") as gp:
+         patch("src.api.routes.creative_control.GenerationScopePlanner") as gp, \
+         patch("src.api.routes.creative_control.get_novel_manager") as manager, \
+         patch("src.api.routes.creative_control.CreativeGenerationDispatcher") as dispatcher:
         from src.core.creative_control.scope_planner import ScopePlan
         gp.return_value.plan = AsyncMock(return_value=ScopePlan(
             endpoint="generate-chapters",
             payload={"chapter_start": 1, "chapter_end": 3},
             target_chapters=[1, 2, 3], skipped_locked=[], skipped_confirmed=[],
         ))
+        manager.return_value.get_novel = AsyncMock(
+            return_value={
+                "novel_id": "novel-1",
+                "idea": "测试创意",
+                "novel_type": "玄幻",
+                "target_words": 100000,
+            }
+        )
+        dispatcher.return_value.dispatch_scope = AsyncMock(
+            return_value=SimpleNamespace(
+                task_id="task-1",
+                task_type="novel.chapters",
+                target_chapters=[1, 2, 3],
+                skipped_locked=[],
+                skipped_confirmed=[],
+            )
+        )
         result = await plan_generate_scope("novel-1", req, current_user=user)
-    assert result["endpoint"] == "generate-chapters"
-    assert result["payload"] == {"chapter_start": 1, "chapter_end": 3}
+    assert result["task_id"] == "task-1"
+    assert result["task_type"] == "novel.chapters"
+    dispatcher.return_value.dispatch_scope.assert_awaited_once()
 
 
 # ----------------------------------------------------------- mode
@@ -371,3 +473,9 @@ def test_request_models_reject_invalid_values():
         SetModeRequest(creation_mode="turbo")
     with pytest.raises(ValidationError):
         EditArtifactRequest(content={}, expected_version=-1)
+    with pytest.raises(ValidationError):
+        GenerateScopeRequest(mode="chapters", chapter_start=2)
+    with pytest.raises(ValidationError):
+        GenerateScopeRequest(mode="blueprint_only")
+    with pytest.raises(ValidationError):
+        GenerateScopeRequest(mode="volume")

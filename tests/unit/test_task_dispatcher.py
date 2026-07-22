@@ -153,6 +153,83 @@ async def test_dispatches_chapter_range_generation():
 
 
 @pytest.mark.asyncio
+async def test_dispatches_blueprint_generation():
+    from src.api.services.tasks.task_dispatcher import TaskType, dispatch_task
+
+    handler = AsyncMock()
+    with patch(
+        "src.api.services.generation.creative_control_tasks.generate_blueprint_background",
+        handler,
+    ):
+        await dispatch_task({
+            "task_id": "task-blueprint",
+            "task_type": TaskType.NOVEL_BLUEPRINT.value,
+            "worker_id": "worker-1",
+            "task_payload": {"novel_id": "novel-1", "chapter_number": 8},
+        })
+
+    handler.assert_awaited_once_with(
+        "task-blueprint", "novel-1", 8, worker_id="worker-1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatches_quality_fix():
+    from src.api.services.tasks.task_dispatcher import TaskType, dispatch_task
+
+    handler = AsyncMock()
+    with patch(
+        "src.api.services.generation.creative_control_tasks.fix_quality_background",
+        handler,
+    ):
+        await dispatch_task({
+            "task_id": "task-quality",
+            "task_type": TaskType.NOVEL_QUALITY_FIX.value,
+            "task_payload": {
+                "novel_id": "novel-1",
+                "chapter_number": 9,
+                "issue_ids": ["issue-1"],
+            },
+        })
+
+    handler.assert_awaited_once_with(
+        "task-quality", "novel-1", 9,
+        issue_ids=["issue-1"], worker_id=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_control_target_is_completed_after_generation_task():
+    from src.api.services.tasks.task_dispatcher import TaskType, dispatch_task
+
+    handler = AsyncMock()
+    with patch(
+        "src.api.services.generation.long_form_generation_helpers.generate_chapters_background",
+        handler,
+    ), patch(
+        "src.core.creative_control.control_service.CreativeControlService"
+    ) as controls:
+        controls.return_value.complete_generating = AsyncMock(return_value=3)
+        await dispatch_task({
+            "task_id": "task-controlled",
+            "task_type": TaskType.NOVEL_CHAPTERS.value,
+            "task_payload": {
+                "novel_id": "novel-1",
+                "chapter_start": 7,
+                "chapter_end": 7,
+                "control_target": {
+                    "artifact_type": "chapter",
+                    "artifact_id": "7",
+                    "generating_version": 2,
+                },
+            },
+        })
+
+    controls.return_value.complete_generating.assert_awaited_once()
+    assert controls.return_value.complete_generating.await_args.kwargs["expected_version"] == 2
+
+
+@pytest.mark.asyncio
 async def test_worker_id_from_claim_propagates_to_long_form_handler():
     """B1: _run_claim 注入的 worker_id 应透传给长篇 handler 做 lease 守卫。"""
     from src.api.services.tasks.task_dispatcher import TaskType, dispatch_task

@@ -95,6 +95,42 @@ class CreativeControlService:
 
     # -------------------------------------------------------- assert_writable
 
+    async def assert_generation_allowed(
+        self,
+        novel_id: str,
+        artifact_type: str,
+        artifact_id: str,
+        *,
+        force: bool = False,
+    ) -> None:
+        """生成写入前锁定 control 行；锁定产物禁止被后台覆盖。"""
+        async with get_db_session() as session:
+            await self.assert_generation_allowed_in_session(
+                session,
+                novel_id,
+                artifact_type,
+                artifact_id,
+                force=force,
+            )
+
+    async def assert_generation_allowed_in_session(
+        self,
+        session,
+        novel_id: str,
+        artifact_type: str,
+        artifact_id: str,
+        *,
+        force: bool = False,
+    ) -> None:
+        """在业务写入的同一事务内执行生成锁检查。"""
+        row = await self._select_for_update(
+            session, novel_id, artifact_type, artifact_id
+        )
+        if row is not None and row.locked and not force:
+            raise ArtifactLockedError(
+                novel_id, artifact_type, artifact_id
+            )
+
     async def record_generated(
         self,
         novel_id: str,
@@ -175,21 +211,44 @@ class CreativeControlService:
     ) -> None:
         """校验乐观锁 + 锁定 + generating 占用。不符即抛对应 409 异常。"""
         async with get_db_session() as session:
-            row = await self._select_for_update(session, novel_id, artifact_type, artifact_id)
-            if row is None:
-                if expected_version != 0:
-                    raise ArtifactConflictError(
-                        novel_id, artifact_type, artifact_id, expected_version, 0
-                    )
-                return
-            if row.version != expected_version:
+            await self.assert_writable_in_session(
+                session,
+                novel_id,
+                artifact_type,
+                artifact_id,
+                expected_version,
+                force=force,
+            )
+
+    async def assert_writable_in_session(
+        self,
+        session,
+        novel_id: str,
+        artifact_type: str,
+        artifact_id: str,
+        expected_version: int,
+        *,
+        force: bool = False,
+    ) -> Any | None:
+        """在调用方事务内执行人工写入的完整并发检查。"""
+        row = await self._select_for_update(
+            session, novel_id, artifact_type, artifact_id
+        )
+        if row is None:
+            if expected_version != 0:
                 raise ArtifactConflictError(
-                    novel_id, artifact_type, artifact_id, expected_version, row.version
+                    novel_id, artifact_type, artifact_id, expected_version, 0
                 )
-            if row.control_status == "generating":
-                raise ArtifactBusyError(novel_id, artifact_type, artifact_id)
-            if row.locked and not force:
-                raise ArtifactLockedError(novel_id, artifact_type, artifact_id)
+            return None
+        if row.version != expected_version:
+            raise ArtifactConflictError(
+                novel_id, artifact_type, artifact_id, expected_version, row.version
+            )
+        if row.control_status == "generating":
+            raise ArtifactBusyError(novel_id, artifact_type, artifact_id)
+        if row.locked and not force:
+            raise ArtifactLockedError(novel_id, artifact_type, artifact_id)
+        return row
 
     # ----------------------------------------------------------- 生成生命周期
 

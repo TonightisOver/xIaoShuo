@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.core.creative_control.control_service import CreativeControlService
+from src.core.exceptions import ArtifactLockedError
 
 
 def _locked_chapter_row():
@@ -116,3 +117,55 @@ async def test_record_generated_marks_awaiting_review_when_requested():
         )
     assert result is not None
     assert result["awaiting_review"] is True
+
+
+@pytest.mark.asyncio
+async def test_generation_guard_rejects_locked_artifact_before_write():
+    service = CreativeControlService()
+    ctx, session = _fake_session(_locked_chapter_row())
+
+    with (
+        patch("src.core.creative_control.control_service.get_db_session", new=ctx),
+        pytest.raises(ArtifactLockedError),
+    ):
+        await service.assert_generation_allowed("novel-1", "chapter", "5")
+
+    assert session.execute.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_langgraph_character_records_database_id_not_character_name():
+    from src.api.services.generation.chapter_persistence_service import (
+        persist_langgraph_result,
+    )
+
+    manager = MagicMock()
+    manager.fix_volume_numbers = AsyncMock()
+    manager.update_novel = AsyncMock()
+    char_service = MagicMock()
+    char_service.get_character_by_name = AsyncMock(return_value=None)
+    char_service.create_character = AsyncMock(return_value=42)
+    recorder = AsyncMock()
+    db_ctx, _ = _fake_session(None)
+
+    with (
+        patch(
+            "src.api.services.content.character_service.get_character_service",
+            return_value=char_service,
+        ),
+        patch(
+            "src.api.services.content.volume_service.get_volume_service"
+        ) as volume_service,
+        patch(
+            "src.api.services.generation.chapter_persistence_service._record_artifact_generated",
+            new=recorder,
+        ),
+        patch("src.core.database.get_db_session", new=db_ctx),
+    ):
+        volume_service.return_value.create_volume = AsyncMock()
+        await persist_langgraph_result(
+            "novel-1", {"characters": [{"name": "林舟"}]}, manager=manager
+        )
+
+    recorder.assert_awaited_once()
+    assert recorder.await_args.args[:3] == ("novel-1", "character", "42")

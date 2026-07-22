@@ -184,6 +184,15 @@ async def test_compare_versions_returns_field_diff():
 
 
 @pytest.mark.asyncio
+async def test_restore_without_product_adapter_is_rejected():
+    store = ArtifactVersionStore()
+    with pytest.raises(RuntimeError, match="restore callback"):
+        await store._restore_content_to_product(
+            "novel-1", "world", "novel-1", {"rules": "x"}
+        )
+
+
+@pytest.mark.asyncio
 async def test_rollback_to_restores_content_and_activates(monkeypatch):
     target = _version_row(
         version_number=2, is_active=False,

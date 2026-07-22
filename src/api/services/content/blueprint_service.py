@@ -71,6 +71,16 @@ class BlueprintService:
             blueprint_data = self._default_blueprint(chapter_outline)
 
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                CreativeControlService,
+            )
+
+            await CreativeControlService().assert_generation_allowed_in_session(
+                session,
+                novel_id,
+                "blueprint",
+                str(chapter_number),
+            )
             await session.execute(
                 update(ChapterBlueprint)
                 .where(

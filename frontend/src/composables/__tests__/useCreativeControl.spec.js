@@ -100,4 +100,21 @@ describe('useCreativeControl', () => {
     expect(res.creation_mode).toBe('assisted')
     expect(fetchMock.mock.calls[0][1].method).toBe('PUT')
   })
+
+  it('executeGenerateScope uses the authenticated creative-control request', async () => {
+    const fetchMock = makeFetch([
+      {
+        match: /creative-control\/generate-scope$/,
+        body: { task_id: 'task-1', task_type: 'novel.chapters' },
+      },
+    ])
+    vi.stubGlobal('fetch', fetchMock)
+    const { executeGenerateScope } = useCreativeControl('novel-1')
+
+    const result = await executeGenerateScope({ mode: 'chapters', chapter_start: 1, chapter_end: 2 })
+
+    expect(result.task_id).toBe('task-1')
+    expect(fetchMock.mock.calls[0][1].headers['x-session-token']).toBe('tok')
+    expect(fetchMock.mock.calls[0][1].method).toBe('POST')
+  })
 })
