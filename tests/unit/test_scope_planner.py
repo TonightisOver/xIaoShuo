@@ -21,6 +21,7 @@ def _intent(**kw):
         chapter_end=None,
         volume_number=None,
         chapter_number=None,
+        chapter_numbers=None,
         issue_ids=None,
         skip_confirmed=False,
         respect_locked=True,
@@ -104,9 +105,11 @@ async def test_plan_continue_from_chapter():
 @pytest.mark.asyncio
 async def test_plan_blueprint_only():
     planner = GenerationScopePlanner()
-    plan = await planner.plan(_intent(mode="blueprint_only", chapter_number=5))
+    with patch.object(planner, "_load_locked_blueprints", new=AsyncMock(return_value=[])), \
+         patch.object(planner, "_load_confirmed_blueprints", new=AsyncMock(return_value=[])):
+        plan = await planner.plan(_intent(mode="blueprint_only", chapter_number=5))
     assert plan.endpoint == "blueprint/generate"
-    assert plan.payload == {"chapter_number": 5}
+    assert plan.payload == {"chapter_numbers": [5]}
 
 
 @pytest.mark.asyncio
@@ -158,3 +161,54 @@ async def test_preview_accounts_for_locked_exclusion():
          patch.object(planner, "analyze_impact", new=AsyncMock(return_value={"regenerable": [], "to_mark_stale": []})):
         preview = await planner.preview(_intent(mode="volume", volume_number=2))
     assert preview.estimated_chapters == 3  # 11 被锁排除
+
+
+# ---------------------------------------------------------------- blueprint batch
+
+
+@pytest.mark.asyncio
+async def test_plan_blueprint_only_multi_chapter_uses_chapter_numbers():
+    planner = GenerationScopePlanner()
+    with patch.object(planner, "_load_locked_blueprints", new=AsyncMock(return_value=[])), \
+         patch.object(planner, "_load_confirmed_blueprints", new=AsyncMock(return_value=[])):
+        plan = await planner.plan(_intent(
+            mode="blueprint_only", chapter_numbers=[3, 5, 1]
+        ))
+    assert plan.endpoint == "blueprint/generate"
+    assert plan.target_chapters == [1, 3, 5]  # 排序去重
+    assert plan.payload.get("chapter_numbers") == [1, 3, 5]
+
+
+@pytest.mark.asyncio
+async def test_plan_blueprint_only_single_chapter_still_works():
+    """单章兼容：无 chapter_numbers 时退回 chapter_number。"""
+    planner = GenerationScopePlanner()
+    with patch.object(planner, "_load_locked_blueprints", new=AsyncMock(return_value=[])), \
+         patch.object(planner, "_load_confirmed_blueprints", new=AsyncMock(return_value=[])):
+        plan = await planner.plan(_intent(mode="blueprint_only", chapter_number=7))
+    assert plan.endpoint == "blueprint/generate"
+    assert plan.target_chapters == [7]
+
+
+@pytest.mark.asyncio
+async def test_plan_blueprint_only_rejects_over_50():
+    planner = GenerationScopePlanner()
+    with pytest.raises(ValueError, match="50"):
+        await planner.plan(_intent(
+            mode="blueprint_only", chapter_numbers=list(range(1, 52))
+        ))
+
+
+@pytest.mark.asyncio
+async def test_plan_blueprint_only_filters_by_blueprint_type_control():
+    """respect_locked/skip_confirmed 按 blueprint 类型 control 过滤，非 chapter 类型。"""
+    planner = GenerationScopePlanner()
+    with patch.object(planner, "_load_locked_blueprints", new=AsyncMock(return_value=[3])), \
+         patch.object(planner, "_load_confirmed_blueprints", new=AsyncMock(return_value=[5])):
+        plan = await planner.plan(_intent(
+            mode="blueprint_only", chapter_numbers=[1, 3, 5, 7],
+            respect_locked=True, skip_confirmed=True,
+        ))
+    assert plan.target_chapters == [1, 7]
+    assert plan.skipped_locked == [3]
+    assert plan.skipped_confirmed == [5]

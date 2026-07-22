@@ -49,6 +49,7 @@ class GenerateScopeRequest(BaseModel):
     chapter_end: int | None = Field(default=None, ge=1)
     volume_number: int | None = Field(default=None, ge=1)
     chapter_number: int | None = Field(default=None, ge=1)
+    chapter_numbers: list[int] | None = Field(default=None, min_length=1)
     issue_ids: list[str] | None = None
     skip_confirmed: bool = False
     respect_locked: bool = True
@@ -63,9 +64,15 @@ class GenerateScopeRequest(BaseModel):
                 raise ValueError("chapter_end 不能小于 chapter_start")
         elif self.mode == "volume" and self.volume_number is None:
             raise ValueError("单卷生成必须提供 volume_number")
-        elif self.mode in {"continue", "blueprint_only", "fix_quality"}:
+        elif self.mode == "continue":
             if self.chapter_number is None:
-                raise ValueError(f"{self.mode} 必须提供 chapter_number")
+                raise ValueError("continue 必须提供 chapter_number")
+        elif self.mode == "blueprint_only":
+            if self.chapter_number is None and not self.chapter_numbers:
+                raise ValueError("blueprint_only 必须提供 chapter_number 或 chapter_numbers")
+        elif self.mode == "fix_quality":
+            if self.chapter_number is None:
+                raise ValueError("fix_quality 必须提供 chapter_number")
         return self
 
 

@@ -44,6 +44,7 @@ class GenerationScopeIntent:
     skip_confirmed: bool = False
     respect_locked: bool = True
     words_per_chapter: int = 3000
+    chapter_numbers: list[int] | None = None
 
 
 @dataclass
@@ -78,10 +79,23 @@ class GenerationScopePlanner:
     async def plan(self, intent: GenerationScopeIntent) -> ScopePlan:
         mode = intent.mode
         if mode == "blueprint_only":
+            raw = set(intent.chapter_numbers or [])
+            if intent.chapter_number is not None:
+                raw.add(intent.chapter_number)
+            if not raw:
+                raise ValueError("blueprint_only 必须提供 chapter_number 或 chapter_numbers")
+            if len(raw) > 50:
+                raise ValueError("blueprint_only 单次最多 50 章")
+            target = sorted(raw)
+            filtered, skipped_locked, skipped_confirmed = await self._filter_chapters(
+                intent, target, artifact_type="blueprint"
+            )
             return ScopePlan(
                 endpoint="blueprint/generate",
-                payload={"chapter_number": intent.chapter_number},
-                target_chapters=[intent.chapter_number] if intent.chapter_number else [],
+                payload={"chapter_numbers": filtered},
+                target_chapters=filtered,
+                skipped_locked=skipped_locked,
+                skipped_confirmed=skipped_confirmed,
             )
         if mode == "fix_quality":
             return ScopePlan(
@@ -156,12 +170,20 @@ class GenerationScopePlanner:
     # --------------------------------------------------------- 过滤
 
     async def _filter_chapters(
-        self, intent: GenerationScopeIntent, target: list[int]
+        self,
+        intent: GenerationScopeIntent,
+        target: list[int],
+        *,
+        artifact_type: str = "chapter",
     ) -> tuple[list[int], list[int], list[int]]:
         if not target:
             return [], [], []
-        locked = set(await self._load_locked_chapters(intent.novel_id)) if intent.respect_locked else set()
-        confirmed = set(await self._load_confirmed_chapters(intent.novel_id)) if intent.skip_confirmed else set()
+        if artifact_type == "blueprint":
+            locked = set(await self._load_locked_blueprints(intent.novel_id)) if intent.respect_locked else set()
+            confirmed = set(await self._load_confirmed_blueprints(intent.novel_id)) if intent.skip_confirmed else set()
+        else:
+            locked = set(await self._load_locked_chapters(intent.novel_id)) if intent.respect_locked else set()
+            confirmed = set(await self._load_confirmed_chapters(intent.novel_id)) if intent.skip_confirmed else set()
         kept = [c for c in target if c not in locked]
         skipped_confirmed = [c for c in kept if c in confirmed]
         if intent.skip_confirmed:
@@ -195,6 +217,35 @@ class GenerationScopePlanner:
                 select(ArtifactControl.artifact_id).where(
                     ArtifactControl.novel_id == novel_id,
                     ArtifactControl.artifact_type == "chapter",
+                    ArtifactControl.control_status == "approved",
+                )
+            )
+            return sorted(int(r) for r in result.scalars().all() if r is not None)
+
+    async def _load_locked_blueprints(self, novel_id: str) -> list[int]:
+        """返回该小说所有 locked 的章号（blueprint 类型 control）。"""
+        ArtifactControl, _, _ = _orm()  # noqa: N806
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(ArtifactControl.artifact_id).where(
+                    ArtifactControl.novel_id == novel_id,
+                    ArtifactControl.artifact_type == "blueprint",
+                    or_(
+                        ArtifactControl.locked.is_(True),
+                        ArtifactControl.control_status == "locked",
+                    ),
+                )
+            )
+            return sorted(int(r) for r in result.scalars().all() if r is not None)
+
+    async def _load_confirmed_blueprints(self, novel_id: str) -> list[int]:
+        """返回 approved 状态的章号（blueprint 类型 control）。"""
+        ArtifactControl, _, _ = _orm()  # noqa: N806
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(ArtifactControl.artifact_id).where(
+                    ArtifactControl.novel_id == novel_id,
+                    ArtifactControl.artifact_type == "blueprint",
                     ArtifactControl.control_status == "approved",
                 )
             )

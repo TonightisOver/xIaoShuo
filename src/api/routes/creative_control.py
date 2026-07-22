@@ -548,6 +548,7 @@ def _to_intent(novel_id: str, request: GenerateScopeRequest) -> GenerationScopeI
         chapter_end=request.chapter_end,
         volume_number=request.volume_number,
         chapter_number=request.chapter_number,
+        chapter_numbers=request.chapter_numbers,
         issue_ids=request.issue_ids,
         skip_confirmed=request.skip_confirmed,
         respect_locked=request.respect_locked,
