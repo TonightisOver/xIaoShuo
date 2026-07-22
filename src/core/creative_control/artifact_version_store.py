@@ -191,8 +191,8 @@ class ArtifactVersionStore:
                 )
             )
             for other in all_result.scalars().all():
-                if other.version_number != version_number:
-                    other.is_active = False
+                other.is_active = False
+            await session.flush()
             row.is_active = True
             await session.flush()
         return {"activated_version": version_number}

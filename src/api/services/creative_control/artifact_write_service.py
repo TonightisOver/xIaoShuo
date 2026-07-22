@@ -144,7 +144,9 @@ class CreativeArtifactWriteService:
                     target.content_snapshot,
                 )
                 for item in versions:
-                    item.is_active = item is target
+                    item.is_active = False
+                await session.flush()
+                target.is_active = True
             elif artifact_type in {"chapter", "chapter_version"}:
                 if expected_active_version is None:
                     raise ValueError("正文回退必须提供 expected_active_version")
@@ -301,7 +303,9 @@ class CreativeArtifactWriteService:
         if target is None:
             raise ValueError(f"version not found: {selected_version}")
         for item in versions:
-            item.is_active = item is target
+            item.is_active = False
+        await session.flush()
+        target.is_active = True
         chapter.content = target.content or ""
         chapter.word_count = target.word_count
         chapter.quality_status = "unverified"

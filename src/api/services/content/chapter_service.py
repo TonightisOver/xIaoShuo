@@ -368,7 +368,9 @@ class ChapterService:
             # 已是活跃且 expected 匹配 → 幂等返回，不重复写回
             already_active = target.is_active
             for v in versions:
-                v.is_active = v.version_number == selected_version
+                v.is_active = False
+            await session.flush()
+            target.is_active = True
 
             if target.content:
                 ch.content = target.content
