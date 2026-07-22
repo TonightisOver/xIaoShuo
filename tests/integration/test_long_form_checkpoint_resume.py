@@ -255,7 +255,14 @@ async def test_run_chapter_stages_advances_all_stages(novel_task):
     novel_id, task_id = novel_task
     await _insert_chapter(novel_id, 6, content="占位")
     await _insert_task(task_id, novel_id)
-    await _insert_checkpoint(task_id, novel_id, checkpoint_version=0)
+    # _run_chapter_stages 接收已生成的 chapter_result，调用契约要求生成阶段
+    # 已持久化；因此 baseline_persisted 的合法前驱是 generation_started。
+    await _insert_checkpoint(
+        task_id,
+        novel_id,
+        checkpoint_version=0,
+        current_stage="generation_started",
+    )
 
     chapter_result = _make_chapter_result(6)
 
@@ -307,7 +314,12 @@ async def test_run_chapter_stages_baseline_version_active(novel_task):
     novel_id, task_id = novel_task
     await _insert_chapter(novel_id, 1, content="占位")
     await _insert_task(task_id, novel_id)
-    await _insert_checkpoint(task_id, novel_id, checkpoint_version=0)
+    await _insert_checkpoint(
+        task_id,
+        novel_id,
+        checkpoint_version=0,
+        current_stage="generation_started",
+    )
 
     chapter_result = _make_chapter_result(1)
 
@@ -524,10 +536,10 @@ async def test_gvc_pause_requested_raises_paused_exit(novel_task):
 
     # 未生成任何章节（在安全边界即停）
     assert generated_calls == []
-    # checkpoint.status 推进为 paused（暂停发生在下一章开始处，stage 推进到
-    # chapter_planned 表示"暂停时正要开始第 6 章"）；Task 队列占用释放
-    # （queue_state=idle + 清 lease），由 worker 在抛 PausedExit 之前调
-    # mark_paused 完成。
+    # checkpoint.status 推进为 paused；暂停发生在下一章开始前，因此保留
+    # 最后一个已完成的安全阶段 chapter_completed，不能伪造第 6 章已经规划。
+    # Task 队列占用释放（queue_state=idle + 清 lease），由 worker 在抛
+    # PausedExit 之前调用 mark_paused 完成。
     async with get_db_session() as session:
         res = await session.execute(
             text(
@@ -538,7 +550,7 @@ async def test_gvc_pause_requested_raises_paused_exit(novel_task):
         )
         cp_status, cp_stage = res.one()
         assert cp_status == "paused"
-        assert cp_stage == "chapter_planned"
+        assert cp_stage == "chapter_completed"
         res2 = await session.execute(
             text(
                 "SELECT queue_state, lease_owner FROM tasks WHERE task_id = :tid"
