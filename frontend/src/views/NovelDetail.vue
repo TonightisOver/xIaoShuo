@@ -80,6 +80,17 @@
           </router-link>
 
           <router-link
+            :to="`/novels/${novelId}/blueprints`"
+            class="btn-secondary text-sm flex items-center gap-1.5"
+            data-blueprint-link
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4 text-vermilion-500">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75A3.75 3.75 0 017.5 3h9a3.75 3.75 0 013.75 3.75v10.5A3.75 3.75 0 0116.5 21h-9a3.75 3.75 0 01-3.75-3.75V6.75z M6.75 8.25h10.5 M6.75 12h10.5 M6.75 15.75h6" />
+            </svg>
+            <span>章节蓝图</span>
+          </router-link>
+
+          <router-link
             :to="`/novels/${novelId}/knowledge-graph`"
             class="btn-secondary text-sm flex items-center gap-1.5"
           >

@@ -10,6 +10,7 @@ const routes = [
   { path: '/task/:id', name: 'task', component: () => import('../views/TaskDetail.vue') },
   { path: '/novels/:id', name: 'novel', component: () => import('../views/NovelDetail.vue') },
   { path: '/novels/:id/studio', name: 'studio', component: () => import('../views/CreativeStudio.vue') },
+  { path: '/novels/:id/blueprints', name: 'blueprints', component: () => import('../views/ChapterBlueprintWorkbench.vue') },
   { path: '/novels/:id/world', name: 'world', component: () => import('../views/WorldEdit.vue') },
   { path: '/novels/:id/characters', name: 'characters', component: () => import('../views/Characters.vue') },
   { path: '/novels/:id/careers', name: 'careers', component: () => import('../views/Careers.vue') },

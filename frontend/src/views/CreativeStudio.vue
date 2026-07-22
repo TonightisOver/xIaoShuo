@@ -113,6 +113,13 @@
             >重新生成</button>
           </div>
 
+          <router-link
+            v-if="selectedStage?.number === 6"
+            :to="`/novels/${novelId}/blueprints`"
+            class="btn-secondary text-xs mt-2"
+            data-workbench-link
+          >进入蓝图工作台 →</router-link>
+
           <p v-if="localError" class="text-xs text-rose-600 mt-2">{{ localError }}</p>
         </div>
 
