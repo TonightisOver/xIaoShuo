@@ -15,6 +15,12 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # 早期 users 迁移未包含 ORM 已长期使用的管理员标记；create_all 测试曾掩盖
+    # 该漂移。IF NOT EXISTS 兼容已由应用启动流程补齐此列的现有部署。
+    op.execute(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+        "is_admin BOOLEAN NOT NULL DEFAULT false"
+    )
     # 历史重复行优先保留 completed / 完成章数较多 / 最近更新的一条。
     op.execute(
         """
@@ -52,3 +58,4 @@ def downgrade() -> None:
         ["novel_id", "volume_number"],
         unique=False,
     )
+    # is_admin 可能在旧部署中已由 create_all 创建；降级时保留，避免误删既有数据。
