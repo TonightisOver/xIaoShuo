@@ -140,8 +140,10 @@ async def test_options_route_returns_enums():
 
 @pytest.mark.asyncio
 async def test_batch_lock_returns_per_chapter_results():
+    from src.api.models.creative_control import (
+        LockRequest,  # noqa: F401  (确保模型已 import)
+    )
     from src.api.routes import blueprint_workbench as wb
-    from src.api.models.creative_control import LockRequest  # noqa: F401  (确保模型已 import)
 
     novel = {"novel_id": "novel-1", "owner_id": 1}
     fake_control = MagicMock()
