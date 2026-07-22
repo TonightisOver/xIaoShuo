@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib
 from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -31,6 +32,7 @@ from src.core.exceptions import (
     ArtifactBusyError,
     ArtifactConflictError,
     ArtifactLockedError,
+    LeaseLost,
 )
 
 logger = structlog.get_logger(__name__)
@@ -47,14 +49,32 @@ def _orm():
 
 # 已确认/锁定：上游变更时仅标记过期，不自动重生成。
 _PROTECTED_STATUSES = frozenset({"approved", "locked"})
-_CURRENT_GENERATION_TASK: ContextVar[str | None] = ContextVar(
+@dataclass(frozen=True)
+class GenerationFence:
+    task_id: str
+    worker_id: str | None
+    attempt_count: int | None
+
+
+_CURRENT_GENERATION_TASK: ContextVar[GenerationFence | None] = ContextVar(
     "current_generation_task", default=None
 )
 
 
-def bind_generation_task(task_id: str) -> None:
+def bind_generation_task(
+    task_id: str,
+    *,
+    worker_id: str | None,
+    attempt_count: int | None,
+) -> None:
     """把当前 worker 协程绑定到持久任务，供产物写入 fencing 校验。"""
-    _CURRENT_GENERATION_TASK.set(task_id)
+    _CURRENT_GENERATION_TASK.set(
+        GenerationFence(task_id, worker_id, attempt_count)
+    )
+
+
+def has_generation_fence() -> bool:
+    return _CURRENT_GENERATION_TASK.get() is not None
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
@@ -179,6 +199,26 @@ class CreativeControlService:
         force: bool = False,
     ) -> None:
         """在业务写入的同一事务内执行生成锁检查。"""
+        fence = _CURRENT_GENERATION_TASK.get()
+        if fence is not None and fence.worker_id is not None:
+            module = importlib.import_module("src.api.models.db_models")
+            Task = module.Task  # noqa: N806
+            task = (
+                await session.execute(
+                    select(Task).where(Task.task_id == fence.task_id).with_for_update()
+                )
+            ).scalar_one_or_none()
+            now = datetime.now(UTC)
+            if (
+                task is None
+                or task.status != "running"
+                or task.queue_state != "leased"
+                or task.lease_owner != fence.worker_id
+                or task.attempt_count != fence.attempt_count
+                or task.lease_expires_at is None
+                or task.lease_expires_at <= now
+            ):
+                raise LeaseLost(fence.task_id)
         row = await self._select_for_update(
             session, novel_id, artifact_type, artifact_id
         )
@@ -192,7 +232,9 @@ class CreativeControlService:
             )
         if row is not None and row.control_status == "generating":
             owner_task = (row.generation_meta or {}).get("task_id")
-            if owner_task and owner_task != _CURRENT_GENERATION_TASK.get():
+            if owner_task and (
+                fence is None or owner_task != fence.task_id
+            ):
                 raise ArtifactBusyError(novel_id, artifact_type, artifact_id)
 
     async def record_generated(

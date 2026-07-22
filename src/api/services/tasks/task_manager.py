@@ -100,6 +100,81 @@ def _is_waiting_review_task(task: Task) -> bool:
     )
 
 
+def _task_control_targets(task: Task) -> list[dict[str, Any]]:
+    payload = task.task_payload or {}
+    raw = payload.get("control_targets")
+    if isinstance(raw, list):
+        return [target for target in raw if isinstance(target, dict)]
+    legacy = payload.get("control_target")
+    return [legacy] if isinstance(legacy, dict) else []
+
+
+async def _finish_task_controls_in_session(
+    session,
+    task: Task,
+    *,
+    failed_chapters: set[int] | None = None,
+    fail_all: bool = False,
+    reason: str | None = None,
+) -> None:
+    """与 Task 终态在同一事务内收敛全部生成占用。"""
+    failed_chapters = failed_chapters or set()
+    for target in _task_control_targets(task):
+        artifact_type = str(target["artifact_type"])
+        artifact_id = str(target["artifact_id"])
+        control = (
+            await session.execute(
+                select(ArtifactControl)
+                .where(
+                    ArtifactControl.novel_id == task.novel_id,
+                    ArtifactControl.artifact_type == artifact_type,
+                    ArtifactControl.artifact_id == artifact_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if control is None:
+            continue
+        expected_version = int(target["generating_version"])
+        if (
+            control.version != expected_version
+            or (control.generation_meta or {}).get("task_id") != task.task_id
+        ):
+            raise ArtifactConflictError(
+                str(task.novel_id),
+                artifact_type,
+                artifact_id,
+                expected_version,
+                control.version,
+            )
+        target_failed = fail_all or (
+            artifact_type in {"chapter", "chapter_version", "final"}
+            and int(artifact_id) in failed_chapters
+        )
+        previous = control.version
+        control.control_status = "failed" if target_failed else "generated"
+        control.version += 1
+        control.generation_meta = {
+            **(control.generation_meta or {}),
+            "status": "failed" if target_failed else "completed",
+        }
+        if target_failed and reason:
+            control.stale_reason = reason[:300]
+        control.updated_at = datetime.now(UTC)
+        session.add(OperationLog(
+            novel_id=str(task.novel_id),
+            artifact_type=artifact_type,
+            artifact_id=artifact_id,
+            action="generate",
+            from_version=previous,
+            to_version=control.version,
+            task_id=task.task_id,
+            operation_id=task.operation_id,
+            reason=reason,
+            meta={"status": control.control_status},
+        ))
+
+
 class TaskManager:
     """任务管理器 - 使用 PostgreSQL 存储"""
 
@@ -386,6 +461,12 @@ class TaskManager:
                     *(task.errors or []),
                     "任务租约过期：任务已开始执行且不安全自动重放，已标记为失败",
                 ]
+                await _finish_task_controls_in_session(
+                    session,
+                    task,
+                    fail_all=True,
+                    reason="任务租约过期且重试已耗尽",
+                )
                 _clear_lease(task)
                 await session.commit()
                 return None
@@ -459,6 +540,12 @@ class TaskManager:
                     *(task.errors or []),
                     "队列执行器返回，但任务未进入终态或等待状态",
                 ]
+                await _finish_task_controls_in_session(
+                    session,
+                    task,
+                    fail_all=True,
+                    reason="队列执行器未进入终态",
+                )
             _clear_lease(task)
             await session.commit()
             return True
@@ -496,6 +583,9 @@ class TaskManager:
             task.status = "failed"
             task.completed_at = now
             task.queue_state = "idle"
+            await _finish_task_controls_in_session(
+                session, task, fail_all=True, reason=error
+            )
             _clear_lease(task)
             await session.commit()
             return False
@@ -659,6 +749,18 @@ class TaskManager:
 
             _raise_if_lease_lost(task, worker_id, task_id)
 
+            failed_chapters = {
+                int(chapter["chapter"])
+                for chapter in result.get("chapters", [])
+                if isinstance(chapter, dict)
+                and chapter.get("chapter") is not None
+                and (
+                    chapter.get("generation_failed")
+                    or chapter.get("status") == "failed"
+                )
+            }
+            if failed_chapters and status == "completed":
+                status = "partially_completed"
             task.status = status
             task.completed_at = datetime.now()
             task.result = result
@@ -677,6 +779,17 @@ class TaskManager:
                 "total_chapters": len(result.get("chapters", [])),
                 "percentage": percentage,
             }
+
+            await _finish_task_controls_in_session(
+                session,
+                task,
+                failed_chapters=failed_chapters,
+                reason=(
+                    f"章节生成失败: {sorted(failed_chapters)}"
+                    if failed_chapters
+                    else None
+                ),
+            )
 
             await session.commit()
             logger.info(f"Completed task {task_id} with status {status}")
@@ -711,6 +824,10 @@ class TaskManager:
             current_errors = task.errors or []
             current_errors.append(error)
             task.errors = current_errors
+
+            await _finish_task_controls_in_session(
+                session, task, fail_all=True, reason=error
+            )
 
             await session.commit()
             logger.error(f"Task {task_id} failed: {error}")

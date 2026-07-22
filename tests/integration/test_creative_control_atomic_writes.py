@@ -21,6 +21,7 @@ from src.core.database import Base, get_db_session, get_engine
 from src.core.exceptions import (
     ArtifactBusyError,
     ArtifactLockedError,
+    LeaseLost,
     StaleChapterVersionError,
 )
 
@@ -359,3 +360,138 @@ async def test_task_creation_atomically_reserves_chapter_and_rejects_overlap():
             select(Task).where(Task.novel_id == novel_id)
         )).scalars().all()
     assert len(task_count) == 1
+
+
+@pytest.mark.asyncio
+async def test_partial_chapter_failure_finishes_task_and_controls_atomically():
+    novel_id = await _seed()
+    manager = TaskManager()
+    task_id = await manager.create_task(
+        idea="部分失败测试",
+        novel_type="玄幻",
+        target_words=100000,
+        novel_id=novel_id,
+        owner_id=1,
+        task_type="novel.chapters",
+        task_payload={"novel_id": novel_id, "chapter_start": 1, "chapter_end": 1},
+        operation_id=f"{novel_id}:partial",
+        generation_targets=[{"artifact_type": "chapter", "artifact_id": "1"}],
+    )
+
+    await manager.complete_task(
+        task_id,
+        {"chapters": [{"chapter": 1, "generation_failed": True}]},
+    )
+
+    async with get_db_session() as session:
+        task = (await session.execute(
+            select(Task).where(Task.task_id == task_id)
+        )).scalar_one()
+        control = (await session.execute(
+            select(ArtifactControl).where(
+                ArtifactControl.novel_id == novel_id,
+                ArtifactControl.artifact_type == "chapter",
+                ArtifactControl.artifact_id == "1",
+            )
+        )).scalar_one()
+    assert task.status == "partially_completed"
+    assert control.control_status == "failed"
+    assert control.generation_meta["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_retry_keeps_reservation_and_exhaustion_fails_it_atomically():
+    novel_id = await _seed()
+    manager = TaskManager()
+    task_id = await manager.create_task(
+        idea="重试占用测试",
+        novel_type="玄幻",
+        target_words=100000,
+        novel_id=novel_id,
+        owner_id=1,
+        task_type="novel.chapters",
+        task_payload={"novel_id": novel_id, "chapter_start": 1, "chapter_end": 1},
+        operation_id=f"{novel_id}:retry",
+        max_attempts=2,
+        generation_targets=[{"artifact_type": "chapter", "artifact_id": "1"}],
+    )
+    async with get_db_session() as session:
+        await session.execute(
+            text(
+                "UPDATE tasks SET status='running', queue_state='leased', "
+                "attempt_count=1, lease_owner='worker-a', "
+                "lease_expires_at=NOW() + INTERVAL '5 minutes' "
+                "WHERE task_id=:task_id"
+            ),
+            {"task_id": task_id},
+        )
+
+    assert await manager.retry_or_fail_claim(task_id, "worker-a", "暂时失败", 0)
+    async with get_db_session() as session:
+        control = (await session.execute(
+            select(ArtifactControl).where(
+                ArtifactControl.novel_id == novel_id,
+                ArtifactControl.artifact_type == "chapter",
+                ArtifactControl.artifact_id == "1",
+            )
+        )).scalar_one()
+    assert control.control_status == "generating"
+
+    async with get_db_session() as session:
+        await session.execute(
+            text(
+                "UPDATE tasks SET status='running', queue_state='leased', "
+                "attempt_count=2, lease_owner='worker-b', "
+                "lease_expires_at=NOW() + INTERVAL '5 minutes' "
+                "WHERE task_id=:task_id"
+            ),
+            {"task_id": task_id},
+        )
+    assert not await manager.retry_or_fail_claim(task_id, "worker-b", "最终失败", 0)
+    async with get_db_session() as session:
+        control = (await session.execute(
+            select(ArtifactControl).where(
+                ArtifactControl.novel_id == novel_id,
+                ArtifactControl.artifact_type == "chapter",
+                ArtifactControl.artifact_id == "1",
+            )
+        )).scalar_one()
+    assert control.control_status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_stale_attempt_cannot_write_after_new_worker_claims_task():
+    from src.core.creative_control.control_service import (
+        CreativeControlService,
+        bind_generation_task,
+    )
+
+    novel_id = await _seed()
+    manager = TaskManager()
+    task_id = await manager.create_task(
+        idea="fencing 测试",
+        novel_type="玄幻",
+        target_words=100000,
+        novel_id=novel_id,
+        owner_id=1,
+        task_type="novel.chapters",
+        task_payload={"novel_id": novel_id, "chapter_start": 1, "chapter_end": 1},
+        operation_id=f"{novel_id}:fence",
+        generation_targets=[{"artifact_type": "chapter", "artifact_id": "1"}],
+    )
+    async with get_db_session() as session:
+        await session.execute(
+            text(
+                "UPDATE tasks SET status='running', queue_state='leased', "
+                "attempt_count=2, lease_owner='worker-new', "
+                "lease_expires_at=NOW() + INTERVAL '5 minutes' "
+                "WHERE task_id=:task_id"
+            ),
+            {"task_id": task_id},
+        )
+
+    bind_generation_task(task_id, worker_id="worker-old", attempt_count=1)
+    with pytest.raises(LeaseLost):
+        await CreativeControlService().assert_generation_allowed(
+            novel_id, "chapter", "1"
+        )

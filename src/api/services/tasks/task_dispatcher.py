@@ -4,63 +4,14 @@ from enum import StrEnum
 from typing import Any
 
 from src.api.models.requests import CreateNovelRequest, LongFormNovelRequest
-from src.api.services.tasks.task_manager import get_task_manager
-
-
-async def _finish_control_target(
-    payload: dict[str, Any], *, error: Exception | None = None
-) -> None:
-    raw_targets = payload.get("control_targets")
-    if isinstance(raw_targets, list):
-        targets = [target for target in raw_targets if isinstance(target, dict)]
-    else:
-        legacy_target = payload.get("control_target")
-        targets = [legacy_target] if isinstance(legacy_target, dict) else []
-    if not targets:
-        return
-    from src.core.creative_control.control_service import CreativeControlService
-
-    service = CreativeControlService()
-    for target in targets:
-        kwargs = {
-            "novel_id": payload["novel_id"],
-            "artifact_type": str(target["artifact_type"]),
-            "artifact_id": str(target["artifact_id"]),
-            "expected_version": int(target["generating_version"]),
-        }
-        if error is None:
-            await service.complete_generating(
-                **kwargs,
-                generation_meta={"source": "task", "status": "completed"},
-            )
-        else:
-            await service.fail_generating(**kwargs, reason=str(error))
 
 
 async def _run_controlled(
     task_id: str, payload: dict[str, Any], operation
 ) -> None:
-    try:
-        await operation
-    except Exception as exc:
-        try:
-            await _finish_control_target(payload, error=exc)
-        except Exception:
-            pass
-        raise
-    if not (
-        isinstance(payload.get("control_target"), dict)
-        or isinstance(payload.get("control_targets"), list)
-    ):
-        return
-    task = await get_task_manager().get_task(task_id)
-    if task is not None and task.get("status") in {"failed", "cancelled"}:
-        await _finish_control_target(
-            payload,
-            error=RuntimeError(task.get("error") or "generation task failed"),
-        )
-        return
-    await _finish_control_target(payload)
+    # TaskManager.complete_task/fail_task/retry_or_fail_claim 在同一事务内收敛
+    # control_targets。此处只传播异常，避免可重试错误提前把占用置 failed。
+    await operation
 
 
 class TaskType(StrEnum):
@@ -80,7 +31,11 @@ async def dispatch_task(task: dict[str, Any]) -> None:
     task_id = task["task_id"]
     from src.core.creative_control.control_service import bind_generation_task
 
-    bind_generation_task(task_id)
+    bind_generation_task(
+        task_id,
+        worker_id=task.get("worker_id"),
+        attempt_count=task.get("attempt_count"),
+    )
     payload = task.get("task_payload") or {}
     # B1: worker_id 由 PersistentTaskWorker._run_claim 注入 claim dict；离线/直调
     # 场景（无 worker）为 None，长篇路径据此在安全边界复查 lease（None 跳过守卫）。

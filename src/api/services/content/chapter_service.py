@@ -234,6 +234,15 @@ class ChapterService:
         未传 idempotency_key（手动/回滚路径）走原有 max+1 逻辑，每次新建。
         """
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                CreativeControlService,
+                has_generation_fence,
+            )
+
+            if has_generation_fence():
+                await CreativeControlService().assert_generation_allowed_in_session(
+                    session, novel_id, "chapter", str(chapter_number)
+                )
             ch = (
                 await session.execute(
                     select(Chapter)

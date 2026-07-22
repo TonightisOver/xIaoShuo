@@ -219,22 +219,14 @@ async def test_dispatches_volume_outline_generation():
 
 
 @pytest.mark.asyncio
-async def test_control_target_is_completed_after_generation_task():
+async def test_control_target_completion_is_delegated_to_task_manager():
     from src.api.services.tasks.task_dispatcher import TaskType, dispatch_task
 
     handler = AsyncMock()
     with patch(
         "src.api.services.generation.long_form_generation_helpers.generate_chapters_background",
         handler,
-    ), patch(
-        "src.core.creative_control.control_service.CreativeControlService"
-    ) as controls, patch(
-        "src.api.services.tasks.task_dispatcher.get_task_manager"
-    ) as task_manager:
-        controls.return_value.complete_generating = AsyncMock(return_value=3)
-        task_manager.return_value.get_task = AsyncMock(
-            return_value={"status": "completed", "error": None}
-        )
+    ):
         await dispatch_task({
             "task_id": "task-controlled",
             "task_type": TaskType.NOVEL_CHAPTERS.value,
@@ -250,44 +242,34 @@ async def test_control_target_is_completed_after_generation_task():
             },
         })
 
-    controls.return_value.complete_generating.assert_awaited_once()
-    assert controls.return_value.complete_generating.await_args.kwargs["expected_version"] == 2
+    handler.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_control_target_is_failed_when_handler_swallows_task_failure():
+async def test_retryable_error_propagates_without_finishing_control_target():
     from src.api.services.tasks.task_dispatcher import TaskType, dispatch_task
+    from src.core.exceptions import LeaseLost
 
-    handler = AsyncMock()
+    handler = AsyncMock(side_effect=LeaseLost("task-controlled"))
     with patch(
         "src.api.services.generation.long_form_generation_helpers.generate_chapters_background",
         handler,
-    ), patch(
-        "src.core.creative_control.control_service.CreativeControlService"
-    ) as controls, patch(
-        "src.api.services.tasks.task_dispatcher.get_task_manager"
-    ) as task_manager:
-        task_manager.return_value.get_task = AsyncMock(
-            return_value={"status": "failed", "error": "模型超时"}
-        )
-        controls.return_value.fail_generating = AsyncMock(return_value=3)
-        await dispatch_task({
-            "task_id": "task-controlled-failed",
-            "task_type": TaskType.NOVEL_CHAPTERS.value,
-            "task_payload": {
-                "novel_id": "novel-1",
-                "chapter_start": 7,
-                "chapter_end": 7,
-                "control_target": {
-                    "artifact_type": "chapter",
-                    "artifact_id": "7",
-                    "generating_version": 2,
+    ):
+        with pytest.raises(LeaseLost):
+            await dispatch_task({
+                "task_id": "task-controlled-failed",
+                "task_type": TaskType.NOVEL_CHAPTERS.value,
+                "task_payload": {
+                    "novel_id": "novel-1",
+                    "chapter_start": 7,
+                    "chapter_end": 7,
+                    "control_target": {
+                        "artifact_type": "chapter",
+                        "artifact_id": "7",
+                        "generating_version": 2,
+                    },
                 },
-            },
-        })
-
-    controls.return_value.fail_generating.assert_awaited_once()
-    controls.return_value.complete_generating.assert_not_called()
+            })
 
 
 @pytest.mark.asyncio
