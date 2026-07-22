@@ -103,6 +103,21 @@ async def test_assert_writable_rejects_locked_without_force():
 
 
 @pytest.mark.asyncio
+async def test_assert_writable_rejects_legacy_locked_status():
+    row = _control_row(control_status="locked", locked=False)
+    fake_session, _ = _session_with_control_row(row)
+    service = CreativeControlService()
+    with patch(
+        "src.core.creative_control.control_service.get_db_session",
+        new=fake_session,
+    ):
+        with pytest.raises(ArtifactLockedError):
+            await service.assert_writable(
+                "novel-1", "world", "w1", expected_version=1
+            )
+
+
+@pytest.mark.asyncio
 async def test_assert_writable_force_bypasses_locked():
     row = _control_row(locked=True)
     fake_session, _ = _session_with_control_row(row)
@@ -175,7 +190,8 @@ async def test_mark_stale_splits_regenerable_and_to_mark_stale():
         new=fake_session,
     ):
         result = await service.mark_stale(
-            "novel-1", "world", "w1", reason="world rules changed"
+            "novel-1", "world", "w1",
+            expected_version=1, reason="world rules changed",
         )
     regenerable_types = {a["artifact_type"] for a in result["regenerable"]}
     stale_types = {a["artifact_type"] for a in result["to_mark_stale"]}
@@ -192,7 +208,8 @@ async def test_mark_stale_marks_upstream_itself_stale():
         new=fake_session,
     ):
         result = await service.mark_stale(
-            "novel-1", "world", "w1", reason="world rules changed"
+            "novel-1", "world", "w1",
+            expected_version=1, reason="world rules changed",
         )
     assert result["upstream"]["control_status"] == ControlStatus.STALE.value
 

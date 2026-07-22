@@ -264,10 +264,12 @@ async def test_regenerate_returns_409_on_busy():
     user = _user()
     req = RegenerateRequest(expected_version=1)
     with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()), \
-         patch("src.api.routes.creative_control.CreativeControlService") as cs, \
+         patch("src.api.routes.creative_control.get_novel_manager") as manager, \
+         patch("src.api.routes.creative_control.CreativeGenerationDispatcher") as dispatcher, \
          _ol() as ol:
         _cfg(ol)
-        cs.return_value.begin_generating = AsyncMock(
+        manager.return_value.get_novel = AsyncMock(return_value={"novel_id": "novel-1"})
+        dispatcher.return_value.dispatch_scope = AsyncMock(
             side_effect=ArtifactBusyError("novel-1", "chapter", "5")
         )
         with pytest.raises(HTTPException) as exc:
@@ -281,12 +283,10 @@ async def test_regenerate_chapter_dispatches_persistent_task():
     user = _user()
     req = RegenerateRequest(expected_version=1)
     with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()), \
-         patch("src.api.routes.creative_control.CreativeControlService") as cs, \
          patch("src.api.routes.creative_control.get_novel_manager") as manager, \
          patch("src.api.routes.creative_control.CreativeGenerationDispatcher") as dispatcher, \
          _ol() as ol:
         _cfg(ol)
-        cs.return_value.begin_generating = AsyncMock(return_value=2)
         manager.return_value.get_novel = AsyncMock(
             return_value={
                 "novel_id": "novel-1",
@@ -310,22 +310,25 @@ async def test_regenerate_chapter_dispatches_persistent_task():
 
     assert result["task_id"] == "task-7"
     assert result["status"] == "generating"
-    cs.return_value.begin_generating.assert_awaited_once()
     dispatcher.return_value.dispatch_scope.assert_awaited_once()
+    plan = dispatcher.return_value.dispatch_scope.await_args.args[2]
+    assert plan.payload["_control_target"] == {
+        "artifact_type": "chapter",
+        "artifact_id": "7",
+        "expected_version": 1,
+        "force": False,
+    }
 
 
 @pytest.mark.asyncio
-async def test_regenerate_dispatch_failure_marks_control_failed():
+async def test_regenerate_dispatch_failure_leaves_no_precreated_control_state():
     user = _user()
     req = RegenerateRequest(expected_version=1, force=True)
     with patch("src.api.routes.creative_control.verify_novel_owner", new=AsyncMock()), \
-         patch("src.api.routes.creative_control.CreativeControlService") as cs, \
          patch("src.api.routes.creative_control.get_novel_manager") as manager, \
          patch("src.api.routes.creative_control.CreativeGenerationDispatcher") as dispatcher, \
          _ol() as ol:
         _cfg(ol)
-        cs.return_value.begin_generating = AsyncMock(return_value=2)
-        cs.return_value.fail_generating = AsyncMock(return_value=3)
         manager.return_value.get_novel = AsyncMock(
             return_value={
                 "novel_id": "novel-1",
@@ -344,15 +347,6 @@ async def test_regenerate_dispatch_failure_marks_control_failed():
             )
 
     assert exc.value.status_code == 422
-    cs.return_value.begin_generating.assert_awaited_once_with(
-        "novel-1",
-        "chapter",
-        "7",
-        expected_version=1,
-        operator_id=user.id,
-        force=True,
-    )
-    cs.return_value.fail_generating.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -399,6 +393,13 @@ async def test_mark_stale_returns_split():
         result = await mark_stale("novel-1", "world", "w1", req, current_user=user)
     assert "regenerable" in result
     assert "to_mark_stale" in result
+    cs.return_value.mark_stale.assert_awaited_once_with(
+        "novel-1",
+        "world",
+        "w1",
+        expected_version=1,
+        reason="world changed",
+    )
 
 
 @pytest.mark.asyncio

@@ -264,16 +264,29 @@ class ChapterService:
                         # baseline 已提交但 checkpoint 尚未推进时，下一次生成可能先
                         # 覆盖 Chapter。命中幂等键必须把真实正文和活跃状态恢复到已提交
                         # 版本，避免 Chapter 与 ChapterVersion 分裂。
-                        await session.execute(
-                            ChapterVersion.__table__.update()
-                            .where(
-                                ChapterVersion.novel_id == novel_id,
-                                ChapterVersion.chapter_number == chapter_number,
-                                ChapterVersion.version_number != hit.version_number,
+                        current_active = (
+                            await session.execute(
+                                select(ChapterVersion)
+                                .where(
+                                    ChapterVersion.novel_id == novel_id,
+                                    ChapterVersion.chapter_number == chapter_number,
+                                    ChapterVersion.is_active.is_(True),
+                                )
+                                .with_for_update()
                             )
-                            .values(is_active=False)
-                        )
-                        await session.flush()
+                        ).scalar_one_or_none()
+                        if (
+                            current_active is not None
+                            and current_active.version_number != hit.version_number
+                        ):
+                            # checkpoint 重放期间若已有人工/其他操作激活的新版本，
+                            # 不能静默回退到旧 baseline。
+                            raise StaleChapterVersionError(
+                                novel_id,
+                                chapter_number,
+                                hit.version_number,
+                                current_active.version_number,
+                            )
                         hit.is_active = True
                         ch.content = hit.content or ""
                         ch.word_count = hit.word_count
@@ -464,7 +477,33 @@ class ChapterService:
                 "kg_conflicts": v.kg_conflicts,
                 "user_notes": v.user_notes,
                 "is_active": v.is_active,
+                "idempotency_key": v.idempotency_key,
                 "created_at": v.created_at,
+            }
+
+    async def get_active_chapter_version(
+        self, novel_id: str, chapter_number: int
+    ) -> dict | None:
+        """返回当前活跃版本及其操作幂等键，供恢复流程校验版本所有权。"""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(ChapterVersion).where(
+                    ChapterVersion.novel_id == novel_id,
+                    ChapterVersion.chapter_number == chapter_number,
+                    ChapterVersion.is_active.is_(True),
+                )
+            )
+            version = result.scalar_one_or_none()
+            if version is None:
+                return None
+            return {
+                "version_number": version.version_number,
+                "content": version.content,
+                "word_count": version.word_count,
+                "source": version.source,
+                "quality_score": version.quality_score,
+                "quality_scores": version.quality_scores,
+                "idempotency_key": version.idempotency_key,
             }
 
     async def rollback_chapter_version(

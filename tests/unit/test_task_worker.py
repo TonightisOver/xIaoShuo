@@ -4,7 +4,7 @@ import asyncio
 import os
 import socket
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -369,7 +369,11 @@ async def test_start_task_queue_recovers_before_starting_worker(monkeypatch):
     monkeypatch.setattr(main_module, "get_task_manager", lambda: manager)
     monkeypatch.setattr(main_module, "get_task_worker", lambda: worker)
 
-    started = await main_module.start_task_queue()
+    with patch(
+        "src.core.creative_control.control_service.CreativeControlService.reconcile_terminal_generations",
+        new=AsyncMock(return_value=0),
+    ):
+        started = await main_module.start_task_queue()
 
     assert started is worker
     assert events == ["recover", "start"]

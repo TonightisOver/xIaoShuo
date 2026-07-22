@@ -74,6 +74,12 @@ async def test_run_chapter_stages_resumes_without_replaying_completed_phases(
     chapter_service = SimpleNamespace(
         create_chapter_version=AsyncMock(return_value=2),
         finalize_chapter_version=AsyncMock(),
+        get_active_chapter_version=AsyncMock(
+            return_value={
+                "version_number": 2,
+                "idempotency_key": "op-1:baseline:7",
+            }
+        ),
         get_chapter_version=AsyncMock(
             return_value={"version_number": 2, "content": "持久化正文"}
         ),

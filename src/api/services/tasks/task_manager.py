@@ -11,9 +11,20 @@ from uuid import uuid4
 import structlog
 from sqlalchemy import and_, func, or_, select, update
 
-from src.api.models.db_models import Task, TaskCheckpoint
+from src.api.models.db_models import (
+    ArtifactControl,
+    OperationLog,
+    Task,
+    TaskCheckpoint,
+)
+from src.core.creative_control.contracts import stage_of
 from src.core.database import get_db_session
-from src.core.exceptions import LeaseLost
+from src.core.exceptions import (
+    ArtifactBusyError,
+    ArtifactConflictError,
+    ArtifactLockedError,
+    LeaseLost,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -101,6 +112,7 @@ class TaskManager:
         task_payload: dict[str, Any] | None = None,
         max_attempts: int = 1,
         operation_id: str | None = None,
+        generation_targets: list[dict[str, Any]] | None = None,
     ) -> str:
         """创建新任务
 
@@ -134,6 +146,74 @@ class TaskManager:
                     )
                     return existing_task_id
 
+            persisted_payload = dict(task_payload or {})
+            reserved_targets: list[dict[str, Any]] = []
+            for target in generation_targets or []:
+                artifact_type = str(target["artifact_type"])
+                artifact_id = str(target["artifact_id"])
+                row = (
+                    await session.execute(
+                        select(ArtifactControl)
+                        .where(
+                            ArtifactControl.novel_id == novel_id,
+                            ArtifactControl.artifact_type == artifact_type,
+                            ArtifactControl.artifact_id == artifact_id,
+                        )
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                if row is None:
+                    row = ArtifactControl(
+                        novel_id=novel_id,
+                        artifact_type=artifact_type,
+                        artifact_id=artifact_id,
+                        control_status="generated",
+                        version=1,
+                        stage=stage_of(artifact_type) or 1,
+                    )
+                    session.add(row)
+                    await session.flush()
+                expected_version = target.get("expected_version")
+                if expected_version is not None and row.version != int(expected_version):
+                    raise ArtifactConflictError(
+                        str(novel_id), artifact_type, artifact_id,
+                        int(expected_version), row.version,
+                    )
+                if row.control_status == "generating":
+                    raise ArtifactBusyError(str(novel_id), artifact_type, artifact_id)
+                if (
+                    row.locked or row.control_status == "locked"
+                ) and not bool(target.get("force")):
+                    raise ArtifactLockedError(str(novel_id), artifact_type, artifact_id)
+                from_version = row.version
+                row.locked = False if target.get("force") else row.locked
+                row.control_status = "generating"
+                row.version += 1
+                row.generation_meta = {
+                    "source": "task",
+                    "task_id": task_id,
+                    "operation_id": operation_id or task_id,
+                }
+                row.updated_at = now
+                session.add(OperationLog(
+                    novel_id=str(novel_id),
+                    artifact_type=artifact_type,
+                    artifact_id=artifact_id,
+                    action="generate",
+                    from_version=from_version,
+                    to_version=row.version,
+                    operator_id=owner_id,
+                    task_id=task_id,
+                    operation_id=operation_id or task_id,
+                ))
+                reserved_targets.append({
+                    "artifact_type": artifact_type,
+                    "artifact_id": artifact_id,
+                    "generating_version": row.version,
+                })
+            if reserved_targets:
+                persisted_payload["control_targets"] = reserved_targets
+
             task = Task(
                 task_id=task_id,
                 operation_id=operation_id or task_id,
@@ -151,7 +231,7 @@ class TaskManager:
                 result=None,
                 errors=[],
                 task_type=task_type,
-                task_payload=task_payload,
+                task_payload=persisted_payload,
                 queue_state="queued" if task_type else None,
                 attempt_count=0,
                 max_attempts=max(1, max_attempts),

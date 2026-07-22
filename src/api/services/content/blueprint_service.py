@@ -40,6 +40,8 @@ class BlueprintService:
         chapter_number: int,
         chapter_outline: dict,
         volume_context: str = "",
+        *,
+        persist: bool = True,
     ) -> dict:
         """调用 LLM 生成结构化蓝图并持久化到 DB。"""
         logger.info(
@@ -69,6 +71,9 @@ class BlueprintService:
                 chapter_number=chapter_number,
             )
             blueprint_data = self._default_blueprint(chapter_outline)
+
+        if not persist:
+            return blueprint_data
 
         async with get_db_session() as session:
             from src.core.creative_control.control_service import (

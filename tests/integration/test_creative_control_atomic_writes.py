@@ -9,13 +9,20 @@ from src.api.models.db_models import (
     Chapter,
     ChapterVersion,
     OperationLog,
+    Outline,
+    Task,
     WorldSetting,
 )
 from src.api.services.creative_control.artifact_write_service import (
     CreativeArtifactWriteService,
 )
+from src.api.services.tasks.task_manager import TaskManager
 from src.core.database import Base, get_db_session, get_engine
-from src.core.exceptions import ArtifactLockedError, StaleChapterVersionError
+from src.core.exceptions import (
+    ArtifactBusyError,
+    ArtifactLockedError,
+    StaleChapterVersionError,
+)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -220,3 +227,135 @@ async def test_lock_sets_single_source_of_truth_and_blocks_generation():
     assert await GenerationScopePlanner()._load_locked_chapters(novel_id) == [1]
     with pytest.raises(ArtifactLockedError):
         await controls.assert_generation_allowed(novel_id, "chapter", "1")
+
+
+@pytest.mark.asyncio
+async def test_generated_volume_outline_updates_body_and_version_atomically():
+    novel_id = await _seed()
+    async with get_db_session() as session:
+        session.add_all([
+            Outline(
+                novel_id=novel_id,
+                level="volume",
+                volume_number=1,
+                content={"title": "旧卷纲", "chapters": []},
+            ),
+            ArtifactControl(
+                novel_id=novel_id,
+                artifact_type="volume_outline",
+                artifact_id="1",
+                control_status="generating",
+                version=2,
+                stage=5,
+            ),
+            ArtifactVersion(
+                novel_id=novel_id,
+                artifact_type="volume_outline",
+                artifact_id="1",
+                version_number=1,
+                content_snapshot={"title": "旧卷纲", "chapters": []},
+                source="manual",
+                is_active=True,
+            ),
+        ])
+
+    version = await CreativeArtifactWriteService().record_generated_artifact(
+        novel_id=novel_id,
+        artifact_type="volume_outline",
+        artifact_id="1",
+        content={"title": "新卷纲", "chapters": [{"chapter": 1}]},
+        task_id="task-volume-1",
+        operation_id="op-volume-1",
+        model="deepseek",
+    )
+
+    async with get_db_session() as session:
+        outline = (await session.execute(
+            select(Outline).where(
+                Outline.novel_id == novel_id,
+                Outline.level == "volume",
+                Outline.volume_number == 1,
+            )
+        )).scalar_one()
+        versions = list((await session.execute(
+            select(ArtifactVersion)
+            .where(
+                ArtifactVersion.novel_id == novel_id,
+                ArtifactVersion.artifact_type == "volume_outline",
+                ArtifactVersion.artifact_id == "1",
+            )
+            .order_by(ArtifactVersion.version_number)
+        )).scalars().all())
+
+    assert version == 2
+    assert outline.content["title"] == "新卷纲"
+    assert [item.version_number for item in versions if item.is_active] == [2]
+    assert versions[1].content_snapshot == {
+        "title": "新卷纲",
+        "chapters": [{"chapter": 1}],
+    }
+    assert versions[1].task_id == "task-volume-1"
+    assert versions[1].operation_id == "op-volume-1"
+
+
+@pytest.mark.asyncio
+async def test_task_creation_atomically_reserves_chapter_and_rejects_overlap():
+    novel_id = await _seed()
+    manager = TaskManager()
+    task_id = await manager.create_task(
+        idea="并发占用测试",
+        novel_type="玄幻",
+        target_words=100000,
+        novel_id=novel_id,
+        owner_id=1,
+        task_type="novel.chapters",
+        task_payload={"novel_id": novel_id, "chapter_start": 1, "chapter_end": 1},
+        operation_id=f"{novel_id}:chapters:1-1:first",
+        generation_targets=[{
+            "artifact_type": "chapter",
+            "artifact_id": "1",
+            "expected_version": 1,
+        }],
+    )
+
+    async with get_db_session() as session:
+        task = (await session.execute(
+            select(Task).where(Task.task_id == task_id)
+        )).scalar_one()
+        control = (await session.execute(
+            select(ArtifactControl).where(
+                ArtifactControl.novel_id == novel_id,
+                ArtifactControl.artifact_type == "chapter",
+                ArtifactControl.artifact_id == "1",
+            )
+        )).scalar_one()
+
+    assert control.control_status == "generating"
+    assert control.generation_meta["task_id"] == task_id
+    assert task.task_payload["control_targets"] == [{
+        "artifact_type": "chapter",
+        "artifact_id": "1",
+        "generating_version": 2,
+    }]
+
+    with pytest.raises(ArtifactBusyError):
+        await manager.create_task(
+            idea="重叠任务",
+            novel_type="玄幻",
+            target_words=100000,
+            novel_id=novel_id,
+            owner_id=1,
+            task_type="novel.chapters",
+            task_payload={"novel_id": novel_id, "chapter_start": 1, "chapter_end": 1},
+            operation_id=f"{novel_id}:chapters:1-1:second",
+            generation_targets=[{
+                "artifact_type": "chapter",
+                "artifact_id": "1",
+            }],
+        )
+
+    async with get_db_session() as session:
+        task_count = (await session.execute(
+            select(Task).where(Task.novel_id == novel_id)
+        )).scalars().all()
+    assert len(task_count) == 1

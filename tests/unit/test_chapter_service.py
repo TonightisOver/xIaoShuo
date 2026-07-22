@@ -45,7 +45,7 @@ def _make_version_row(
                           "content", "word_count", "source", "rewrite_instruction",
                           "quality_score", "quality_scores", "model_name", "prompt_summary",
                           "diff_from_previous", "kg_conflicts", "user_notes",
-                          "is_active", "created_at"])
+                          "is_active", "idempotency_key", "created_at"])
     row.id = id_
     row.novel_id = novel_id
     row.chapter_number = chapter_number
@@ -62,6 +62,7 @@ def _make_version_row(
     row.kg_conflicts = None
     row.user_notes = None
     row.is_active = is_active
+    row.idempotency_key = None
     row.created_at = datetime(2026, 7, 4, tzinfo=UTC)
     return row
 

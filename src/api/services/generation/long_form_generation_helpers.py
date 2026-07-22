@@ -41,7 +41,12 @@ from src.api.services.generation.novel_generator_planning import (
 )
 from src.api.services.generation.progress_event_bus import EventType
 from src.api.services.tasks.task_manager import get_task_manager
-from src.core.exceptions import CheckpointConflict, LeaseLost, PausedExit
+from src.core.exceptions import (
+    CheckpointConflict,
+    LeaseLost,
+    PausedExit,
+    StaleChapterVersionError,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -648,44 +653,70 @@ async def _run_chapter_stages(
     final_vn = baseline_vn
     if recovery_action in (RecoveryAction.GENERATE, RecoveryAction.RUN_QUALITY):
         await store.assert_lease_held(task_id, worker_id)
-        try:
-            gate_callbacks = GatePersistCallbacks(
-                update_state_delta=manager.update_state_delta,
-                update_quality_status=manager.update_quality_status,
-                persist_quality_scores=_persist_quality_for_gate,
-                detect_bible_conflicts=None,
+        quality_already_finalized = False
+        if recovery_action is RecoveryAction.RUN_QUALITY:
+            active = await chapter_service.get_active_chapter_version(
+                novel_id, global_ch_num
             )
-            gate_result = await run_quality_gate(
-                novel_id=novel_id,
-                chapter_number=global_ch_num,
-                chapter_result=chapter_result,
-                chapter_outline=ch_outline,
-                novel_type=getattr(request, "novel_type", "网络小说"),
-                idea=getattr(request, "idea", ""),
-                world_setting=world_str,
-                characters=chars_str,
-                persist_callbacks=gate_callbacks,
-                rewrite_service=RewriteLoopService(),
-                chapter_index_in_volume=vol_ch_idx,
-                operation_id=operation_id,
-            )
-            chapter_result["quality_status"] = gate_result.quality_status
-            chapter_result["quality_scores"] = gate_result.quality_scores
-            chapter_result["state_delta"] = gate_result.state_delta
-            if gate_result.final_version_number is not None:
-                final_vn = gate_result.final_version_number
-        except Exception as gate_err:
-            logger.warning(
-                "quality_gate_failed_non_fatal",
-                novel_id=novel_id, chapter=global_ch_num, error=str(gate_err),
-            )
-        # 统一激活：仅当 L3 择优出不同版本时切换；否则 baseline 已活跃（幂等 no-op）。
-        if final_vn != baseline_vn:
-            await chapter_service.finalize_chapter_version(
-                novel_id, global_ch_num,
-                expected_active_version=baseline_vn,
-                selected_version=final_vn,
-            )
+            current_vn = (active or {}).get("version_number")
+            if current_vn != baseline_vn:
+                candidate_prefix = (
+                    f"{operation_id}:quality:{global_ch_num}:candidate:"
+                )
+                if (
+                    active is not None
+                    and str(active.get("idempotency_key") or "").startswith(
+                        candidate_prefix
+                    )
+                ):
+                    # finalize 已提交、checkpoint 未提交：以同一 operation 已激活
+                    # 的候选为事实来源，不重新运行非确定性的质量门。
+                    final_vn = current_vn
+                    quality_already_finalized = True
+                else:
+                    raise StaleChapterVersionError(
+                        novel_id, global_ch_num, baseline_vn, current_vn
+                    )
+
+        if not quality_already_finalized:
+            try:
+                gate_callbacks = GatePersistCallbacks(
+                    update_state_delta=manager.update_state_delta,
+                    update_quality_status=manager.update_quality_status,
+                    persist_quality_scores=_persist_quality_for_gate,
+                    detect_bible_conflicts=None,
+                )
+                gate_result = await run_quality_gate(
+                    novel_id=novel_id,
+                    chapter_number=global_ch_num,
+                    chapter_result=chapter_result,
+                    chapter_outline=ch_outline,
+                    novel_type=getattr(request, "novel_type", "网络小说"),
+                    idea=getattr(request, "idea", ""),
+                    world_setting=world_str,
+                    characters=chars_str,
+                    persist_callbacks=gate_callbacks,
+                    rewrite_service=RewriteLoopService(),
+                    chapter_index_in_volume=vol_ch_idx,
+                    operation_id=operation_id,
+                )
+                chapter_result["quality_status"] = gate_result.quality_status
+                chapter_result["quality_scores"] = gate_result.quality_scores
+                chapter_result["state_delta"] = gate_result.state_delta
+                if gate_result.final_version_number is not None:
+                    final_vn = gate_result.final_version_number
+            except Exception as gate_err:
+                logger.warning(
+                    "quality_gate_failed_non_fatal",
+                    novel_id=novel_id, chapter=global_ch_num, error=str(gate_err),
+                )
+            # 统一激活：仅当 L3 择优出不同版本时切换；否则 baseline 已活跃。
+            if final_vn != baseline_vn:
+                await chapter_service.finalize_chapter_version(
+                    novel_id, global_ch_num,
+                    expected_active_version=baseline_vn,
+                    selected_version=final_vn,
+                )
         cpv = await store.advance_checkpoint(
             task_id, worker_id,
             expected_checkpoint_version=cpv,

@@ -347,6 +347,94 @@ async def test_run_chapter_stages_baseline_version_active(novel_task):
 
 
 @pytest.mark.asyncio
+async def test_quality_finalize_crash_resumes_from_owned_active_candidate(novel_task):
+    """候选已激活但 checkpoint 未推进时，恢复直接确认该候选而不重跑 gate。"""
+    from src.api.services.content.chapter_service import ChapterService
+    from src.api.services.generation import long_form_generation_helpers as h
+    from src.api.services.generation.chapter_recovery import RecoveryAction
+
+    novel_id, task_id = novel_task
+    operation_id = f"{novel_id}:long_form"
+    await _insert_chapter(novel_id, 4, content="baseline")
+    await _insert_task(task_id, novel_id)
+    service = ChapterService()
+    baseline = await service.create_chapter_version(
+        novel_id,
+        4,
+        "baseline",
+        source="generation",
+        is_active=True,
+        idempotency_key=f"{operation_id}:baseline:4",
+    )
+    candidate = await service.create_chapter_version(
+        novel_id,
+        4,
+        "质量候选",
+        source="ai_rewrite",
+        is_active=False,
+        idempotency_key=f"{operation_id}:quality:4:candidate:1",
+    )
+    await service.finalize_chapter_version(
+        novel_id,
+        4,
+        expected_active_version=baseline,
+        selected_version=candidate,
+    )
+    await _insert_checkpoint(
+        task_id,
+        novel_id,
+        checkpoint_version=0,
+        current_stage="baseline_persisted",
+    )
+    async with get_db_session() as session:
+        await session.execute(
+            text(
+                """
+                UPDATE task_checkpoints
+                SET chapter_number = 4, active_version_number = :baseline
+                WHERE task_id = :task_id
+                """
+            ),
+            {"baseline": baseline, "task_id": task_id},
+        )
+
+    gate = AsyncMock()
+    with (
+        patch("src.core.quality.gate.run_quality_gate", new=gate),
+        patch(
+            "src.api.services.content.story_bible_service.update_bible_after_generation",
+            new=AsyncMock(return_value={}),
+        ),
+    ):
+        await h._run_chapter_stages(
+            task_id=task_id,
+            novel_id=novel_id,
+            worker_id="worker-a",
+            operation_id=operation_id,
+            volume_number=1,
+            global_ch_num=4,
+            total_chapters=10,
+            chapter_start=1,
+            completed_before=0,
+            ch_outline={"chapter": 4},
+            chapter_result=_make_chapter_result(4, "baseline"),
+            vol_ch_idx=3,
+            request=None,
+            world_str="{}",
+            chars_str="{}",
+            expected_checkpoint_version=0,
+            recovery_action=RecoveryAction.RUN_QUALITY,
+            active_version_number=baseline,
+        )
+
+    gate.assert_not_awaited()
+    checkpoint = await _read_checkpoint(task_id)
+    assert checkpoint["current_stage"] == "chapter_completed"
+    assert checkpoint["active_version_number"] == candidate
+    assert await _active_version(novel_id, 4) == candidate
+
+
+@pytest.mark.asyncio
 async def test_run_chapter_stages_lease_lost_raises(novel_task):
     """lease 过期时首个 assert_lease_held 抛 LeaseLost，不推进 checkpoint。"""
     from src.api.services.generation import long_form_generation_helpers as h

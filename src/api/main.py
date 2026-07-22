@@ -69,12 +69,16 @@ async def start_task_queue() -> PersistentTaskWorker | None:
         return None
 
     recovered = await get_task_manager().recover_interrupted_tasks()
+    from src.core.creative_control.control_service import CreativeControlService
+
+    reconciled_controls = await CreativeControlService().reconcile_terminal_generations()
     logger.info(
         "persistent_task_queue_recovered",
         queued_preserved=recovered.queued_preserved,
         stale_requeued=recovered.stale_requeued,
         stale_failed=recovered.stale_failed,
         legacy_failed=recovered.legacy_failed,
+        reconciled_controls=reconciled_controls,
     )
     task_worker = get_task_worker()
     await task_worker.start()

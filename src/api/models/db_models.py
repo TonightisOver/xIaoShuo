@@ -405,6 +405,10 @@ class Task(Base):
             "progress": self.progress,
             "result": self.result,
             "errors": self.errors or [],
+            "task_type": self.task_type,
+            "queue_state": self.queue_state,
+            "attempt_count": self.attempt_count,
+            "max_attempts": self.max_attempts,
         }
 
 

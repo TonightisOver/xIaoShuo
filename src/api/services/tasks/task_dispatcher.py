@@ -10,25 +10,31 @@ from src.api.services.tasks.task_manager import get_task_manager
 async def _finish_control_target(
     payload: dict[str, Any], *, error: Exception | None = None
 ) -> None:
-    target = payload.get("control_target")
-    if not isinstance(target, dict):
+    raw_targets = payload.get("control_targets")
+    if isinstance(raw_targets, list):
+        targets = [target for target in raw_targets if isinstance(target, dict)]
+    else:
+        legacy_target = payload.get("control_target")
+        targets = [legacy_target] if isinstance(legacy_target, dict) else []
+    if not targets:
         return
     from src.core.creative_control.control_service import CreativeControlService
 
     service = CreativeControlService()
-    kwargs = {
-        "novel_id": payload["novel_id"],
-        "artifact_type": str(target["artifact_type"]),
-        "artifact_id": str(target["artifact_id"]),
-        "expected_version": int(target["generating_version"]),
-    }
-    if error is None:
-        await service.complete_generating(
-            **kwargs,
-            generation_meta={"source": "task", "status": "completed"},
-        )
-    else:
-        await service.fail_generating(**kwargs, reason=str(error))
+    for target in targets:
+        kwargs = {
+            "novel_id": payload["novel_id"],
+            "artifact_type": str(target["artifact_type"]),
+            "artifact_id": str(target["artifact_id"]),
+            "expected_version": int(target["generating_version"]),
+        }
+        if error is None:
+            await service.complete_generating(
+                **kwargs,
+                generation_meta={"source": "task", "status": "completed"},
+            )
+        else:
+            await service.fail_generating(**kwargs, reason=str(error))
 
 
 async def _run_controlled(
@@ -42,7 +48,10 @@ async def _run_controlled(
         except Exception:
             pass
         raise
-    if not isinstance(payload.get("control_target"), dict):
+    if not (
+        isinstance(payload.get("control_target"), dict)
+        or isinstance(payload.get("control_targets"), list)
+    ):
         return
     task = await get_task_manager().get_task(task_id)
     if task is not None and task.get("status") in {"failed", "cancelled"}:
@@ -69,6 +78,9 @@ class TaskType(StrEnum):
 async def dispatch_task(task: dict[str, Any]) -> None:
     """只执行固定白名单中的任务类型。"""
     task_id = task["task_id"]
+    from src.core.creative_control.control_service import bind_generation_task
+
+    bind_generation_task(task_id)
     payload = task.get("task_payload") or {}
     # B1: worker_id 由 PersistentTaskWorker._run_claim 注入 claim dict；离线/直调
     # 场景（无 worker）为 None，长篇路径据此在安全边界复查 lease（None 跳过守卫）。

@@ -181,6 +181,43 @@ class CreativeArtifactWriteService:
             ))
             return ArtifactWriteResult(control.version, target_version)
 
+    async def record_generated_artifact(
+        self,
+        *,
+        novel_id: str,
+        artifact_type: str,
+        artifact_id: str,
+        content: dict[str, Any],
+        task_id: str,
+        operation_id: str,
+        model: str | None = None,
+    ) -> int:
+        """原子写入结构化生成结果并创建新的活跃版本快照。"""
+        if artifact_type not in {"volume_outline", "blueprint"}:
+            raise ValueError(f"unsupported generated artifact type: {artifact_type}")
+        async with get_db_session() as session:
+            await self._controls.assert_generation_allowed_in_session(
+                session, novel_id, artifact_type, artifact_id
+            )
+            await self._ensure_baseline_snapshot_in_session(
+                session, novel_id, artifact_type, artifact_id, None
+            )
+            saved_content = await self._adapters.save_in_session(
+                session, novel_id, artifact_type, artifact_id, content
+            )
+            return await self._snapshot_in_session(
+                session,
+                novel_id,
+                artifact_type,
+                artifact_id,
+                saved_content,
+                None,
+                source="generation",
+                task_id=task_id,
+                operation_id=operation_id,
+                model=model,
+            )
+
     async def _snapshot_in_session(
         self,
         session,
@@ -191,6 +228,9 @@ class CreativeArtifactWriteService:
         operator_id: int | None,
         *,
         source: str = "manual",
+        task_id: str | None = None,
+        operation_id: str | None = None,
+        model: str | None = None,
     ) -> int:
         result = await session.execute(
             select(ArtifactVersion)
@@ -212,6 +252,9 @@ class CreativeArtifactWriteService:
             version_number=next_version,
             content_snapshot=content,
             source=source,
+            task_id=task_id,
+            operation_id=operation_id,
+            model=model,
             operator_id=operator_id,
             is_active=True,
         ))

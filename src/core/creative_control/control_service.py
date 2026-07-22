@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import importlib
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
 
@@ -46,6 +47,14 @@ def _orm():
 
 # 已确认/锁定：上游变更时仅标记过期，不自动重生成。
 _PROTECTED_STATUSES = frozenset({"approved", "locked"})
+_CURRENT_GENERATION_TASK: ContextVar[str | None] = ContextVar(
+    "current_generation_task", default=None
+)
+
+
+def bind_generation_task(task_id: str) -> None:
+    """把当前 worker 协程绑定到持久任务，供产物写入 fencing 校验。"""
+    _CURRENT_GENERATION_TASK.set(task_id)
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
@@ -93,6 +102,53 @@ class CreativeControlService:
                 await session.flush()
             return _row_to_dict(row)
 
+    async def reconcile_terminal_generations(self) -> int:
+        """启动时收敛任务已终态但仍停留 generating 的控制行。"""
+        module = importlib.import_module("src.api.models.db_models")
+        ArtifactControl = module.ArtifactControl  # noqa: N806
+        OperationLog = module.OperationLog  # noqa: N806
+        Task = module.Task  # noqa: N806
+        changed = 0
+        async with get_db_session() as session:
+            rows = list((
+                await session.execute(
+                    select(ArtifactControl)
+                    .where(ArtifactControl.control_status == "generating")
+                    .with_for_update()
+                )
+            ).scalars().all())
+            for row in rows:
+                task_id = (row.generation_meta or {}).get("task_id")
+                task = None
+                if task_id:
+                    task = (
+                        await session.execute(
+                            select(Task).where(Task.task_id == task_id)
+                        )
+                    ).scalar_one_or_none()
+                if task is not None and task.status not in {
+                    "completed", "failed", "cancelled"
+                }:
+                    continue
+                previous = row.version
+                succeeded = task is not None and task.status == "completed"
+                row.control_status = "generated" if succeeded else "failed"
+                row.version += 1
+                row.updated_at = datetime.now(UTC)
+                session.add(OperationLog(
+                    novel_id=row.novel_id,
+                    artifact_type=row.artifact_type,
+                    artifact_id=row.artifact_id,
+                    action="generate",
+                    from_version=previous,
+                    to_version=row.version,
+                    task_id=task_id,
+                    operation_id=(row.generation_meta or {}).get("operation_id"),
+                    meta={"reconciled": True, "task_status": getattr(task, "status", None)},
+                ))
+                changed += 1
+        return changed
+
     # -------------------------------------------------------- assert_writable
 
     async def assert_generation_allowed(
@@ -134,6 +190,10 @@ class CreativeControlService:
             raise ArtifactLockedError(
                 novel_id, artifact_type, artifact_id
             )
+        if row is not None and row.control_status == "generating":
+            owner_task = (row.generation_meta or {}).get("task_id")
+            if owner_task and owner_task != _CURRENT_GENERATION_TASK.get():
+                raise ArtifactBusyError(novel_id, artifact_type, artifact_id)
 
     async def record_generated(
         self,
@@ -250,7 +310,7 @@ class CreativeControlService:
             )
         if row.control_status == "generating":
             raise ArtifactBusyError(novel_id, artifact_type, artifact_id)
-        if row.locked and not force:
+        if (row.locked or row.control_status == "locked") and not force:
             raise ArtifactLockedError(novel_id, artifact_type, artifact_id)
         return row
 
@@ -366,7 +426,7 @@ class CreativeControlService:
     # ------------------------------------------------------------- mark_stale
 
     async def mark_stale(
-        self, novel_id, artifact_type, artifact_id, *, reason
+        self, novel_id, artifact_type, artifact_id, *, expected_version, reason
     ) -> dict[str, Any]:
         """上游变更触发：标记自身 stale，级联下游。
 
@@ -377,6 +437,14 @@ class CreativeControlService:
             row = await self._select_for_update(session, novel_id, artifact_type, artifact_id)
             # 标记自身 stale（无行则跳过，仅级联下游）
             if row is not None:
+                if row.version != expected_version:
+                    raise ArtifactConflictError(
+                        novel_id,
+                        artifact_type,
+                        artifact_id,
+                        expected_version,
+                        row.version,
+                    )
                 row.control_status = "stale"
                 row.stale_reason = reason
                 row.version += 1
@@ -387,6 +455,10 @@ class CreativeControlService:
                     from_version=row.version - 1, to_version=row.version,
                     reason=f"marked stale: {reason}",
                 ))
+            elif expected_version != 0:
+                raise ArtifactConflictError(
+                    novel_id, artifact_type, artifact_id, expected_version, 0
+                )
 
             # 级联下游
             downstream_rows = await self._select_downstream(session, novel_id, artifact_type)

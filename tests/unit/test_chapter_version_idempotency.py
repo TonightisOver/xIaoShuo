@@ -231,6 +231,44 @@ async def test_active_idempotency_hit_restores_chapter_after_partial_crash(
 
 
 @pytest.mark.asyncio
+async def test_active_idempotency_replay_does_not_overwrite_manual_version(
+    fresh_novel_chapter,
+):
+    """失败任务重放旧 baseline 时，不得覆盖其后由用户激活的人工版本。"""
+    svc = ChapterService()
+    key = "op-crash:baseline:1"
+    baseline = await svc.create_chapter_version(
+        novel_id=fresh_novel_chapter,
+        chapter_number=1,
+        content="旧 baseline",
+        source="generation",
+        is_active=True,
+        idempotency_key=key,
+    )
+    manual = await svc.create_chapter_version(
+        novel_id=fresh_novel_chapter,
+        chapter_number=1,
+        content="用户人工修订",
+        source="manual",
+        is_active=True,
+    )
+
+    with pytest.raises(StaleChapterVersionError):
+        await svc.create_chapter_version(
+            novel_id=fresh_novel_chapter,
+            chapter_number=1,
+            content="重放内容",
+            source="generation",
+            is_active=True,
+            idempotency_key=key,
+        )
+
+    assert manual != baseline
+    assert await _active_version_number(fresh_novel_chapter, 1) == manual
+    assert await _chapter_content(fresh_novel_chapter, 1) == "用户人工修订"
+
+
+@pytest.mark.asyncio
 async def test_create_version_without_idempotency_key_still_works(fresh_novel_chapter):
     """无 idempotency_key 走原有 max+1 路径，每次新建——向后兼容（手动/回滚）。"""
     svc = ChapterService()

@@ -285,7 +285,8 @@ async def regenerate_artifact(
                 "_control_target": {
                     "artifact_type": artifact_type,
                     "artifact_id": artifact_id,
-                    "generating_version": request.expected_version + 1,
+                    "expected_version": request.expected_version,
+                    "force": request.force,
                 },
             },
             target_chapters=[chapter_number],
@@ -304,7 +305,8 @@ async def regenerate_artifact(
                 "_control_target": {
                     "artifact_type": artifact_type,
                     "artifact_id": artifact_id,
-                    "generating_version": request.expected_version + 1,
+                    "expected_version": request.expected_version,
+                    "force": request.force,
                 },
             },
             target_chapters=[chapter_number],
@@ -321,7 +323,8 @@ async def regenerate_artifact(
                 "_control_target": {
                     "artifact_type": artifact_type,
                     "artifact_id": artifact_id,
-                    "generating_version": request.expected_version + 1,
+                    "expected_version": request.expected_version,
+                    "force": request.force,
                 },
             },
         )
@@ -331,24 +334,6 @@ async def regenerate_artifact(
             detail=f"当前产物类型尚无可执行的重生成任务: {artifact_type}",
         )
 
-    control_service, _, _, _, _ = _services()
-    try:
-        new_v = await control_service.begin_generating(
-            novel_id,
-            artifact_type,
-            artifact_id,
-            expected_version=request.expected_version,
-            operator_id=current_user.id,
-            force=request.force,
-        )
-    except (ArtifactConflictError, ArtifactLockedError, ArtifactBusyError) as exc:
-        code = {
-            ArtifactConflictError: "stale_version",
-            ArtifactLockedError: "locked",
-            ArtifactBusyError: "busy",
-        }[type(exc)]
-        raise _conflict_response(exc, code, "产物版本已变化或被锁定，请刷新后重试") from exc
-
     novel = await get_novel_manager().get_novel(novel_id)
     if novel is None:
         raise HTTPException(status_code=404, detail="Novel not found")
@@ -356,29 +341,20 @@ async def regenerate_artifact(
         dispatched = await CreativeGenerationDispatcher().dispatch_scope(
             novel, current_user.id, plan
         )
-    except Exception as exc:
-        try:
-            await control_service.fail_generating(
-                novel_id,
-                artifact_type,
-                artifact_id,
-                expected_version=new_v,
-                reason=f"任务投递失败: {exc}",
-                operator_id=current_user.id,
-            )
-        except Exception:  # noqa: BLE001 - 保留原始投递异常
-            logger.exception(
-                "creative_control_dispatch_failure_cleanup_failed",
-                novel_id=novel_id,
-                artifact_type=artifact_type,
-                artifact_id=artifact_id,
-            )
-        if isinstance(exc, ValueError):
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        raise
+    except (ArtifactConflictError, ArtifactLockedError, ArtifactBusyError) as exc:
+        code = {
+            ArtifactConflictError: "stale_version",
+            ArtifactLockedError: "locked",
+            ArtifactBusyError: "busy",
+        }[type(exc)]
+        raise _conflict_response(
+            exc, code, "产物版本已变化或被锁定，请刷新后重试"
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {
         "status": "generating",
-        "version": new_v,
+        "version": request.expected_version + 1,
         "task_id": dispatched.task_id,
         "task_ids": getattr(dispatched, "task_ids", [dispatched.task_id]),
         "task_type": dispatched.task_type,
@@ -404,9 +380,18 @@ async def mark_stale(
     """仅标记下游过期（保留现有下游内容）。"""
     await verify_novel_owner(novel_id, current_user)
     control_service, _, _, _, _ = _services()
-    result = await control_service.mark_stale(
-        novel_id, artifact_type, artifact_id, reason=request.reason or "manual mark stale"
-    )
+    try:
+        result = await control_service.mark_stale(
+            novel_id,
+            artifact_type,
+            artifact_id,
+            expected_version=request.expected_version,
+            reason=request.reason or "manual mark stale",
+        )
+    except ArtifactConflictError as exc:
+        raise _conflict_response(
+            exc, "stale_version", "产物版本已变化，请刷新后重试"
+        ) from exc
     return result
 
 

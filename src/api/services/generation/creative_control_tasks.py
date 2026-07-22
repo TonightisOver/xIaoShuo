@@ -6,6 +6,9 @@ from sqlalchemy import select
 
 from src.api.models.db_models import Outline
 from src.api.services.content.blueprint_service import BlueprintService
+from src.api.services.creative_control.artifact_write_service import (
+    CreativeArtifactWriteService,
+)
 from src.api.services.quality.rewrite_loop_service import RewriteLoopService
 from src.api.services.tasks.task_manager import get_task_manager
 from src.core.creative_control.control_service import CreativeControlService
@@ -41,7 +44,17 @@ async def generate_blueprint_background(
             else {"chapter": chapter_number, "title": f"第{chapter_number}章"}
         )
         blueprint = await BlueprintService().generate_blueprint(
-            novel_id, chapter_number, chapter_outline
+            novel_id, chapter_number, chapter_outline, persist=False
+        )
+        task = await task_manager.get_task(task_id)
+        await CreativeArtifactWriteService().record_generated_artifact(
+            novel_id=novel_id,
+            artifact_type="blueprint",
+            artifact_id=str(chapter_number),
+            content=blueprint,
+            task_id=task_id,
+            operation_id=(task or {}).get("operation_id") or task_id,
+            model="deepseek",
         )
         await task_manager.complete_task(
             task_id,
@@ -72,10 +85,12 @@ async def fix_quality_background(
         await CreativeControlService().assert_generation_allowed(
             novel_id, "chapter", str(chapter_number)
         )
+        task = await task_manager.get_task(task_id)
+        operation_id = (task or {}).get("operation_id") or task_id
         result = await RewriteLoopService().auto_improve_chapter(
             novel_id=novel_id,
             chapter_number=chapter_number,
-            operation_id=f"{novel_id}:quality-fix:{chapter_number}",
+            operation_id=operation_id,
         )
         await task_manager.complete_task(
             task_id,
@@ -129,10 +144,17 @@ async def generate_volume_outline_background(
             words_per_chapter=int(novel.get("words_per_chapter") or 3000),
             request=request,
         )
-        outline_service = get_outline_service()
-        await outline_service.upsert_volume_outline(
-            novel_id, volume_number, outline
+        task = await task_manager.get_task(task_id)
+        await CreativeArtifactWriteService().record_generated_artifact(
+            novel_id=novel_id,
+            artifact_type="volume_outline",
+            artifact_id=str(volume_number),
+            content=outline,
+            task_id=task_id,
+            operation_id=(task or {}).get("operation_id") or task_id,
+            model="deepseek",
         )
+        outline_service = get_outline_service()
         volume_offset = (volume_number - 1) * chapters_per_volume
         for index, chapter in enumerate(outline.get("chapters", [])):
             local_number = int(chapter.get("chapter", index + 1))

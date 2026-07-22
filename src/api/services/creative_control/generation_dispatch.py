@@ -85,12 +85,52 @@ class CreativeGenerationDispatcher:
         # 生成相同范围必须不同，避免命中上一次正文 baseline 的幂等键。
         operation_ids = [f"{value}:{dispatch_id}" for value in operation_ids]
 
-        if control_target is not None:
-            for payload in payloads:
-                payload["control_target"] = control_target
-
         task_ids = []
         for payload, operation_id in zip(payloads, operation_ids, strict=True):
+            if control_target is not None:
+                generation_targets = [dict(control_target)]
+                if (
+                    task_type in {
+                        TaskType.NOVEL_CHAPTERS.value,
+                        TaskType.NOVEL_QUALITY_FIX.value,
+                    }
+                    and str(control_target["artifact_type"]) != "chapter"
+                ):
+                    generation_targets.append({
+                        "artifact_type": "chapter",
+                        "artifact_id": str(
+                            payload.get("chapter_number")
+                            or payload.get("chapter_start")
+                        ),
+                    })
+            elif task_type == TaskType.NOVEL_CHAPTERS.value:
+                generation_targets = [
+                    {"artifact_type": "chapter", "artifact_id": str(chapter)}
+                    for chapter in range(
+                        int(payload["chapter_start"]),
+                        int(payload["chapter_end"]) + 1,
+                    )
+                ]
+            elif task_type == TaskType.NOVEL_VOLUME.value:
+                generation_targets = [
+                    {"artifact_type": "chapter", "artifact_id": str(chapter)}
+                    for chapter in plan.target_chapters
+                ]
+            elif task_type == TaskType.NOVEL_BLUEPRINT.value:
+                generation_targets = [{
+                    "artifact_type": "blueprint",
+                    "artifact_id": str(payload["chapter_number"]),
+                }]
+            elif task_type == TaskType.NOVEL_QUALITY_FIX.value:
+                generation_targets = [{
+                    "artifact_type": "quality",
+                    "artifact_id": str(payload["chapter_number"]),
+                }]
+            else:
+                generation_targets = [{
+                    "artifact_type": "volume_outline",
+                    "artifact_id": str(payload["volume_number"]),
+                }]
             task_ids.append(await get_task_manager().create_task(
                 idea=novel["idea"],
                 novel_type=novel["novel_type"],
@@ -101,6 +141,7 @@ class CreativeGenerationDispatcher:
                 task_payload=payload,
                 max_attempts=get_settings().LONG_FORM_MAX_ATTEMPTS,
                 operation_id=operation_id,
+                generation_targets=generation_targets,
             ))
         return DispatchedGeneration(
             task_id=task_ids[0],
