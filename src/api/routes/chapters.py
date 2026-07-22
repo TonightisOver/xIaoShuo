@@ -317,15 +317,22 @@ async def update_blueprint(
 
 @router.post(
     "/{novel_id}/chapters/{chapter_number}/blueprint/generate",
-    status_code=201,
+    status_code=202,
 )
 async def generate_blueprint(novel_id: str, chapter_number: int, current_user: User = Depends(get_current_user)):
-    """触发 LLM 生成蓝图（不触发章节生成）"""
-    await verify_novel_owner(novel_id, current_user)
+    """触发蓝图生成（URL 保留向后兼容；行为已由同步直写改为投递后台 NOVEL_BLUEPRINT 任务）。
+
+    统一与批量生成路径一致：后台任务产 ArtifactVersion 快照 + version_number 自增。
+    不再同步调 BlueprintService.generate_blueprint(persist=True)。
+    """
+    novel = await verify_novel_owner(novel_id, current_user)
     from sqlalchemy import select
 
     from src.api.models.db_models import Outline
-    from src.api.services.content.blueprint_service import BlueprintService
+    from src.api.services.creative_control.generation_dispatch import (
+        CreativeGenerationDispatcher,
+    )
+    from src.core.creative_control.scope_planner import ScopePlan
     from src.core.database import get_db_session
 
     async with get_db_session() as session:
@@ -337,17 +344,32 @@ async def generate_blueprint(novel_id: str, chapter_number: int, current_user: U
         result = await session.execute(stmt)
         outline = result.scalar_one_or_none()
 
-    chapter_outline = (
+    _ = (
         outline.content
         if outline
         else {"chapter": chapter_number, "title": f"第{chapter_number}章"}
-    )
+    )  # outline 仅用于占位；后台任务自行从 DB 取上下文
 
-    service = BlueprintService()
-    blueprint = await service.generate_blueprint(
-        novel_id, chapter_number, chapter_outline
+    plan = ScopePlan(
+        endpoint="blueprint/generate",
+        payload={"chapter_numbers": [chapter_number]},
+        target_chapters=[chapter_number],
     )
-    return blueprint
+    dispatched = await CreativeGenerationDispatcher().dispatch_scope(
+        novel, current_user.id, plan
+    )
+    return {
+        "status": "generating",
+        "task_id": dispatched.task_id,
+        "task_ids": getattr(dispatched, "task_ids", [dispatched.task_id]),
+        "task_type": dispatched.task_type,
+        "target_chapters": dispatched.target_chapters,
+        "accepted": getattr(dispatched, "accepted", []),
+        "skipped_locked": getattr(dispatched, "skipped_locked", []),
+        "skipped_confirmed": getattr(dispatched, "skipped_confirmed", []),
+        "already_generating": getattr(dispatched, "already_generating", []),
+        "failed_to_enqueue": getattr(dispatched, "failed_to_enqueue", []),
+    }
 
 
 # --- Targeted Rewrite API ---
