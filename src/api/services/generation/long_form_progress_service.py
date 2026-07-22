@@ -7,6 +7,7 @@ from typing import Any
 
 import structlog
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.models.db_models import LongFormProgress, Novel
@@ -48,39 +49,52 @@ class LongFormProgressService:
             List of created progress records as dicts
         """
         async with get_db_session() as session:
-            existing_result = await session.execute(
-                select(LongFormProgress)
-                .where(LongFormProgress.novel_id == novel_id)
-                .with_for_update()
-            )
-            existing_by_volume = {
-                row.volume_number: row
-                for row in existing_result.scalars().all()
-            }
-            records = []
             global_chapter_start = 1
+            pending_rows = []
 
             for vol_num in range(1, total_volumes + 1):
                 chapter_end = global_chapter_start + chapters_per_volume - 1
-                existing = existing_by_volume.get(vol_num)
-                if existing is None:
-                    existing = LongFormProgress(
-                        novel_id=novel_id,
-                        volume_number=vol_num,
-                        status="pending",
-                        chapter_start=global_chapter_start,
-                        chapter_end=chapter_end,
-                        chapters_completed=0,
-                        errors=[],
-                    )
-                    session.add(existing)
-                records.append({
-                    "volume_number": vol_num,
-                    "status": existing.status,
-                    "chapter_start": existing.chapter_start,
-                    "chapter_end": existing.chapter_end,
-                })
+                pending_rows.append(
+                    {
+                        "novel_id": novel_id,
+                        "volume_number": vol_num,
+                        "status": "pending",
+                        "chapter_start": global_chapter_start,
+                        "chapter_end": chapter_end,
+                        "chapters_completed": 0,
+                        "errors": [],
+                    }
+                )
                 global_chapter_start = chapter_end + 1
+
+            if pending_rows:
+                # 空结果上的 SELECT FOR UPDATE 无法阻止两个 worker 同时插入。
+                # 依赖唯一索引，用原子 upsert 让并发初始化安全且不覆盖已完成状态。
+                await session.execute(
+                    pg_insert(LongFormProgress)
+                    .values(pending_rows)
+                    .on_conflict_do_nothing(
+                        index_elements=["novel_id", "volume_number"]
+                    )
+                )
+
+            result = await session.execute(
+                select(LongFormProgress)
+                .where(
+                    LongFormProgress.novel_id == novel_id,
+                    LongFormProgress.volume_number <= total_volumes,
+                )
+                .order_by(LongFormProgress.volume_number)
+            )
+            records = [
+                {
+                    "volume_number": row.volume_number,
+                    "status": row.status,
+                    "chapter_start": row.chapter_start,
+                    "chapter_end": row.chapter_end,
+                }
+                for row in result.scalars().all()
+            ]
 
             logger.info(
                 "long_form_progress_initialized",

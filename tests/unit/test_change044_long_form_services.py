@@ -135,9 +135,17 @@ class TestLongFormProgressService:
         @asynccontextmanager
         async def _ctx():
             session = AsyncMock()
-            session.add = MagicMock()
             result = MagicMock()
-            result.scalars.return_value.all.return_value = []
+            result.scalars.return_value.all.return_value = [
+                _make_lfp(
+                    novel_id=nid,
+                    volume_number=volume_number,
+                    status="pending",
+                    chapter_start=(volume_number - 1) * 20 + 1,
+                    chapter_end=volume_number * 20,
+                )
+                for volume_number in range(1, 4)
+            ]
             session.execute = AsyncMock(return_value=result)
             yield session
 
@@ -167,9 +175,16 @@ class TestLongFormProgressService:
         @asynccontextmanager
         async def _ctx():
             session = AsyncMock()
-            session.add = MagicMock()
             result = MagicMock()
-            result.scalars.return_value.all.return_value = []
+            result.scalars.return_value.all.return_value = [
+                _make_lfp(
+                    novel_id=nid,
+                    volume_number=1,
+                    status="pending",
+                    chapter_start=1,
+                    chapter_end=50,
+                )
+            ]
             session.execute = AsyncMock(return_value=result)
             yield session
 
