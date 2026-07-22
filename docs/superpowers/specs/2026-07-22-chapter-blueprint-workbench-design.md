@@ -60,7 +60,7 @@
 2. 批量生成复用 generate-scope 统一任务（扩展 Intent + dispatcher 按连续区间合并投递 + 逐章明细）。
 3. 工作台独立页面 + CreativeStudio 保留并加第6阶段入口。
 4. 章节索引以 chapter 级 Outline 为主轴合并四源（Outline/ChapterBlueprint/Chapter/Volume）。
-5. 废弃同步直写路径，统一后台路径。
+5. **废弃工作台/路由的同步直写入口**：`POST /chapters/{n}/blueprint/generate` 路由内部改投后台任务（URL 保留）。**正文生成内部 `_get_blueprint`（`chapter_generation_utils.py:89-103`）的同步自动生成（`persist=True`）保持不动**——它是正文生成的同步依赖，改异步会破坏正文生成流程，且不在工作台范围。其版本不自增是既有缝隙，工作台对该章显示「无版本历史」边界（提示用户从工作台重新生成以建立版本）。工作台读版本走 `ArtifactVersion` 表（`record_generated_artifact` 写入，版本语义正确）。
 6. 生成中状态感知：WebSocket 事件 + 轮询兜底（复用 progress_event_bus / useWebSocket）。
 7. contracts.py 新增 `ChapterType`/`BlueprintPacing`/`ForeshadowAction` StrEnum + options 接口（值取自 prompts.py 现有字面量，禁止发明）。
 8. `GenerationScopeIntent` 增 `chapter_numbers: list[int]` 字段，blueprint_only 多章上限 50。
@@ -227,8 +227,9 @@ BLUEPRINT_FIELD_OPTIONS = {
 ### 3. 生成路径统一（修改 `chapters.py` + `scope_planner.py` + `generation_dispatch.py`）
 
 - **废弃同步直写行为**：`POST /api/v1/projects/{novel_id}/chapters/{chapter_number}/blueprint/generate`（`chapters.py:318`）的 URL **保留**（向后兼容），但**内部行为改为投递 `NOVEL_BLUEPRINT` 后台任务**（与 `regenerate` 的 blueprint 分支一致），返回 `{task_id, task_type, status:"generating"}`，**不再同步调 `BlueprintService.generate_blueprint(persist=True)`**。
-  - 即「废弃」的是「同步直写表」这一**行为**，不是删除路由。URL 保留避免破坏调用方，行为由同步变异步。
-  - 旧 `BlueprintService.generate_blueprint(persist=True)` 直写路径保留为内部方法但工作台/路由不再调用（注释标注「已废弃，统一走后台任务」）。`persist=True` 路径的版本不自增问题因不再被路由调用而消除。
+  - 即「废弃」的是「工作台/路由同步直写表」这一**行为**，不是删除路由。URL 保留避免破坏调用方，行为由同步变异步。
+  - **正文生成内部 `_get_blueprint`（`chapter_generation_utils.py:89-103`）的同步自动生成（`persist=True`）保持不动**——它是正文生成的同步依赖，改异步会破坏正文生成流程，且不在工作台范围。其版本不自增是既有缝隙：工作台对该章显示「无版本历史」边界，提示用户从工作台重新生成以建立版本。本设计不触碰正文生成核心路径。
+  - 旧 `BlueprintService.generate_blueprint(persist=True)` 方法保留（`_get_blueprint` 仍调用），但工作台/路由不再调用。
   - 不删除 `BlueprintService.generate_blueprint`（`generate_blueprint_background` 内部仍以 `persist=False` 调用）。
 - **`GenerationScopeIntent` 增字段**：`chapter_numbers: list[int] | None = None`。
 - **`GenerationScopePlanner.plan` 扩展 blueprint_only**：
