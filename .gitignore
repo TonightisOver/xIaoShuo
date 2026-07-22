@@ -74,3 +74,6 @@ frontend/dist/
 # Local deployment transfer artifacts
 .codex-deploy-*
 .codex_tmp_ed25519*
+
+# Local isolated development worktrees
+/.worktrees/
