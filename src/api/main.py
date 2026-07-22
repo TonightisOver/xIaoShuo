@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from src.api.routes import (
     auth_router,
+    blueprint_workbench_router,
     book_import_router,
     careers_router,
     chapter_analysis_router,
@@ -215,6 +216,7 @@ app.include_router(novels_router)
 app.include_router(tasks_router)
 app.include_router(projects_router)
 app.include_router(book_import_router)
+app.include_router(blueprint_workbench_router)
 app.include_router(careers_router)
 app.include_router(characters_router)
 app.include_router(chapters_router)

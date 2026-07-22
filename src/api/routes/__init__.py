@@ -1,6 +1,7 @@
 """路由模块"""
 
 from .auth import router as auth_router
+from .blueprint_workbench import router as blueprint_workbench_router
 from .book_import import router as book_import_router
 from .careers import router as careers_router
 from .chapter_analysis import router as chapter_analysis_router
@@ -31,6 +32,7 @@ __all__ = [
     "auth_router",
     "novels_router", "tasks_router", "health_router", "projects_router", "volumes_router", "chapters_router", "ws_router", "characters_router", "world_router",
     "book_import_router", "conversations_router", "careers_router",
+    "blueprint_workbench_router",
     "style_router", "outlines_router",
     "storylines_router", "knowledge_graph_router", "story_bible_router",
     "export_router", "outline_sync_router", "reader_simulation_router",
