@@ -1,4 +1,5 @@
 import uuid
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy import select, text
@@ -656,3 +657,174 @@ async def test_stale_attempt_cannot_write_after_new_worker_claims_task():
             "1",
             generation_meta={"source": "stale_worker"},
         )
+
+
+@pytest.mark.asyncio
+async def test_blueprint_background_generation_produces_version_snapshot():
+    """单章蓝图走后台任务路径后产 ArtifactVersion 快照 + version_number 自增。
+
+    不绑 generation fence（worker_id=None），避免 LeaseLost；mock task_manager 与
+    BlueprintService.generate_blueprint（避免真实 LLM 调用）。
+
+    偏差：record_generated_artifact 对 blueprint 类型要求 ChapterBlueprint active 行
+    已存在（save_in_session 读取/更新该行），而 generate_blueprint(persist=False) 不
+    写该行。故 seed 预建 ChapterBlueprint 行以走通版本快照路径（模拟"已有蓝图、重新生成
+    覆盖"场景）。详见计划偏差清单。
+    """
+    novel_id = await _seed()
+    from src.api.services.content.blueprint_service import BlueprintService
+    from src.api.services.generation.creative_control_tasks import (
+        generate_blueprint_background,
+    )
+    from src.api.models.db_models import ChapterBlueprint
+
+    async with get_db_session() as session:
+        session.add(Outline(
+            novel_id=novel_id, level="chapter", volume_number=1,
+            chapter_number=1, content={"chapter": 1, "title": "第一章"},
+            status="draft",
+        ))
+        await session.execute(text(
+            "INSERT INTO artifact_controls "
+            "(novel_id, artifact_type, artifact_id, control_status, version, stage) "
+            "VALUES (:n, 'blueprint', '1', 'draft', 1, 6) "
+            "ON CONFLICT DO NOTHING"
+        ), {"n": novel_id})
+        session.add(ChapterBlueprint(
+            novel_id=novel_id, chapter_number=1, chapter_type="main_advance",
+            plot_goal="旧", hook_design="", foreshadow_actions=[],
+            cliffhanger="", pacing_target="medium", key_characters=[],
+            word_target=3000, is_active=True,
+        ))
+
+    fake_bp = {
+        "chapter_type": "climax", "plot_goal": "x", "hook_design": "",
+        "foreshadow_actions": [], "cliffhanger": "", "pacing_target": "fast",
+        "key_characters": [], "word_target": 3000,
+    }
+    fake_tm = MagicMock()
+    fake_tm.update_status = AsyncMock()
+    fake_tm.get_task = AsyncMock(return_value={"operation_id": "op-bp-1"})
+    fake_tm.complete_task = AsyncMock()
+    fake_tm.fail_task = AsyncMock()
+    with (
+        patch.object(BlueprintService, "generate_blueprint",
+                     new=AsyncMock(return_value=dict(fake_bp))),
+        patch("src.api.services.generation.creative_control_tasks.get_task_manager",
+              return_value=fake_tm),
+    ):
+        await generate_blueprint_background("task-bp-1", novel_id, 1, worker_id=None)
+
+    async with get_db_session() as session:
+        versions = list((await session.execute(
+            select(ArtifactVersion).where(
+                ArtifactVersion.novel_id == novel_id,
+                ArtifactVersion.artifact_type == "blueprint",
+                ArtifactVersion.artifact_id == "1",
+            )
+        )).scalars().all())
+    assert len(versions) >= 1
+    active = [v for v in versions if v.is_active]
+    assert len(active) == 1  # 不变量1：单活版本
+    assert active[0].version_number == max(v.version_number for v in versions)  # 不变量2：新版本自增
+    assert active[0].source == "generation"
+
+
+@pytest.mark.asyncio
+async def test_blueprint_regenerate_keeps_history_versions():
+    """重新生成不破坏历史版本（历史 ArtifactVersion 仍在）。"""
+    novel_id = await _seed()
+    from src.api.services.content.blueprint_service import BlueprintService
+    from src.api.services.generation.creative_control_tasks import (
+        generate_blueprint_background,
+    )
+    from src.api.models.db_models import ChapterBlueprint
+
+    async with get_db_session() as session:
+        await session.execute(text(
+            "INSERT INTO artifact_controls "
+            "(novel_id, artifact_type, artifact_id, control_status, version, stage) "
+            "VALUES (:n, 'blueprint', '1', 'generated', 1, 6) "
+            "ON CONFLICT DO NOTHING"
+        ), {"n": novel_id})
+        session.add(Outline(
+            novel_id=novel_id, level="chapter", volume_number=1,
+            chapter_number=1, content={"chapter": 1}, status="draft",
+        ))
+        session.add(ChapterBlueprint(
+            novel_id=novel_id, chapter_number=1, chapter_type="main_advance",
+            plot_goal="旧", hook_design="", foreshadow_actions=[],
+            cliffhanger="", pacing_target="medium", key_characters=[],
+            word_target=3000, is_active=True,
+        ))
+        session.add(ArtifactVersion(
+            novel_id=novel_id, artifact_type="blueprint", artifact_id="1",
+            version_number=1, content_snapshot={"plot_goal": "旧"},
+            source="manual", is_active=True,
+        ))
+
+    fake_tm = MagicMock()
+    fake_tm.update_status = AsyncMock()
+    fake_tm.get_task = AsyncMock(return_value={"operation_id": "op-bp-2"})
+    fake_tm.complete_task = AsyncMock()
+    fake_tm.fail_task = AsyncMock()
+    with (
+        patch.object(BlueprintService, "generate_blueprint",
+                     new=AsyncMock(return_value={
+                         "chapter_type": "main_advance", "plot_goal": "新", "hook_design": "",
+                         "foreshadow_actions": [], "cliffhanger": "", "pacing_target": "medium",
+                         "key_characters": [], "word_target": 3000,
+                     })),
+        patch("src.api.services.generation.creative_control_tasks.get_task_manager",
+              return_value=fake_tm),
+    ):
+        await generate_blueprint_background("task-bp-2", novel_id, 1, worker_id=None)
+
+    async with get_db_session() as session:
+        versions = list((await session.execute(
+            select(ArtifactVersion).where(
+                ArtifactVersion.novel_id == novel_id,
+                ArtifactVersion.artifact_type == "blueprint",
+                ArtifactVersion.artifact_id == "1",
+            )
+        )).scalars().all())
+    version_numbers = sorted(v.version_number for v in versions)
+    assert 1 in version_numbers  # 历史版本仍在（不破坏历史）
+    assert version_numbers[-1] >= 2  # 新版本自增
+    active = [v for v in versions if v.is_active]
+    assert len(active) == 1  # 单活
+    assert active[0].version_number == version_numbers[-1]
+
+
+@pytest.mark.asyncio
+async def test_blueprint_batch_generate_skips_locked_and_confirmed():
+    """批量蓝图生成 respect_locked/skip_confirmed 按 blueprint 类型 control 过滤。"""
+    novel_id = await _seed()
+    async with get_db_session() as session:
+        # ch1 locked, ch2 approved(confirmed), ch3 可生成
+        session.add(ArtifactControl(
+            novel_id=novel_id, artifact_type="blueprint", artifact_id="1",
+            control_status="locked", version=1, stage=6, locked=True,
+        ))
+        session.add(ArtifactControl(
+            novel_id=novel_id, artifact_type="blueprint", artifact_id="2",
+            control_status="approved", version=1, stage=6,
+        ))
+        for c in (1, 2, 3):
+            session.add(Outline(
+                novel_id=novel_id, level="chapter", volume_number=1,
+                chapter_number=c, content={"chapter": c}, status="draft",
+            ))
+
+    from src.core.creative_control.scope_planner import (
+        GenerationScopeIntent, GenerationScopePlanner,
+    )
+    planner = GenerationScopePlanner()
+    intent = GenerationScopeIntent(
+        novel_id=novel_id, mode="blueprint_only", chapter_numbers=[1, 2, 3],
+        respect_locked=True, skip_confirmed=True,
+    )
+    plan = await planner.plan(intent)
+    assert 3 in plan.target_chapters
+    assert 1 in plan.skipped_locked
+    assert 2 in plan.skipped_confirmed
