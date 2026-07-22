@@ -126,6 +126,13 @@ class NovelManager:
 
     async def update_novel(self, novel_id: str, **kwargs) -> bool:
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                assert_generation_write_allowed_in_session,
+            )
+
+            await assert_generation_write_allowed_in_session(
+                session, novel_id, "novel", novel_id
+            )
             result = await session.execute(
                 select(Novel).where(Novel.novel_id == novel_id)
             )

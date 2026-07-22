@@ -207,14 +207,14 @@ async def generate_novel_background(
 
     except Exception as e:
         logger.exception("novel_generation_failed", task_id=task_id)
-        await task_manager.fail_task(task_id, str(e), worker_id=worker_id)
-        await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
         if novel_id:
             try:
                 from src.api.services.content.novel_manager import get_novel_manager
                 await get_novel_manager().update_novel(novel_id, status="failed")
             except Exception as ne:
                 logger.error("failed_to_update_novel_status", novel_id=novel_id, error=str(ne))
+        await task_manager.fail_task(task_id, str(e), worker_id=worker_id)
+        await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
     finally:
         _clear_trace(_trace_token)
 
@@ -551,14 +551,14 @@ async def generate_novel_full_background(
 
     except Exception as e:
         logger.exception("full_generation_failed", task_id=task_id)
-        await task_manager.fail_task(task_id, str(e), worker_id=worker_id)
-        await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
         if novel_id:
             try:
                 from src.api.services.content.novel_manager import get_novel_manager
                 await get_novel_manager().update_novel(novel_id, status="failed")
             except Exception as ne:
                 logger.error("failed_to_update_novel_status", novel_id=novel_id, error=str(ne))
+        await task_manager.fail_task(task_id, str(e), worker_id=worker_id)
+        await _emit_progress(task_id, EventType.ERROR, {"error": str(e)})
 
 
 async def _run_sub_feature(

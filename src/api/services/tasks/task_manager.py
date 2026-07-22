@@ -101,7 +101,7 @@ def _is_waiting_review_task(task: Task) -> bool:
 
 
 def _task_control_targets(task: Task) -> list[dict[str, Any]]:
-    payload = task.task_payload or {}
+    payload = getattr(task, "task_payload", None) or {}
     raw = payload.get("control_targets")
     if isinstance(raw, list):
         return [target for target in raw if isinstance(target, dict)]
@@ -1262,7 +1262,11 @@ class TaskManager:
                 task.status == "failed"
                 and cp.status == "failed"
                 and bool(cp.recoverable)
-                and cp.failure_category in {"recoverable", "needs_human"}
+                and cp.failure_category in {
+                    "recoverable",
+                    "needs_human",
+                    "side_effect_retryable",
+                }
             )
             paused_retry = (
                 cp.status == "paused"

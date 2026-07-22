@@ -37,6 +37,29 @@ class ConversationService:
 
     async def create_conversation(self, novel_id: str, topic: str) -> int:
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                assert_generation_write_allowed_in_session,
+                has_generation_fence,
+            )
+
+            await assert_generation_write_allowed_in_session(
+                session, novel_id, "conversation", topic
+            )
+            if has_generation_fence():
+                existing = (
+                    await session.execute(
+                        select(Conversation)
+                        .where(
+                            Conversation.novel_id == novel_id,
+                            Conversation.topic == topic,
+                        )
+                        .order_by(Conversation.created_at.desc())
+                        .limit(1)
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                if existing is not None:
+                    return existing.id
             conv = Conversation(
                 novel_id=novel_id,
                 topic=topic,
@@ -288,22 +311,41 @@ class ConversationService:
 
         # Save the AI-to-AI message
         async with get_db_session() as session:
-            user_msg = Message(
-                conversation_id=conv_id,
-                role="user",
-                content="请审阅当前小说设定并给出建议",
-                created_at=datetime.now(UTC),
+            from src.core.creative_control.control_service import (
+                assert_generation_write_allowed_in_session,
+                has_generation_fence,
             )
-            session.add(user_msg)
-            await session.flush()
-            ai_msg = Message(
-                conversation_id=conv_id,
-                role="assistant",
-                content=ai_content,
-                created_at=datetime.now(UTC),
+
+            await assert_generation_write_allowed_in_session(
+                session, novel_id, "conversation", str(conv_id)
             )
-            session.add(ai_msg)
-            await session.flush()
+            existing_message = None
+            if has_generation_fence():
+                existing_message = (
+                    await session.execute(
+                        select(Message.id)
+                        .where(Message.conversation_id == conv_id)
+                        .limit(1)
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+            if existing_message is None:
+                user_msg = Message(
+                    conversation_id=conv_id,
+                    role="user",
+                    content="请审阅当前小说设定并给出建议",
+                    created_at=datetime.now(UTC),
+                )
+                session.add(user_msg)
+                await session.flush()
+                ai_msg = Message(
+                    conversation_id=conv_id,
+                    role="assistant",
+                    content=ai_content,
+                    created_at=datetime.now(UTC),
+                )
+                session.add(ai_msg)
+                await session.flush()
 
         return {
             "conversation_id": conv_id,

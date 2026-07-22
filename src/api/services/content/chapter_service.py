@@ -642,6 +642,13 @@ class ChapterService:
         volumes = await svc.list_volumes(novel_id)
         fixed = 0
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                assert_generation_write_allowed_in_session,
+            )
+
+            await assert_generation_write_allowed_in_session(
+                session, novel_id, "chapter", "volume_number_backfill"
+            )
             for vol in volumes:
                 ch_start = vol.get("chapter_start")
                 ch_end = vol.get("chapter_end")

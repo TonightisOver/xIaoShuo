@@ -32,6 +32,31 @@ class StorylineService:
 
     async def create_storyline(self, novel_id: str, **kwargs) -> int:
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                assert_generation_write_allowed_in_session,
+                has_generation_fence,
+            )
+
+            await assert_generation_write_allowed_in_session(
+                session, novel_id, "storyline", str(kwargs.get("name") or "new")
+            )
+            if has_generation_fence() and kwargs.get("name"):
+                existing = (
+                    await session.execute(
+                        select(Storyline)
+                        .where(
+                            Storyline.novel_id == novel_id,
+                            Storyline.name == kwargs["name"],
+                        )
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                if existing is not None:
+                    for key, value in kwargs.items():
+                        if hasattr(existing, key) and value is not None:
+                            setattr(existing, key, value)
+                    existing.updated_at = datetime.now(UTC)
+                    return existing.id
             sl = Storyline(novel_id=novel_id, **kwargs,
                            updated_at=datetime.now(UTC))
             session.add(sl)
@@ -78,6 +103,35 @@ class StorylineService:
 
     async def create_character_arc(self, novel_id: str, **kwargs) -> int:
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                assert_generation_write_allowed_in_session,
+                has_generation_fence,
+            )
+
+            await assert_generation_write_allowed_in_session(
+                session,
+                novel_id,
+                "character_arc",
+                str(kwargs.get("character_id") or "new"),
+            )
+            if has_generation_fence() and kwargs.get("character_id") is not None:
+                existing = (
+                    await session.execute(
+                        select(CharacterArc)
+                        .where(
+                            CharacterArc.novel_id == novel_id,
+                            CharacterArc.character_id == kwargs["character_id"],
+                            CharacterArc.arc_type == kwargs.get("arc_type"),
+                        )
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                if existing is not None:
+                    for key, value in kwargs.items():
+                        if hasattr(existing, key) and value is not None:
+                            setattr(existing, key, value)
+                    existing.updated_at = datetime.now(UTC)
+                    return existing.id
             arc = CharacterArc(novel_id=novel_id, **kwargs,
                                updated_at=datetime.now(UTC))
             session.add(arc)
@@ -124,6 +178,31 @@ class StorylineService:
 
     async def create_scene(self, novel_id: str, **kwargs) -> int:
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                assert_generation_write_allowed_in_session,
+                has_generation_fence,
+            )
+
+            await assert_generation_write_allowed_in_session(
+                session, novel_id, "scene", str(kwargs.get("name") or "new")
+            )
+            if has_generation_fence() and kwargs.get("name"):
+                existing = (
+                    await session.execute(
+                        select(Scene)
+                        .where(
+                            Scene.novel_id == novel_id,
+                            Scene.name == kwargs["name"],
+                        )
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                if existing is not None:
+                    for key, value in kwargs.items():
+                        if hasattr(existing, key) and value is not None:
+                            setattr(existing, key, value)
+                    existing.updated_at = datetime.now(UTC)
+                    return existing.id
             scene = Scene(novel_id=novel_id, **kwargs,
                           updated_at=datetime.now(UTC))
             session.add(scene)

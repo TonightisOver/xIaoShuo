@@ -274,6 +274,26 @@ async def test_retry_unrecoverable_returns_409(novel_task):
 
 
 @pytest.mark.asyncio
+async def test_retry_accepts_retryable_side_effect_failure(novel_task):
+    from src.api.services.tasks.task_manager import TaskManager
+
+    novel_id, task_id = novel_task
+    await _insert_task(task_id, novel_id, status="failed", queue_state="idle")
+    await _insert_checkpoint(
+        task_id,
+        novel_id,
+        status="failed",
+        failure_category="side_effect_retryable",
+    )
+
+    result = await TaskManager().retry_task(task_id)
+    assert result.requeued is True
+    task = await _read_task(task_id)
+    assert task["status"] == "pending"
+    assert task["queue_state"] == "queued"
+
+
+@pytest.mark.asyncio
 async def test_retry_no_checkpoint_returns_404(novel_task):
     """无 checkpoint（短篇）→ reason='no_checkpoint'。"""
     from src.api.services.tasks.task_manager import TaskManager

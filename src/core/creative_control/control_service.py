@@ -77,6 +77,24 @@ def has_generation_fence() -> bool:
     return _CURRENT_GENERATION_TASK.get() is not None
 
 
+def current_generation_task_id() -> str | None:
+    fence = _CURRENT_GENERATION_TASK.get()
+    return fence.task_id if fence is not None else None
+
+
+async def assert_generation_write_allowed_in_session(
+    session,
+    novel_id: str,
+    artifact_type: str,
+    artifact_id: str,
+) -> None:
+    """若当前协程属于后台生成任务，在业务写事务内执行统一 fence 校验。"""
+    if has_generation_fence():
+        await CreativeControlService().assert_generation_allowed_in_session(
+            session, novel_id, artifact_type, artifact_id
+        )
+
+
 def _row_to_dict(row: Any) -> dict[str, Any]:
     return {
         "novel_id": row.novel_id,

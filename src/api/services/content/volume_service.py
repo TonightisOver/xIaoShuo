@@ -53,6 +53,33 @@ class VolumeService:
                             chapter_end: int | None = None) -> int:
         """创建新卷"""
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                assert_generation_write_allowed_in_session,
+                has_generation_fence,
+            )
+
+            await assert_generation_write_allowed_in_session(
+                session, novel_id, "volume_outline", str(volume_number)
+            )
+            if has_generation_fence():
+                existing = (
+                    await session.execute(
+                        select(Volume)
+                        .where(
+                            Volume.novel_id == novel_id,
+                            Volume.volume_number == volume_number,
+                        )
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                if existing is not None:
+                    existing.title = title
+                    existing.summary = summary
+                    existing.outline = outline
+                    existing.chapter_start = chapter_start
+                    existing.chapter_end = chapter_end
+                    existing.updated_at = datetime.now(UTC)
+                    return existing.id
             vol = Volume(novel_id=novel_id, volume_number=volume_number,
                          title=title, summary=summary, outline=outline,
                          chapter_start=chapter_start, chapter_end=chapter_end,

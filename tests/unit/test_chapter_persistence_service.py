@@ -363,8 +363,8 @@ class TestPersistLanggraphResult:
         mock_char_svc.create_character.assert_awaited_once()
         # volume 创建 1 次
         assert mock_volume_svc.create_volume.call_count == 1
-        # 章节写入 2 次（delete + add 循环 2 次）
-        assert session.execute.call_count == 3  # 世界观锁检查 + 2 次 delete
+        # 每章在同一事务内执行 control fence + 章节行锁查询。
+        assert session.execute.call_count == 4
         assert session.add.call_count == 2
         # 版本创建 2 次（每章 content 都创建版本）
         assert mock_manager.create_chapter_version.call_count == 2

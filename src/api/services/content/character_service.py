@@ -26,6 +26,31 @@ class CharacterService:
 
     async def create_character(self, novel_id: str, **kwargs) -> int:
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                assert_generation_write_allowed_in_session,
+                has_generation_fence,
+            )
+
+            await assert_generation_write_allowed_in_session(
+                session, novel_id, "character", str(kwargs.get("name") or "new")
+            )
+            if has_generation_fence() and kwargs.get("name"):
+                existing = (
+                    await session.execute(
+                        select(Character)
+                        .where(
+                            Character.novel_id == novel_id,
+                            Character.name == kwargs["name"],
+                        )
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                if existing is not None:
+                    for key, value in kwargs.items():
+                        if hasattr(existing, key) and value is not None:
+                            setattr(existing, key, value)
+                    existing.updated_at = datetime.now(UTC)
+                    return existing.id
             char = Character(novel_id=novel_id, **kwargs,
                              updated_at=datetime.now(UTC))
             session.add(char)
@@ -49,6 +74,13 @@ class CharacterService:
 
     async def update_character(self, novel_id: str, char_id: int, **kwargs) -> bool:
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                assert_generation_write_allowed_in_session,
+            )
+
+            await assert_generation_write_allowed_in_session(
+                session, novel_id, "character", str(char_id)
+            )
             result = await session.execute(
                 select(Character).where(
                     Character.id == char_id,

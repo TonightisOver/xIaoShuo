@@ -33,6 +33,13 @@ class WorldService:
 
     async def upsert_world_setting(self, novel_id: str, **kwargs) -> None:
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                assert_generation_write_allowed_in_session,
+            )
+
+            await assert_generation_write_allowed_in_session(
+                session, novel_id, "world", novel_id
+            )
             result = await session.execute(
                 select(WorldSetting).where(WorldSetting.novel_id == novel_id)
             )
@@ -60,6 +67,30 @@ class WorldService:
                                   description: str | None = None,
                                   levels: list | None = None) -> int:
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                assert_generation_write_allowed_in_session,
+                has_generation_fence,
+            )
+
+            await assert_generation_write_allowed_in_session(
+                session, novel_id, "power_system", name
+            )
+            if has_generation_fence():
+                existing = (
+                    await session.execute(
+                        select(PowerSystem)
+                        .where(
+                            PowerSystem.novel_id == novel_id,
+                            PowerSystem.name == name,
+                        )
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                if existing is not None:
+                    existing.description = description
+                    existing.levels = levels or []
+                    existing.updated_at = datetime.now(UTC)
+                    return existing.id
             ps = PowerSystem(novel_id=novel_id, name=name,
                              description=description, levels=levels or [],
                              updated_at=datetime.now(UTC))

@@ -77,6 +77,13 @@ class OutlineService:
 
     async def upsert_master_outline(self, novel_id: str, content: dict) -> None:
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                assert_generation_write_allowed_in_session,
+            )
+
+            await assert_generation_write_allowed_in_session(
+                session, novel_id, "master_outline", novel_id
+            )
             result = await session.execute(
                 select(Outline).where(
                     Outline.novel_id == novel_id,
@@ -124,6 +131,13 @@ class OutlineService:
 
     async def upsert_volume_outline(self, novel_id: str, volume_number: int, content: dict) -> None:
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                assert_generation_write_allowed_in_session,
+            )
+
+            await assert_generation_write_allowed_in_session(
+                session, novel_id, "volume_outline", str(volume_number)
+            )
             result = await session.execute(
                 select(Outline).where(and_(
                     Outline.novel_id == novel_id,
@@ -146,6 +160,13 @@ class OutlineService:
     async def upsert_chapter_outline(self, novel_id: str, volume_number: int,
                                      chapter_number: int, content: dict) -> None:
         async with get_db_session() as session:
+            from src.core.creative_control.control_service import (
+                assert_generation_write_allowed_in_session,
+            )
+
+            await assert_generation_write_allowed_in_session(
+                session, novel_id, "chapter_outline", str(chapter_number)
+            )
             result = await session.execute(
                 select(Outline).where(and_(
                     Outline.novel_id == novel_id,

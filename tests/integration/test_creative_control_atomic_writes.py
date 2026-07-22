@@ -605,3 +605,20 @@ async def test_stale_attempt_cannot_write_after_new_worker_claims_task():
             expected_active_version=1,
             selected_version=1,
         )
+
+    from src.api.services.content.world_service import get_world_service
+
+    with pytest.raises(LeaseLost):
+        await get_world_service().create_power_system(
+            novel_id, "旧 worker 的力量体系"
+        )
+
+    from src.api.services.generation.chapter_persistence_service import (
+        persist_langgraph_result,
+    )
+
+    with pytest.raises(LeaseLost):
+        await persist_langgraph_result(
+            novel_id,
+            {"chapters": [{"chapter": 1, "content": "旧 worker 覆盖"}]},
+        )
