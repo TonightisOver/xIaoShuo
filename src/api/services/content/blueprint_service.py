@@ -3,7 +3,7 @@
 import json
 
 import structlog
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from src.api.models.db_models import (
     ChapterBlueprint,
@@ -78,42 +78,22 @@ class BlueprintService:
         if not persist:
             return blueprint_data
 
-        async with get_db_session() as session:
-            from src.core.creative_control.control_service import (
-                CreativeControlService,
-            )
+        from src.api.services.creative_control.artifact_write_service import (
+            CreativeArtifactWriteService,
+        )
 
-            await CreativeControlService().assert_generation_allowed_in_session(
-                session,
-                novel_id,
-                "blueprint",
-                str(chapter_number),
-            )
-            await session.execute(
-                update(ChapterBlueprint)
-                .where(
-                    ChapterBlueprint.novel_id == novel_id,
-                    ChapterBlueprint.chapter_number == chapter_number,
-                    ChapterBlueprint.is_active == True,  # noqa: E712
-                )
-                .values(is_active=False)
-            )
-
-            new_bp = ChapterBlueprint(
-                novel_id=novel_id,
-                chapter_number=chapter_number,
-                chapter_type=blueprint_data.get("chapter_type", "main_advance"),
-                plot_goal=blueprint_data.get("plot_goal", ""),
-                hook_design=blueprint_data.get("hook_design", ""),
-                foreshadow_actions=blueprint_data.get("foreshadow_actions"),
-                cliffhanger=blueprint_data.get("cliffhanger", ""),
-                pacing_target=blueprint_data.get("pacing_target", "medium"),
-                key_characters=blueprint_data.get("key_characters"),
-                word_target=blueprint_data.get("word_target", 3000),
-                rewrite_actions=None,
-                is_active=True,
-            )
-            session.add(new_bp)
+        operation_id = f"sync-blueprint:{novel_id}:{chapter_number}"
+        await CreativeArtifactWriteService().record_generated_artifact(
+            novel_id=novel_id,
+            artifact_type="blueprint",
+            artifact_id=str(chapter_number),
+            content=blueprint_data,
+            task_id=operation_id,
+            operation_id=operation_id,
+            model=None,
+            record_control=True,
+            generation_meta={"source": "synchronous_dependency"},
+        )
 
         logger.info(
             "blueprint_generated",

@@ -21,7 +21,7 @@
     <div class="flex-1 overflow-auto">
       <div v-if="loading" class="p-8 text-center text-ink-400 text-sm">加载中...</div>
       <div v-else-if="!summaries.length" class="p-8 text-center text-ink-400 text-sm">
-        全书尚无章节大纲
+        {{ hasActiveFilters ? '没有符合筛选条件的章节' : '全书尚无章节大纲' }}
       </div>
       <ul v-else data-chapter-list>
         <li v-for="item in summaries" :key="item.chapter_number"
@@ -87,7 +87,11 @@ const volumes = computed(() => {
 })
 
 const totalPages = computed(() => Math.max(1, Math.ceil(props.total / props.pageSize)))
+const hasActiveFilters = computed(() => (
+  volFilter.value != null || statusFilter.value != null || searchQuery.value.trim() !== ''
+))
 const statuses = [
+  { value: 'draft', label: '草稿' },
   { value: 'not_generated', label: '未生成' },
   { value: 'generated', label: '已生成' },
   { value: 'edited', label: '已编辑' },
@@ -103,6 +107,7 @@ function statusLabel(s) {
 }
 function statusClass(s) {
   const m = {
+    draft: 'bg-ink-100 text-ink-600',
     not_generated: 'bg-ink-100 text-ink-500', generated: 'bg-blue-100 text-blue-700',
     edited: 'bg-amber-100 text-amber-700', confirmed: 'bg-green-100 text-green-700',
     locked: 'bg-vermilion-100 text-vermilion-700', stale: 'bg-gray-200 text-gray-600',

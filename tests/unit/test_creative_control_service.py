@@ -66,6 +66,26 @@ def _session_with_control_row(row, *, downstream_rows=None):
 
 
 # ---------------------------------------------------------------------------
+# read-only lookup
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_missing_control_is_read_only():
+    fake_session, session = _session_with_control_row(None)
+    service = CreativeControlService()
+    with patch(
+        "src.core.creative_control.control_service.get_db_session",
+        new=fake_session,
+    ):
+        result = await service.get("novel-1", "blueprint", "8")
+
+    assert result is None
+    session.add.assert_not_called()
+    session.flush.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
 # assert_writable
 # ---------------------------------------------------------------------------
 

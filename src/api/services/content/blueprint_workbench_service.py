@@ -105,7 +105,10 @@ class BlueprintWorkbenchService:
                 title = content.get("title") if isinstance(content, dict) else None
 
             if search:
-                if title is None or search not in title:
+                query = search.strip().casefold()
+                title_matches = title is not None and query in title.casefold()
+                chapter_matches = query in str(c)
+                if not title_matches and not chapter_matches:
                     continue
 
             has_blueprint = bp is not None
@@ -124,6 +127,7 @@ class BlueprintWorkbenchService:
                 "has_chapter": ch is not None,
                 "blueprint_version": getattr(bp, "version_number", None) if bp else None,
                 "control_status": control_status,
+                "control_version": getattr(ctrl, "version", None) if ctrl else None,
                 "locked": bool(getattr(ctrl, "locked", False)) if ctrl else False,
                 "quality_status": getattr(ch, "quality_status", None) if ch else None,
                 "updated_at": getattr(bp, "updated_at", None) if bp else None,
@@ -232,8 +236,8 @@ class BlueprintWorkbenchService:
         return await BlueprintService().get_blueprint(novel_id, chapter_number)
 
     async def _get_control_dict(self, novel_id: str, chapter_number: int) -> dict | None:
-        return await CreativeControlService().get_or_create(
-            novel_id, "blueprint", str(chapter_number), stage=6
+        return await CreativeControlService().get(
+            novel_id, "blueprint", str(chapter_number)
         )
 
     async def _get_versions_list(self, novel_id: str, chapter_number: int) -> list[dict]:

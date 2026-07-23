@@ -21,4 +21,27 @@ describe('BlueprintBatchToolbar', () => {
     await wrapper.find('[data-batch-generate]').trigger('click')
     expect(wrapper.emitted('preview-generate')).toBeTruthy()
   })
+
+  it('没有选中章节时禁用全部批量按钮', () => {
+    const wrapper = mount(BlueprintBatchToolbar, { props: { selectedSet: new Set() } })
+    for (const button of wrapper.findAll('button')) {
+      expect(button.attributes('disabled')).toBeDefined()
+    }
+  })
+
+  it('展示批量控制逐章成功与冲突结果', () => {
+    const wrapper = mount(BlueprintBatchToolbar, {
+      props: {
+        selectedSet: new Set([1, 2]),
+        batchResult: {
+          results: [
+            { chapter_number: 1, status: 'ok', version: 3 },
+            { chapter_number: 2, status: 'conflict', current_version: 4 },
+          ],
+        },
+      },
+    })
+    expect(wrapper.text()).toContain('第1章 → 成功')
+    expect(wrapper.text()).toContain('第2章 → 版本冲突（当前 v4）')
+  })
 })

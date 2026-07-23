@@ -7,10 +7,20 @@
             class="flex items-center gap-2 text-sm">
           <button @click="$emit('compare', v.version_number)"
                   class="text-vermilion-600 text-xs">对比</button>
+          <button v-if="!v.is_active"
+                  @click="$emit('select-rollback', v.version_number)"
+                  :data-select-rollback="v.version_number"
+                  class="text-vermilion-600 text-xs">回退到此版本</button>
           <span>v{{ v.version_number }}</span>
           <span class="text-ink-400 text-xs">{{ v.source }}</span>
         </li>
       </ul>
+      <p v-if="!versions.length" class="text-sm text-ink-400 mb-4">
+        尚无可回退的版本记录。重新生成或保存一次后将建立版本历史。
+      </p>
+      <p v-if="impactLoading" class="text-sm text-ink-400 mb-4">
+        正在加载回退影响范围...
+      </p>
 
       <!-- 字段对比表 -->
       <table v-if="compareResult" class="w-full text-xs mb-4" data-compare-table>
@@ -28,7 +38,11 @@
       <!-- 回退确认 -->
       <div v-if="targetVersion" class="p-3 rounded bg-vermilion-50 text-sm" data-rollback-confirm>
         <p>确认回退到 v{{ targetVersion }}？</p>
-        <button @click="onRollback" class="btn-primary text-xs mt-2">确认回退</button>
+        <p v-if="impact" class="text-xs text-ink-500 mt-1">
+          直接影响 {{ impact.direct_downstream?.length || 0 }} 项，
+          全部影响 {{ impact.full_downstream?.length || 0 }} 项
+        </p>
+        <button @click="onRollback" data-confirm-rollback class="btn-primary text-xs mt-2">确认回退</button>
         <button @click="$emit('close')" class="btn-secondary text-xs mt-2 ml-2">取消</button>
       </div>
 
@@ -44,8 +58,9 @@ const props = defineProps({
   compareResult: { type: Object, default: null },
   targetVersion: { type: [Number, null], default: null },
   impact: { type: Object, default: null },
+  impactLoading: { type: Boolean, default: false },
 })
-const emit = defineEmits(['compare', 'rollback', 'close'])
+const emit = defineEmits(['compare', 'select-rollback', 'rollback', 'close'])
 function onRollback() { emit('rollback', props.targetVersion) }
 function format(v) {
   if (Array.isArray(v) || (typeof v === 'object' && v !== null)) return JSON.stringify(v)

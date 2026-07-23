@@ -115,6 +115,25 @@ class CreativeControlService:
 
     # ------------------------------------------------------------------ read
 
+    async def get(
+        self,
+        novel_id: str,
+        artifact_type: str,
+        artifact_id: str,
+    ) -> dict[str, Any] | None:
+        """只读获取 control；不存在时返回 None，不创建记录。"""
+        ArtifactControl, _ = _orm()  # noqa: N806
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(ArtifactControl).where(
+                    ArtifactControl.novel_id == novel_id,
+                    ArtifactControl.artifact_type == artifact_type,
+                    ArtifactControl.artifact_id == artifact_id,
+                )
+            )
+            row = result.scalar_one_or_none()
+            return _row_to_dict(row) if row is not None else None
+
     async def get_or_create(
         self,
         novel_id: str,
@@ -278,47 +297,20 @@ class CreativeControlService:
         - 任何异常被吞，返回 None（插桩不破坏生成，遵循 gate.py "never throw" 不变量）。
         """
         try:
-            ArtifactControl, OperationLog = _orm()  # noqa: N806
             async with get_db_session() as session:
-                if has_generation_fence():
-                    await self.assert_generation_allowed_in_session(
-                        session, novel_id, artifact_type, artifact_id,
-                        force=force,
-                    )
-                row = await self._select_for_update(
-                    session, novel_id, artifact_type, artifact_id
+                return await self.record_generated_in_session(
+                    session,
+                    novel_id,
+                    artifact_type,
+                    artifact_id,
+                    generation_meta=generation_meta,
+                    operator_id=operator_id,
+                    task_id=task_id,
+                    operation_id=operation_id,
+                    respect_locked=respect_locked,
+                    force=force,
+                    awaiting_review=awaiting_review,
                 )
-                if row is None:
-                    row = ArtifactControl(
-                        novel_id=novel_id,
-                        artifact_type=artifact_type,
-                        artifact_id=artifact_id,
-                        control_status="generating",
-                        version=0,
-                        stage=stage_of(artifact_type) or 1,
-                    )
-                    session.add(row)
-                    await session.flush()
-                if respect_locked and row.locked and not force:
-                    return {
-                        "novel_id": novel_id, "artifact_type": artifact_type,
-                        "artifact_id": artifact_id, "skipped_locked": True,
-                        "version": row.version,
-                    }
-                # generating -> generated（宽松转换，允许从任意非终态进入）
-                row.control_status = "generated"
-                row.version += 1
-                row.generation_meta = generation_meta
-                row.awaiting_review = awaiting_review
-                row.updated_at = datetime.now(UTC)
-                session.add(OperationLog(
-                    novel_id=novel_id, artifact_type=artifact_type,
-                    artifact_id=artifact_id, action="generate",
-                    from_version=row.version - 1, to_version=row.version,
-                    operator_id=operator_id, task_id=task_id, operation_id=operation_id,
-                ))
-                await session.flush()
-                return _row_to_dict(row)
         except LeaseLost:
             raise
         except Exception:  # noqa: BLE001 - 插桩不破坏生成
@@ -328,6 +320,68 @@ class CreativeControlService:
                 artifact_id=artifact_id,
             )
             return None
+
+    async def record_generated_in_session(
+        self,
+        session,
+        novel_id: str,
+        artifact_type: str,
+        artifact_id: str,
+        *,
+        generation_meta: dict | None = None,
+        operator_id: int | None = None,
+        task_id: str | None = None,
+        operation_id: str | None = None,
+        respect_locked: bool = True,
+        force: bool = False,
+        awaiting_review: bool = False,
+    ) -> dict[str, Any]:
+        """在调用方事务内记录生成完成；异常交由调用方处理。"""
+        ArtifactControl, OperationLog = _orm()  # noqa: N806
+        if has_generation_fence():
+            await self.assert_generation_allowed_in_session(
+                session, novel_id, artifact_type, artifact_id, force=force
+            )
+        row = await self._select_for_update(
+            session, novel_id, artifact_type, artifact_id
+        )
+        if row is None:
+            row = ArtifactControl(
+                novel_id=novel_id,
+                artifact_type=artifact_type,
+                artifact_id=artifact_id,
+                control_status="generating",
+                version=0,
+                stage=stage_of(artifact_type) or 1,
+            )
+            session.add(row)
+            await session.flush()
+        if respect_locked and row.locked and not force:
+            return {
+                "novel_id": novel_id,
+                "artifact_type": artifact_type,
+                "artifact_id": artifact_id,
+                "skipped_locked": True,
+                "version": row.version,
+            }
+        row.control_status = "generated"
+        row.version += 1
+        row.generation_meta = generation_meta
+        row.awaiting_review = awaiting_review
+        row.updated_at = datetime.now(UTC)
+        session.add(OperationLog(
+            novel_id=novel_id,
+            artifact_type=artifact_type,
+            artifact_id=artifact_id,
+            action="generate",
+            from_version=row.version - 1,
+            to_version=row.version,
+            operator_id=operator_id,
+            task_id=task_id,
+            operation_id=operation_id,
+        ))
+        await session.flush()
+        return _row_to_dict(row)
 
     # -------------------------------------------------------- assert_writable (人工编辑严格校验)
 

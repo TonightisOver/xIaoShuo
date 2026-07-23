@@ -246,6 +246,11 @@ class ArtifactAdapterRegistry:
             row.content = content
             return dict(row.content or {})
         elif artifact_type == "blueprint":
+            fields = {
+                "chapter_type", "plot_goal", "hook_design",
+                "foreshadow_actions", "cliffhanger", "pacing_target",
+                "key_characters", "word_target",
+            }
             row = (
                 await session.execute(
                     select(ChapterBlueprint)
@@ -258,12 +263,13 @@ class ArtifactAdapterRegistry:
                 )
             ).scalar_one_or_none()
             if row is None:
-                raise ValueError(f"artifact not found: blueprint/{artifact_id}")
-            fields = {
-                "chapter_type", "plot_goal", "hook_design",
-                "foreshadow_actions", "cliffhanger", "pacing_target",
-                "key_characters", "word_target",
-            }
+                row = ChapterBlueprint(
+                    novel_id=novel_id,
+                    chapter_number=int(artifact_id),
+                    is_active=True,
+                    **{field: content[field] for field in fields if field in content},
+                )
+                session.add(row)
         else:
             raise ValueError(f"unsupported writable artifact type: {artifact_type}")
 

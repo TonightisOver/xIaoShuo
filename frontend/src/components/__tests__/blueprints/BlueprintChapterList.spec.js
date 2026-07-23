@@ -16,6 +16,7 @@ describe('BlueprintChapterList', () => {
     })
     const items = wrapper.findAll('[data-chapter-list] li')
     expect(items.length).toBe(2)
+    expect(wrapper.find('[data-status="draft"]').text()).toContain('草稿')
     expect(wrapper.find('[data-status="not_generated"]').text()).toContain('未生成')
   })
 
@@ -38,5 +39,15 @@ describe('BlueprintChapterList', () => {
     await wrapper.find('[data-status-filter]').setValue('locked')
     await wrapper.find('[data-status-filter]').trigger('change')
     expect(wrapper.emitted('filter-change')[0][0].status).toBe('locked')
+  })
+
+  it('筛选无结果时显示筛选空状态而不是全书无大纲', async () => {
+    const wrapper = mount(BlueprintChapterList, {
+      props: { summaries: [], statusCounts: {}, loading: false, selectedChapter: null, selectedSet: new Set(), page: 1, pageSize: 50, total: 0 },
+    })
+    await wrapper.find('[data-search-input]').setValue('20')
+    await wrapper.find('button').trigger('click')
+    expect(wrapper.text()).toContain('没有符合筛选条件的章节')
+    expect(wrapper.text()).not.toContain('全书尚无章节大纲')
   })
 })

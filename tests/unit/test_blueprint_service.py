@@ -87,6 +87,10 @@ class TestGenerateBlueprint:
         ctx_factory, session = _fake_session()
         mock_client = AsyncMock()
         mock_client.generate = AsyncMock(return_value=VALID_BLUEPRINT_JSON)
+        writes = MagicMock()
+        writes.return_value.record_generated_artifact = AsyncMock(return_value=1)
+        controls = MagicMock()
+        controls.return_value.record_generated = AsyncMock(return_value={"version": 1})
 
         svc = BlueprintService()
         chapter_outline = {"plot": "Hero fights", "key_characters": ["hero"]}
@@ -100,6 +104,14 @@ class TestGenerateBlueprint:
                 "kg_context": "",
                 "volume_context": "",
             }),
+            patch(
+                "src.api.services.creative_control.artifact_write_service.CreativeArtifactWriteService",
+                writes,
+            ),
+            patch(
+                "src.core.creative_control.control_service.CreativeControlService",
+                controls,
+            ),
         ):
             result = await svc.generate_blueprint(_novel_id(), 1, chapter_outline)
 
@@ -116,6 +128,10 @@ class TestGenerateBlueprint:
         ctx_factory, session = _fake_session()
         mock_client = AsyncMock()
         mock_client.generate = AsyncMock(return_value="not valid json {{{")
+        writes = MagicMock()
+        writes.return_value.record_generated_artifact = AsyncMock(return_value=1)
+        controls = MagicMock()
+        controls.return_value.record_generated = AsyncMock(return_value={"version": 1})
 
         svc = BlueprintService()
         chapter_outline = {"plot": "Hero fights", "key_characters": ["hero"]}
@@ -129,6 +145,14 @@ class TestGenerateBlueprint:
                 "kg_context": "",
                 "volume_context": "",
             }),
+            patch(
+                "src.api.services.creative_control.artifact_write_service.CreativeArtifactWriteService",
+                writes,
+            ),
+            patch(
+                "src.core.creative_control.control_service.CreativeControlService",
+                controls,
+            ),
         ):
             result = await svc.generate_blueprint(_novel_id(), 1, chapter_outline)
 
@@ -136,6 +160,38 @@ class TestGenerateBlueprint:
         assert result["chapter_type"] == "main_advance"
         assert result["plot_goal"] == "Hero fights"
         assert result["word_target"] == 3000
+
+    @pytest.mark.asyncio
+    async def test_persisted_generation_records_version_and_control(self):
+        from src.api.services.content.blueprint_service import BlueprintService
+
+        ctx_factory, _ = _fake_session()
+        mock_client = AsyncMock()
+        mock_client.generate = AsyncMock(return_value=VALID_BLUEPRINT_JSON)
+        writes = MagicMock()
+        writes.return_value.record_generated_artifact = AsyncMock(return_value=1)
+        novel_id = _novel_id()
+        svc = BlueprintService()
+
+        with (
+            patch("src.api.services.content.blueprint_service.get_db_session", ctx_factory),
+            patch("src.api.services.content.blueprint_service.get_llm_client", return_value=mock_client),
+            patch.object(svc, "_build_context", new_callable=AsyncMock, return_value={
+                "previous_chapter": "", "story_bible": "", "kg_context": "", "volume_context": "",
+            }),
+            patch(
+                "src.api.services.creative_control.artifact_write_service.CreativeArtifactWriteService",
+                writes,
+            ),
+        ):
+            await svc.generate_blueprint(novel_id, 4, {"plot": "x"}, persist=True)
+
+        writes.return_value.record_generated_artifact.assert_awaited_once()
+        call = writes.return_value.record_generated_artifact.await_args
+        assert call.kwargs["record_control"] is True
+        assert call.kwargs["generation_meta"] == {
+            "source": "synchronous_dependency"
+        }
 
 
 # ===========================================================================

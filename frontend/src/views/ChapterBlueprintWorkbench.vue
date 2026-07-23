@@ -33,7 +33,7 @@
           @select="onSelect"
           @filter-change="onFilter"
           @page-change="onPage"
-          @selection-change="wb.selectedSet.value = $event"
+          @selection-change="onSelectionChange"
         />
         <!-- 中栏 -->
         <div class="border-x border-ink-200">
@@ -78,9 +78,11 @@
       :compare-result="compareResult"
       :target-version="targetVersion"
       :impact="versionImpact"
+      :impact-loading="versionImpactLoading"
       @compare="onCompare"
+      @select-rollback="onSelectRollback"
       @rollback="onRollback"
-      @close="showVersionDialog = false"
+      @close="closeVersionDialog"
     />
   </div>
 </template>
@@ -109,11 +111,14 @@ const versions = ref([])
 const compareResult = ref(null)
 const targetVersion = ref(null)
 const versionImpact = ref(null)
+const versionImpactLoading = ref(false)
 const showVersionDialog = ref(false)
+const selectedVersions = ref(new Map())
 
 const dirty = wb.dirty
 const showSwitchPrompt = ref(false)
 let pendingChapter = null
+let contextRequestSeq = 0
 
 onMounted(async () => {
   await wb.fetchOptions()
@@ -122,6 +127,17 @@ onMounted(async () => {
 
 async function onFilter(f) { await wb.fetchSummaries({ ...f, page: 1 }) }
 async function onPage(p) { await wb.fetchSummaries({ page: p }) }
+function onSelectionChange(next) {
+  for (const chapter of [...selectedVersions.value.keys()]) {
+    if (!next.has(chapter)) selectedVersions.value.delete(chapter)
+  }
+  for (const item of wb.summaries.value) {
+    if (next.has(item.chapter_number)) {
+      selectedVersions.value.set(item.chapter_number, item.control_version ?? 0)
+    }
+  }
+  wb.selectedSet.value = next
+}
 
 async function onSelect(ch) {
   if (dirty.value) {
@@ -129,12 +145,16 @@ async function onSelect(ch) {
     pendingChapter = ch
     return
   }
+  resetChapterContext()
   await wb.fetchWorkspace(ch)
 }
 function confirmSwitch() {
   showSwitchPrompt.value = false
   dirty.value = false
-  if (pendingChapter) wb.fetchWorkspace(pendingChapter)
+  if (pendingChapter) {
+    resetChapterContext()
+    wb.fetchWorkspace(pendingChapter)
+  }
   pendingChapter = null
 }
 function cancelSwitch() { showSwitchPrompt.value = false; pendingChapter = null }
@@ -175,26 +195,50 @@ async function onBatchGenerate() {
 }
 async function onBatch(action) {
   const chs = [...wb.selectedSet.value]
-  batchResult.value = await wb.batchControl(action, chs)
+  const expectedVersions = Object.fromEntries(
+    chs.map(chapter => [String(chapter), selectedVersions.value.get(chapter) ?? 0]),
+  )
+  batchResult.value = await wb.batchControl(action, chs, expectedVersions)
   await wb.fetchSummaries({ page: wb.page.value })
+}
+
+function resetChapterContext() {
+  contextRequestSeq += 1
+  impact.value = null
+  versions.value = []
+  compareResult.value = null
+  targetVersion.value = null
+  versionImpact.value = null
+  versionImpactLoading.value = false
+  showVersionDialog.value = false
 }
 
 async function onLoadImpact() {
   if (!wb.selectedChapter.value) return
-  impact.value = await control.getImpact('blueprint', String(wb.selectedChapter.value))
+  const chapter = wb.selectedChapter.value
+  const seq = contextRequestSeq
+  const result = await control.getImpact('blueprint', String(chapter))
+  if (seq === contextRequestSeq && chapter === wb.selectedChapter.value) {
+    impact.value = result
+  }
 }
 async function onImpactChoice() { /* 复用 CreativeStudio 逻辑，简化：刷新 */ await onLoadImpact() }
 
 async function loadVersions() {
   if (!wb.selectedChapter.value) return
-  versions.value = await control.listVersions('blueprint', String(wb.selectedChapter.value))
+  const chapter = wb.selectedChapter.value
+  const seq = contextRequestSeq
+  const result = await control.listVersions('blueprint', String(chapter))
+  if (seq === contextRequestSeq && chapter === wb.selectedChapter.value) {
+    versions.value = result
+  }
 }
 // 打开版本对话框时自动加载版本列表
 watch(showVersionDialog, (v) => { if (v) loadVersions() })
 
 async function onCompare(b) {
   if (!wb.selectedChapter.value) return
-  const a = versions.value[0]?.version_number
+  const a = versions.value.find(version => version.is_active)?.version_number
   if (!a) return
   // useCreativeControl 未封装 compareVersions，直接调用后端比较端点
   try {
@@ -203,15 +247,48 @@ async function onCompare(b) {
       { headers: { ...authHeaders() } },
     )
     if (!res.ok) throw new Error('比较失败')
-    compareResult.value = await res.json()
+    const result = await res.json()
+    const current = result.a?.content_snapshot || {}
+    const target = result.b?.content_snapshot || {}
+    const keys = [...new Set([...Object.keys(target), ...Object.keys(current)])]
+    const changed = new Set(result.changed || [])
+    compareResult.value = {
+      fields: keys.map(field => ({
+        field,
+        old: target[field],
+        new: current[field],
+        changed: changed.has(field),
+      })),
+    }
   } catch { compareResult.value = null }
 }
+async function onSelectRollback(v) {
+  const chapter = wb.selectedChapter.value
+  const seq = contextRequestSeq
+  targetVersion.value = null
+  versionImpact.value = null
+  versionImpactLoading.value = true
+  try {
+    const result = await control.getImpact('blueprint', String(chapter))
+    if (seq === contextRequestSeq && chapter === wb.selectedChapter.value) {
+      versionImpact.value = result
+      targetVersion.value = v
+    }
+  } finally {
+    if (seq === contextRequestSeq) versionImpactLoading.value = false
+  }
+}
 async function onRollback(v) {
-  targetVersion.value = v
-  versionImpact.value = await control.getImpact('blueprint', String(wb.selectedChapter.value))
   const ev = wb.workspace.value?.control?.version ?? 0
   await control.rollback('blueprint', String(wb.selectedChapter.value), v, ev)
-  showVersionDialog.value = false
+  closeVersionDialog()
   await onRefresh()
+}
+function closeVersionDialog() {
+  showVersionDialog.value = false
+  compareResult.value = null
+  targetVersion.value = null
+  versionImpact.value = null
+  versionImpactLoading.value = false
 }
 </script>

@@ -164,6 +164,61 @@ async def test_list_summaries_status_counts():
 
 
 @pytest.mark.asyncio
+async def test_list_summaries_search_matches_chapter_number():
+    svc = BlueprintWorkbenchService()
+    with (
+        patch.object(svc, "_load_chapter_outlines", new=AsyncMock(return_value=[
+            _row(chapter_number=20, volume_number=1, content={"title": "终局"}),
+        ])),
+        patch.object(svc, "_load_active_blueprints", new=AsyncMock(return_value={})),
+        patch.object(svc, "_load_chapters", new=AsyncMock(return_value={})),
+        patch.object(svc, "_load_volumes", new=AsyncMock(return_value=[])),
+        patch.object(svc, "_load_blueprint_controls", new=AsyncMock(return_value={})),
+        patch.object(svc, "_load_generating_chapters", new=AsyncMock(return_value=set())),
+    ):
+        result = await svc.list_chapter_summaries("novel-1", search="20")
+
+    assert [item["chapter_number"] for item in result["items"]] == [20]
+
+
+@pytest.mark.asyncio
+async def test_list_summaries_exposes_control_version_for_batch_writes():
+    svc = BlueprintWorkbenchService()
+    control = _row(control_status="generated", locked=False, version=7)
+    with (
+        patch.object(svc, "_load_chapter_outlines", new=AsyncMock(return_value=[
+            _row(chapter_number=3, volume_number=1, content={"title": "第三章"}),
+        ])),
+        patch.object(svc, "_load_active_blueprints", new=AsyncMock(return_value={
+            3: _row(chapter_number=3, version_number=1, updated_at="t"),
+        })),
+        patch.object(svc, "_load_chapters", new=AsyncMock(return_value={})),
+        patch.object(svc, "_load_volumes", new=AsyncMock(return_value=[])),
+        patch.object(svc, "_load_blueprint_controls", new=AsyncMock(return_value={3: control})),
+        patch.object(svc, "_load_generating_chapters", new=AsyncMock(return_value=set())),
+    ):
+        result = await svc.list_chapter_summaries("novel-1")
+
+    assert result["items"][0]["control_version"] == 7
+
+
+@pytest.mark.asyncio
+async def test_workspace_control_lookup_is_read_only():
+    svc = BlueprintWorkbenchService()
+    with patch(
+        "src.api.services.content.blueprint_workbench_service.CreativeControlService"
+    ) as control_cls:
+        control_cls.return_value.get = AsyncMock(return_value=None)
+        result = await svc._get_control_dict("novel-1", 8)
+
+    assert result is None
+    control_cls.return_value.get.assert_awaited_once_with(
+        "novel-1", "blueprint", "8"
+    )
+    control_cls.return_value.get_or_create.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_get_workspace_aggregates_all_fields():
     svc = BlueprintWorkbenchService()
     with (

@@ -191,6 +191,8 @@ class CreativeArtifactWriteService:
         task_id: str,
         operation_id: str,
         model: str | None = None,
+        record_control: bool = False,
+        generation_meta: dict[str, Any] | None = None,
     ) -> int:
         """原子写入结构化生成结果并创建新的活跃版本快照。"""
         if artifact_type not in {"volume_outline", "blueprint"}:
@@ -205,7 +207,7 @@ class CreativeArtifactWriteService:
             saved_content = await self._adapters.save_in_session(
                 session, novel_id, artifact_type, artifact_id, content
             )
-            return await self._snapshot_in_session(
+            artifact_version = await self._snapshot_in_session(
                 session,
                 novel_id,
                 artifact_type,
@@ -217,6 +219,17 @@ class CreativeArtifactWriteService:
                 operation_id=operation_id,
                 model=model,
             )
+            if record_control:
+                await self._controls.record_generated_in_session(
+                    session,
+                    novel_id,
+                    artifact_type,
+                    artifact_id,
+                    generation_meta=generation_meta,
+                    task_id=task_id,
+                    operation_id=operation_id,
+                )
+            return artifact_version
 
     async def _snapshot_in_session(
         self,
@@ -281,9 +294,14 @@ class CreativeArtifactWriteService:
         ).scalars().all())
         if existing:
             return
-        baseline = await self._adapters.load_in_session(
-            session, novel_id, artifact_type, artifact_id
-        )
+        try:
+            baseline = await self._adapters.load_in_session(
+                session, novel_id, artifact_type, artifact_id
+            )
+        except ValueError as exc:
+            if str(exc).startswith("artifact not found:"):
+                return
+            raise
         session.add(ArtifactVersion(
             novel_id=novel_id,
             artifact_type=artifact_type,
