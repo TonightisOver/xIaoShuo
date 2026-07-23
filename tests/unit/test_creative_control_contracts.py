@@ -126,6 +126,11 @@ def test_locked_requires_explicit_confirmation_not_auto_from_generated():
     assert ControlStatus.LOCKED in legal_transitions(ControlStatus.APPROVED)
 
 
+def test_approved_can_be_edited_again_but_locked_cannot():
+    assert ControlStatus.EDITED in legal_transitions(ControlStatus.APPROVED)
+    assert ControlStatus.EDITED not in legal_transitions(ControlStatus.LOCKED)
+
+
 def test_any_status_can_go_stale():
     for status in ControlStatus:
         assert ControlStatus.STALE in legal_transitions(status), status

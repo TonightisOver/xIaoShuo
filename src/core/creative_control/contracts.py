@@ -130,7 +130,7 @@ _TRANSITIONS: dict[ControlStatus, frozenset[ControlStatus]] = {
         {ControlStatus.APPROVED, ControlStatus.GENERATING}
     ),
     ControlStatus.APPROVED: frozenset(
-        {ControlStatus.LOCKED, ControlStatus.GENERATING}
+        {ControlStatus.EDITED, ControlStatus.LOCKED, ControlStatus.GENERATING}
     ),
     ControlStatus.LOCKED: frozenset({ControlStatus.GENERATING}),
     ControlStatus.STALE: frozenset(
