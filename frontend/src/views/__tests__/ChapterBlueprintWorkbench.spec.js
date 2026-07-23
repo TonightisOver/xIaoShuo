@@ -112,6 +112,192 @@ describe('ChapterBlueprintWorkbench', () => {
     expect(JSON.parse(request[1].body).expected_versions).toEqual({ 1: 5 })
   })
 
+  it('批量操作后保留当前筛选条件', async () => {
+    const fetchMock = makeFetch([
+      { match: /\/blueprints\/options$/, body: { chapter_type: [], pacing_target: [], foreshadow_action: [] } },
+      { match: /\/blueprints\?/, body: { items: [{ chapter_number: 20, control_status: 'generated', control_version: 1, has_blueprint: true, title: '第二十章' }], total: 1, page: 1, page_size: 50, status_counts: {} } },
+      { match: /\/creative-control\/batch$/, method: 'POST', body: { action: 'approve', results: [{ chapter_number: 20, status: 'ok', version: 2 }] } },
+    ])
+    vi.stubGlobal('fetch', fetchMock)
+    const router = makeRouter()
+    await router.push(`/novels/${NOVEL_ID}/blueprints`)
+    await router.isReady()
+    const wrapper = mount(ChapterBlueprintWorkbench, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.get('input[placeholder="搜索章号/标题"]').setValue('20')
+    await wrapper.findAll('button').find(button => button.text() === '筛选').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-batch-checkbox="20"]').trigger('click')
+    await wrapper.get('[data-batch-confirm]').trigger('click')
+    await flushPromises()
+
+    const listRequests = fetchMock.mock.calls.filter(([url]) => url.includes('/blueprints?'))
+    expect(listRequests.at(-1)[0]).toContain('search=20')
+  })
+
+  it('连续批量操作使用上一操作返回的新版本', async () => {
+    let batchCall = 0
+    const fetchMock = vi.fn(async (url, opts = {}) => {
+      if (url.endsWith('/blueprints/options')) {
+        return { ok: true, status: 200, json: async () => ({ chapter_type: [], pacing_target: [], foreshadow_action: [] }), text: async () => '{}' }
+      }
+      if (url.includes('/blueprints?')) {
+        const body = { items: [{ chapter_number: 1, control_status: 'generated', control_version: 5, has_blueprint: true }], total: 1, page: 1, page_size: 50, status_counts: {} }
+        return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) }
+      }
+      if (url.endsWith('/creative-control/batch')) {
+        batchCall += 1
+        const body = { action: batchCall === 1 ? 'approve' : 'lock', results: [{ chapter_number: 1, status: 'ok', version: batchCall === 1 ? 6 : 7 }] }
+        return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) }
+      }
+      return { ok: false, status: 404, json: async () => ({}), text: async () => '' }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const router = makeRouter()
+    await router.push(`/novels/${NOVEL_ID}/blueprints`)
+    await router.isReady()
+    const wrapper = mount(ChapterBlueprintWorkbench, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.get('[data-batch-checkbox="1"]').trigger('click')
+    await wrapper.get('[data-batch-confirm]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-batch-lock]').trigger('click')
+    await flushPromises()
+
+    const requests = fetchMock.mock.calls.filter(([url, opts = {}]) =>
+      url.endsWith('/creative-control/batch') && opts.method === 'POST'
+    )
+    expect(JSON.parse(requests[1][1].body).expected_versions).toEqual({ 1: 6 })
+  })
+
+  it('批量冲突后使用服务端当前版本重试', async () => {
+    let batchCall = 0
+    const fetchMock = vi.fn(async (url, opts = {}) => {
+      if (url.endsWith('/blueprints/options')) {
+        return { ok: true, status: 200, json: async () => ({ chapter_type: [], pacing_target: [], foreshadow_action: [] }), text: async () => '{}' }
+      }
+      if (url.includes('/blueprints?')) {
+        const body = { items: [{ chapter_number: 1, control_status: 'generated', control_version: 5, has_blueprint: true }], total: 1, page: 1, page_size: 50, status_counts: {} }
+        return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) }
+      }
+      if (url.endsWith('/creative-control/batch')) {
+        batchCall += 1
+        const body = batchCall === 1
+          ? { action: 'approve', results: [{ chapter_number: 1, status: 'conflict', current_version: 6 }] }
+          : { action: 'approve', results: [{ chapter_number: 1, status: 'ok', version: 7 }] }
+        return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) }
+      }
+      return { ok: false, status: 404, json: async () => ({}), text: async () => '' }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const router = makeRouter()
+    await router.push(`/novels/${NOVEL_ID}/blueprints`)
+    await router.isReady()
+    const wrapper = mount(ChapterBlueprintWorkbench, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.get('[data-batch-checkbox="1"]').trigger('click')
+    await wrapper.get('[data-batch-confirm]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-batch-confirm]').trigger('click')
+    await flushPromises()
+
+    const requests = fetchMock.mock.calls.filter(([url, opts = {}]) =>
+      url.endsWith('/creative-control/batch') && opts.method === 'POST'
+    )
+    expect(JSON.parse(requests[1][1].body).expected_versions).toEqual({ 1: 6 })
+  })
+
+  it('批量操作进行中忽略重复点击', async () => {
+    let resolveBatch
+    const pendingBatch = new Promise(resolve => { resolveBatch = resolve })
+    const fetchMock = vi.fn(async (url, opts = {}) => {
+      if (url.endsWith('/blueprints/options')) {
+        return { ok: true, status: 200, json: async () => ({ chapter_type: [], pacing_target: [], foreshadow_action: [] }), text: async () => '{}' }
+      }
+      if (url.includes('/blueprints?')) {
+        const body = { items: [{ chapter_number: 1, control_status: 'generated', control_version: 5, has_blueprint: true }], total: 1, page: 1, page_size: 50, status_counts: {} }
+        return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) }
+      }
+      if (url.endsWith('/creative-control/batch')) {
+        await pendingBatch
+        const body = { action: 'approve', results: [{ chapter_number: 1, status: 'ok', version: 6 }] }
+        return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) }
+      }
+      return { ok: false, status: 404, json: async () => ({}), text: async () => '' }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const router = makeRouter()
+    await router.push(`/novels/${NOVEL_ID}/blueprints`)
+    await router.isReady()
+    const wrapper = mount(ChapterBlueprintWorkbench, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.get('[data-batch-checkbox="1"]').trigger('click')
+    const firstClick = wrapper.get('[data-batch-confirm]').trigger('click')
+    const secondClick = wrapper.get('[data-batch-confirm]').trigger('click')
+    await Promise.resolve()
+
+    const pendingRequests = fetchMock.mock.calls.filter(([url, opts = {}]) =>
+      url.endsWith('/creative-control/batch') && opts.method === 'POST'
+    )
+    expect(pendingRequests).toHaveLength(1)
+    resolveBatch()
+    await Promise.all([firstClick, secondClick])
+    await flushPromises()
+  })
+
+  it('批量操作后同步当前章节控制状态', async () => {
+    vi.stubGlobal('fetch', makeFetch([
+      { match: /\/blueprints\/options$/, body: { chapter_type: [], pacing_target: [], foreshadow_action: [] } },
+      { match: /\/blueprints\?/, body: { items: [{ chapter_number: 1, control_status: 'generated', control_version: 5, has_blueprint: true }], total: 1, page: 1, page_size: 50, status_counts: {} } },
+      { match: /\/blueprints\/1\/workspace$/, body: { blueprint: { plot_goal: '一' }, control: { version: 5, control_status: 'generated', locked: false }, available_characters: [] } },
+      { match: /\/creative-control\/batch$/, method: 'POST', body: { action: 'approve', results: [{ chapter_number: 1, status: 'ok', version: 6 }] } },
+    ]))
+    const router = makeRouter()
+    await router.push(`/novels/${NOVEL_ID}/blueprints`)
+    await router.isReady()
+    const wrapper = mount(ChapterBlueprintWorkbench, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.findAll('[data-chapter-list] li')[0].trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-field-plot_goal]').setValue('未保存修改')
+    await wrapper.get('[data-batch-checkbox="1"]').trigger('click')
+    await wrapper.get('[data-batch-confirm]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('版本 6')
+    expect(wrapper.text()).toContain('approved')
+    expect(wrapper.get('[data-field-plot_goal]').element.value).toBe('未保存修改')
+  })
+
+  it('当前章节批量冲突时不提升带草稿的工作区版本', async () => {
+    vi.stubGlobal('fetch', makeFetch([
+      { match: /\/blueprints\/options$/, body: { chapter_type: [], pacing_target: [], foreshadow_action: [] } },
+      { match: /\/blueprints\?/, body: { items: [{ chapter_number: 1, control_status: 'generated', control_version: 5, has_blueprint: true }], total: 1, page: 1, page_size: 50, status_counts: {} } },
+      { match: /\/blueprints\/1\/workspace$/, body: { blueprint: { plot_goal: '一' }, control: { version: 5, control_status: 'generated', locked: false }, available_characters: [] } },
+      { match: /\/creative-control\/batch$/, method: 'POST', body: { action: 'approve', results: [{ chapter_number: 1, status: 'conflict', current_version: 6 }] } },
+    ]))
+    const router = makeRouter()
+    await router.push(`/novels/${NOVEL_ID}/blueprints`)
+    await router.isReady()
+    const wrapper = mount(ChapterBlueprintWorkbench, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.findAll('[data-chapter-list] li')[0].trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-field-plot_goal]').setValue('未保存修改')
+    await wrapper.get('[data-batch-checkbox="1"]').trigger('click')
+    await wrapper.get('[data-batch-confirm]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('版本 5')
+    expect(wrapper.get('[data-field-plot_goal]').element.value).toBe('未保存修改')
+  })
+
   it('切换章节时清除上一章影响预览', async () => {
     vi.stubGlobal('fetch', makeFetch([
       { match: /\/blueprints\/options$/, body: { chapter_type: [], pacing_target: [], foreshadow_action: [] } },

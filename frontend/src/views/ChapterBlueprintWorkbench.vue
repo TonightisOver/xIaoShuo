@@ -114,19 +114,26 @@ const versionImpact = ref(null)
 const versionImpactLoading = ref(false)
 const showVersionDialog = ref(false)
 const selectedVersions = ref(new Map())
+const activeFilters = ref({})
 
 const dirty = wb.dirty
 const showSwitchPrompt = ref(false)
 let pendingChapter = null
 let contextRequestSeq = 0
+let batchControlInFlight = false
 
 onMounted(async () => {
   await wb.fetchOptions()
   await wb.fetchSummaries({ page: 1 })
 })
 
-async function onFilter(f) { await wb.fetchSummaries({ ...f, page: 1 }) }
-async function onPage(p) { await wb.fetchSummaries({ page: p }) }
+async function onFilter(f) {
+  activeFilters.value = { ...f }
+  await wb.fetchSummaries({ ...activeFilters.value, page: 1 })
+}
+async function onPage(p) {
+  await wb.fetchSummaries({ ...activeFilters.value, page: p })
+}
 function onSelectionChange(next) {
   for (const chapter of [...selectedVersions.value.keys()]) {
     if (!next.has(chapter)) selectedVersions.value.delete(chapter)
@@ -168,7 +175,7 @@ function onRefresh() { if (wb.selectedChapter.value) wb.fetchWorkspace(wb.select
 
 async function onGenerateSingle(ch) {
   await control.regenerate('blueprint', String(ch), wb.workspace.value?.control?.version ?? 0)
-  await wb.fetchSummaries({ page: wb.page.value })
+  await wb.fetchSummaries({ ...activeFilters.value, page: wb.page.value })
 }
 
 async function onControl(action) {
@@ -191,15 +198,44 @@ async function onPreviewGenerate() {
 async function onBatchGenerate() {
   const chs = [...wb.selectedSet.value]
   batchResult.value = await wb.batchGenerate(chs)
-  await wb.fetchSummaries({ page: wb.page.value })
+  await wb.fetchSummaries({ ...activeFilters.value, page: wb.page.value })
 }
 async function onBatch(action) {
-  const chs = [...wb.selectedSet.value]
-  const expectedVersions = Object.fromEntries(
-    chs.map(chapter => [String(chapter), selectedVersions.value.get(chapter) ?? 0]),
-  )
-  batchResult.value = await wb.batchControl(action, chs, expectedVersions)
-  await wb.fetchSummaries({ page: wb.page.value })
+  if (batchControlInFlight) return
+  batchControlInFlight = true
+  try {
+    const chs = [...wb.selectedSet.value]
+    const expectedVersions = Object.fromEntries(
+      chs.map(chapter => [String(chapter), selectedVersions.value.get(chapter) ?? 0]),
+    )
+    batchResult.value = await wb.batchControl(action, chs, expectedVersions)
+    for (const result of batchResult.value.results || []) {
+      if (result.status === 'ok') {
+        selectedVersions.value.set(result.chapter_number, result.version)
+      } else if (result.status === 'conflict' && result.current_version != null) {
+        selectedVersions.value.set(result.chapter_number, result.current_version)
+      }
+    }
+    const currentResult = (batchResult.value.results || []).find(
+      result => result.chapter_number === wb.selectedChapter.value
+        && result.status === 'ok',
+    )
+    if (currentResult && wb.workspace.value?.control) {
+      const nextControl = {
+        ...wb.workspace.value.control,
+        version: currentResult.version,
+      }
+      nextControl.control_status = action === 'lock' ? 'locked' : 'approved'
+      nextControl.locked = action === 'lock'
+      wb.workspace.value = {
+        ...wb.workspace.value,
+        control: nextControl,
+      }
+    }
+    await wb.fetchSummaries({ ...activeFilters.value, page: wb.page.value })
+  } finally {
+    batchControlInFlight = false
+  }
 }
 
 function resetChapterContext() {
