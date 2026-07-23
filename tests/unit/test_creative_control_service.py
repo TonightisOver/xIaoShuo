@@ -273,6 +273,40 @@ async def test_lock_on_approved_succeeds_and_bumps_version():
 
 
 @pytest.mark.asyncio
+async def test_unlock_on_locked_returns_to_approved():
+    row = _control_row(control_status="locked", locked=True, version=1)
+    fake_session, _ = _session_with_control_row(row)
+    service = CreativeControlService()
+    with patch(
+        "src.core.creative_control.control_service.get_db_session",
+        new=fake_session,
+    ):
+        new_version = await service.unlock(
+            "novel-1", "world", "w1", expected_version=1
+        )
+    assert new_version == 2
+    assert row.control_status == "approved"
+    assert row.locked is False
+
+
+@pytest.mark.asyncio
+async def test_approve_on_locked_remains_rejected():
+    row = _control_row(control_status="locked", locked=True, version=1)
+    fake_session, _ = _session_with_control_row(row)
+    service = CreativeControlService()
+    with patch(
+        "src.core.creative_control.control_service.get_db_session",
+        new=fake_session,
+    ):
+        with pytest.raises(ValueError):
+            await service.approve(
+                "novel-1", "world", "w1", expected_version=1
+            )
+    assert row.control_status == "locked"
+    assert row.locked is True
+
+
+@pytest.mark.asyncio
 async def test_approve_from_generated_bumps_version():
     row = _control_row(control_status="generated", version=1)
     fake_session, session = _session_with_control_row(row)

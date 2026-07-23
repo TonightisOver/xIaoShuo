@@ -661,7 +661,16 @@ class CreativeControlService:
         """在已持有行锁的 session 内做状态转移 + version+1 + op log。"""
         _, OperationLog = _orm()  # noqa: N806
         from_status = row.control_status
-        if to_status != "generating" and not is_legal_transition(from_status, to_status):
+        is_unlock = (
+            action == "unlock"
+            and from_status == "locked"
+            and to_status == "approved"
+        )
+        if (
+            to_status != "generating"
+            and not is_unlock
+            and not is_legal_transition(from_status, to_status)
+        ):
             raise ValueError(f"illegal transition {from_status} -> {to_status}")
         row.control_status = to_status
         row.version += 1

@@ -135,6 +135,7 @@ def test_locked_can_go_stale_or_regenerating():
     t = legal_transitions(ControlStatus.LOCKED)
     assert ControlStatus.STALE in t
     assert ControlStatus.GENERATING in t  # 显式确认重生成
+    assert ControlStatus.APPROVED not in t
 
 
 def test_stale_reaches_generating_or_approved():
