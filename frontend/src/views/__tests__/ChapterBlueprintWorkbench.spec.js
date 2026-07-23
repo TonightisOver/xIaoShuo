@@ -67,6 +67,34 @@ describe('ChapterBlueprintWorkbench', () => {
     expect(wrapper.find('[data-field-chapter_type]').exists()).toBe(true)
   })
 
+  it('保存蓝图后按当前筛选刷新列表', async () => {
+    const fetchMock = makeFetch([
+      { match: /\/blueprints\/options$/, body: { chapter_type: [], pacing_target: [], foreshadow_action: [] } },
+      { match: /\/blueprints\?/, body: { items: [{ chapter_number: 20, control_status: 'approved', control_version: 4, has_blueprint: true, title: '第二十章' }], total: 1, page: 1, page_size: 50, status_counts: {} } },
+      { match: /\/blueprints\/20\/workspace$/, body: { blueprint: { plot_goal: '原目标' }, control: { version: 4, control_status: 'approved', locked: false }, available_characters: [] } },
+      { match: /\/creative-control\/artifacts\/blueprint\/20$/, method: 'PUT', body: { status: 'edited', version: 5, artifact_version: 2 } },
+    ])
+    vi.stubGlobal('fetch', fetchMock)
+    const router = makeRouter()
+    await router.push(`/novels/${NOVEL_ID}/blueprints`)
+    await router.isReady()
+    const wrapper = mount(ChapterBlueprintWorkbench, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.get('input[placeholder="搜索章号/标题"]').setValue('20')
+    await wrapper.findAll('button').find(button => button.text() === '筛选').trigger('click')
+    await flushPromises()
+    await wrapper.findAll('[data-chapter-list] li')[0].trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-field-plot_goal]').setValue('修改后的目标')
+    await wrapper.findAll('button').find(button => button.text() === '保存').trigger('click')
+    await flushPromises()
+
+    const listRequests = fetchMock.mock.calls.filter(([url]) => url.includes('/blueprints?'))
+    expect(listRequests.at(-1)[0]).toContain('search=20')
+    expect(listRequests).toHaveLength(3)
+  })
+
   it('未保存修改时切章提示', async () => {
     vi.stubGlobal('fetch', makeFetch([
       { match: /\/blueprints\/options$/, body: { chapter_type: ['main_advance'], pacing_target: ['medium'], foreshadow_action: [] } },

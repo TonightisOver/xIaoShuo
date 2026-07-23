@@ -168,7 +168,10 @@ function cancelSwitch() { showSwitchPrompt.value = false; pendingChapter = null 
 
 async function onSave() {
   try {
-    await wb.saveDraft(control)
+    const saved = await wb.saveDraft(control)
+    if (saved) {
+      await wb.fetchSummaries({ ...activeFilters.value, page: wb.page.value })
+    }
   } catch { /* 冲突已写入 wb.conflict */ }
 }
 function onRefresh() { if (wb.selectedChapter.value) wb.fetchWorkspace(wb.selectedChapter.value) }
